@@ -893,6 +893,41 @@ class _SparseLogSoftmax(torch.autograd.Function):
     def backward(ctx, grad_out):
         oval = ctx.saved_tensors[0]
         nnz = oval.shape[0]
+        # Rank <= 8 takes the fast path; beyond that the general kernels below
+        # stay authoritative.  The fast path joins grad_output to the output by
+        # coordinate, so it needs the two support matrices rather than a reshape.
+        if ctx.sparse_dim <= 8 and ctx.in_dtype in (torch.float32, torch.float64):
+            if grad_out.is_coalesced():
+                # An already-coalesced support needs no sort: its indices are
+                # ordered and duplicate-free, so only the payload is reshaped.
+                f_idx = grad_out._indices().contiguous()
+                f_vals = grad_out._values()
+                f_total = grad_out._nnz()
+            else:
+                f_idx, f_vals, f_total = triton_coalesce(grad_out)
+            fast = _bwd_fast_backward(
+                ctx.dim,
+                ctx.sparse_dim,
+                ctx.size,
+                ctx.dense_shape,
+                oval,
+                ctx.indices,
+                f_idx,
+                f_vals.reshape(f_total, ctx.dnumel),
+                ctx.ginfo,
+            )
+            return (
+                torch.sparse_coo_tensor(  # allow-torch-compute: package gradient values
+                    ctx.indices,
+                    fast.reshape((nnz,) + tuple(ctx.dense_shape)),
+                    ctx.size,
+                    dtype=ctx.in_dtype,
+                    device=ctx.indices.device,
+                    is_coalesced=True,
+                ),
+                None,
+                None,
+            )
         if grad_out.is_coalesced():
             dy = grad_out._values().reshape(nnz, ctx.dnumel)
         else:
@@ -1000,3 +1035,490 @@ def _sparse_log_softmax(self, dim, half_to_float=False, dtype=None, out=None):
         return result
     out.copy_(result)
     return out
+
+
+@triton.jit
+def _bwd_fast_gkey(
+    idx,
+    mid,
+    m,
+    NNZ,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    S6: tl.constexpr,
+    S7: tl.constexpr,
+    RANK: tl.constexpr,
+):
+    """Row-major weighted rank of the coordinate at ``mid`` (0 when masked)."""
+    k = tl.zeros_like(mid).to(tl.int64)
+    if RANK > 0:
+        k += tl.load(idx + mid, mask=m, other=0).to(tl.int64) * S0
+    if RANK > 1:
+        k += tl.load(idx + NNZ + mid, mask=m, other=0).to(tl.int64) * S1
+    if RANK > 2:
+        k += tl.load(idx + 2 * NNZ + mid, mask=m, other=0).to(tl.int64) * S2
+    if RANK > 3:
+        k += tl.load(idx + 3 * NNZ + mid, mask=m, other=0).to(tl.int64) * S3
+    if RANK > 4:
+        k += tl.load(idx + 4 * NNZ + mid, mask=m, other=0).to(tl.int64) * S4
+    if RANK > 5:
+        k += tl.load(idx + 5 * NNZ + mid, mask=m, other=0).to(tl.int64) * S5
+    if RANK > 6:
+        k += tl.load(idx + 6 * NNZ + mid, mask=m, other=0).to(tl.int64) * S6
+    if RANK > 7:
+        k += tl.load(idx + 7 * NNZ + mid, mask=m, other=0).to(tl.int64) * S7
+    return k
+
+
+@triton.jit
+def _bwd_fast_find(
+    g_idx,
+    g_nnz,
+    needle,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    S6: tl.constexpr,
+    S7: tl.constexpr,
+    RANK: tl.constexpr,
+    STEPS: tl.constexpr,
+):
+    """Grad row whose rank equals ``needle``, or ``-1`` when absent."""
+    lo = needle - needle
+    hi = lo + g_nnz
+    for _ in tl.static_range(STEPS):
+        mid = (lo + hi) >> 1
+        act = lo < hi
+        m = act & (mid < g_nnz)
+        gk = _bwd_fast_gkey(g_idx, mid, m, g_nnz, S0, S1, S2, S3, S4, S5, S6, S7, RANK)
+        lt = m & (gk < needle)
+        lo = tl.where(lt, mid + 1, lo)
+        hi = tl.where(lt, hi, tl.where(act, mid, hi))
+    inside = lo < g_nnz
+    gk = _bwd_fast_gkey(g_idx, lo, inside, g_nnz, S0, S1, S2, S3, S4, S5, S6, S7, RANK)
+    return tl.where(inside & (gk == needle), lo, -1)
+
+
+def _plain_rank_strides(shape, sdim):
+    """Row-major strides of the sparse axes (the join key weights)."""
+    strides = [1] * max(sdim, 1)
+    for i in range(sdim - 2, -1, -1):
+        strides[i] = strides[i + 1] * int(shape[i + 1])
+    return strides
+
+
+def _bwd_fast_strides8(strides):
+    """Pad the rank strides to the eight the unrolled kernels take."""
+    values = [int(x) for x in list(strides)[:8]]
+    return values + [0] * (8 - len(values))
+
+
+# --------------------------------------------------------------------------
+# backward: support join + fused ordered kernels
+# --------------------------------------------------------------------------
+#
+# ``_SparseLogSoftmax.backward`` works on the coalesced *output* support: an
+# upstream coordinate that is absent from the output contributes nothing to any
+# output row, and an output coordinate that the upstream gradient does not
+# mention takes G = 0 (measured on the native autograd node and
+# ``_sparse_log_softmax_backward_data``).  The general kernels below keep the
+# authoritative contract for every rank; the fused kernels after them handle the
+# common ranks with the launch overhead removed.
+#
+# All reductions walk their axis in ascending member order in the values' own
+# dtype and exp comes from libdevice, so the arithmetic per element matches the
+# general path and the native kernel; the speedup comes from fusing the
+# coordinate join into the producer kernels instead of the launch count.
+@triton.jit
+def _bwd_join(
+    g_vals,
+    g_idx,
+    y_idx,
+    j_vals,
+    g_nnz,
+    y_nnz,
+    S0: tl.constexpr,
+    S1: tl.constexpr,
+    S2: tl.constexpr,
+    S3: tl.constexpr,
+    S4: tl.constexpr,
+    S5: tl.constexpr,
+    S6: tl.constexpr,
+    S7: tl.constexpr,
+    RANK: tl.constexpr,
+    STEPS: tl.constexpr,
+    CN: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """Copy each joined grad row onto the output support; misses stay zero.
+
+    One program per output row: the row's coordinate rank is looked up in the
+    upstream index matrix (row-major, ascending, duplicate-free — both supports
+    are coalesced) and its payload is copied to ``j_vals``.  Rows without an
+    upstream coordinate keep the zero-initialized buffer, which is exactly the
+    native "absent coordinate contributes G = 0" rule.
+    """
+    row = tl.program_id(0)
+    co = tl.arange(0, BLOCK)
+    m = co < CN
+    needle = _bwd_fast_gkey(
+        y_idx, row, row < row + 1, y_nnz, S0, S1, S2, S3, S4, S5, S6, S7, RANK
+    )
+    src_row = _bwd_fast_find(
+        g_idx, g_nnz, needle, S0, S1, S2, S3, S4, S5, S6, S7, RANK, STEPS
+    )
+    ok = src_row >= 0
+    src = tl.where(ok, src_row, 0).to(tl.int64) * CN
+    vals = tl.load(g_vals + src + co, mask=m & ok, other=0.0)
+    tl.store(j_vals + row.to(tl.int64) * CN + co, vals, mask=m)
+
+
+@triton.jit
+def _bwd_fast_dense(
+    dy,
+    y_vals,
+    o_vals,
+    R,
+    INNER,
+    OI,
+    ROWS,
+    F64: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    CHUNK: tl.constexpr,
+):
+    """dO = dY - exp(OUT) * sum_dense(dY) in the input's own precision.
+
+    Each lane owns one (row, dense position) pair and adds the reduced axis
+    chunk by chunk in ascending order, so the per-element rounding matches the
+    general ``_bwd_dense`` and the native kernel exactly; within a chunk the
+    loads are vectorized and the partial sums are folded lane-wise in register,
+    which keeps the memory pipeline busy without touching the addition order.
+    """
+    row0 = tl.program_id(0) * BLOCK_ROWS
+    oi = tl.program_id(1) * BLOCK_CI + tl.arange(0, BLOCK_CI)
+    lanes = row0 + tl.arange(0, BLOCK_ROWS)
+    rm = lanes < ROWS
+    ch = tl.arange(0, CHUNK)
+    lanes3 = lanes[:, None, None]
+    oi3 = oi[None, None, :]
+    base3 = (
+        lanes3 * (OI * R)
+        + (oi3 // INNER) * (R * INNER)
+        + (oi3 - (oi3 // INNER) * INNER)
+    )
+    ptr = base3 + ch[None, :, None] * INNER
+    if F64:
+        acc = tl.zeros([BLOCK_ROWS, BLOCK_CI], dtype=tl.float64)
+        for r0 in range(0, R, CHUNK):
+            m3 = (
+                rm[:, None, None]
+                & (oi < OI)[None, None, :]
+                & (r0 + ch < R)[None, :, None]
+            )
+            part = tl.load(dy + ptr + r0 * INNER, mask=m3, other=0.0)
+            for j in tl.static_range(CHUNK):
+                acc += tl.sum(tl.where(ch[None, :, None] == j, part, 0.0), axis=1)
+        for r0 in range(0, R, CHUNK):
+            m3 = (
+                rm[:, None, None]
+                & (oi < OI)[None, None, :]
+                & (r0 + ch < R)[None, :, None]
+            )
+            g2 = tl.load(dy + ptr + r0 * INNER, mask=m3, other=0.0)
+            ov = tl.load(y_vals + ptr + r0 * INNER, mask=m3, other=0.0)
+            res = g2 - _ld.exp(ov) * acc[:, None, :]
+            tl.store(o_vals + ptr + r0 * INNER, res, mask=m3)
+    else:
+        acc = tl.zeros([BLOCK_ROWS, BLOCK_CI], dtype=tl.float32)
+        for r0 in range(0, R, CHUNK):
+            m3 = (
+                rm[:, None, None]
+                & (oi < OI)[None, None, :]
+                & (r0 + ch < R)[None, :, None]
+            )
+            part = tl.load(dy + ptr + r0 * INNER, mask=m3, other=0.0)
+            for j in tl.static_range(CHUNK):
+                acc += tl.sum(tl.where(ch[None, :, None] == j, part, 0.0), axis=1)
+        for r0 in range(0, R, CHUNK):
+            m3 = (
+                rm[:, None, None]
+                & (oi < OI)[None, None, :]
+                & (r0 + ch < R)[None, :, None]
+            )
+            g2 = tl.load(dy + ptr + r0 * INNER, mask=m3, other=0.0)
+            ov = tl.load(y_vals + ptr + r0 * INNER, mask=m3, other=0.0)
+            res = g2 - _ld.exp(ov) * acc[:, None, :]
+            tl.store(o_vals + ptr + r0 * INNER, res, mask=m3)
+
+
+@triton.jit
+def _bwd_fast_gseq(
+    dy,
+    START,
+    ORDER,
+    ACC,
+    Dn,
+    ROWS,
+    F64: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """Deterministic per-pool sum of the joined grads in member order.
+
+    The column lanes are blocked; each (pool, column) lane serially walks its
+    pool's members in ascending entry order, the same order the general
+    ``_bwd_gseq`` sums in, so the rounding matches the general path and the
+    native kernel.
+    """
+    g = tl.program_id(0)
+    lo = tl.load(START + g)
+    hi = tl.load(START + g + 1)
+    off = tl.program_id(1) * BLOCK_D + tl.arange(0, BLOCK_D)
+    md = off < Dn
+    if F64:
+        acc = tl.zeros([BLOCK_ROWS, BLOCK_D], dtype=tl.float64)
+        for j in range(lo, hi):
+            p = tl.load(ORDER + j)
+            acc += tl.load(dy + p * Dn + off[None, :], mask=md[None, :], other=0.0).to(
+                tl.float64
+            )
+    else:
+        acc = tl.zeros([BLOCK_ROWS, BLOCK_D], dtype=tl.float32)
+        for j in range(lo, hi):
+            p = tl.load(ORDER + j)
+            acc += tl.load(dy + p * Dn + off[None, :], mask=md[None, :], other=0.0).to(
+                tl.float32
+            )
+    tl.store(ACC + g * Dn + off[None, :], acc, mask=md[None, :])
+
+
+@triton.jit
+def _bwd_fast_gwrite(
+    dy,
+    y_vals,
+    START,
+    ORDER,
+    ACC,
+    DO,
+    Dn,
+    F64: tl.constexpr,
+    BLOCK_D: tl.constexpr,
+):
+    """dO = dY - exp(OUT) * pool_sum, written in member order."""
+    g = tl.program_id(0)
+    lo = tl.load(START + g)
+    hi = tl.load(START + g + 1)
+    off = tl.program_id(1) * BLOCK_D + tl.arange(0, BLOCK_D)
+    md = off < Dn
+    for j in range(lo, hi):
+        p = tl.load(ORDER + j)
+        if F64:
+            g2 = tl.load(dy + p * Dn + off, mask=md, other=0.0).to(tl.float64)
+            ov = tl.load(y_vals + p * Dn + off, mask=md, other=0.0).to(tl.float64)
+            a = tl.load(ACC + g * Dn + off, mask=md, other=0.0).to(tl.float64)
+        else:
+            g2 = tl.load(dy + p * Dn + off, mask=md, other=0.0).to(tl.float32)
+            ov = tl.load(y_vals + p * Dn + off, mask=md, other=0.0).to(tl.float32)
+            a = tl.load(ACC + g * Dn + off, mask=md, other=0.0).to(tl.float32)
+        tl.store(DO + p * Dn + off, g2 - _ld.exp(ov) * a, mask=md)
+
+
+def _bwd_fast_backward(
+    dim,
+    sparse_dim,
+    size,
+    dense_shape,
+    oval,
+    y_indices,
+    grad_indices,
+    grad_values,
+    ginfo,
+):
+    """Fused backward on the output support.
+
+    ``oval`` is the saved forward payload (``nnz x dnumel``), ``y_indices`` the
+    coalesced output index matrix and ``grad_indices``/``grad_values`` the
+    coalesced upstream gradient.  The upstream rows are first joined onto the
+    output support (absent coordinates become zero rows), then the ordered
+    dense/pool kernels run on the joined buffer, so an upstream support that is
+    narrower or wider than the output support cannot misalign the payload.
+    """
+    shape = [int(s) for s in size]
+    tail = tuple(int(s) for s in dense_shape)
+    cn = 1
+    for s in tail:
+        cn *= s
+    cn = max(cn, 1)
+    device = oval.device
+    y_nnz = int(oval.shape[0])
+    g_nnz = int(grad_indices.shape[1])
+    o_vals = torch.empty((y_nnz,) + tail, dtype=oval.dtype, device=device)
+    if y_nnz == 0:
+        return o_vals
+
+    y_vals = oval.reshape(y_nnz, cn)
+    y_idx = y_indices.contiguous()
+    g_idx = grad_indices.contiguous()
+    g_vals = grad_values.contiguous().reshape(g_nnz, cn)
+    o_flat = o_vals.reshape(y_nnz, cn)
+    dy = torch.zeros_like(y_vals)
+    if g_nnz > 0:
+        fs = _bwd_fast_strides8(_plain_rank_strides(shape, sparse_dim))
+        steps = max(1, min(62, int(max(g_nnz, 2) - 1).bit_length() + 1))
+        bc = max(min(1024, triton.next_power_of_2(cn)), 1)
+        _bwd_join[(y_nnz,)](
+            g_vals,
+            g_idx,
+            y_idx,
+            dy,
+            g_nnz,
+            y_nnz,
+            fs[0],
+            fs[1],
+            fs[2],
+            fs[3],
+            fs[4],
+            fs[5],
+            fs[6],
+            fs[7],
+            RANK=min(sparse_dim, 8),
+            STEPS=steps,
+            CN=cn,
+            BLOCK=bc,
+        )
+
+    if dim < sparse_dim:
+        # The forward saved the pool segmentation of the coalesced support:
+        # group boundaries in ``ginfo[0]`` and the member order in ``ginfo[1]``.
+        gstart, order = ginfo
+        ng = gstart.numel() - 1
+        acc = torch.empty(ng * cn, dtype=dy.dtype, device=device)
+        _bwd_fast_gseq[(ng, triton.cdiv(cn, _BLOCK_D))](
+            dy,
+            gstart,
+            order,
+            acc,
+            cn,
+            ROWS=1,
+            F64=dy.dtype == torch.float64,
+            BLOCK_ROWS=1,
+            BLOCK_D=_BLOCK_D,
+        )
+        _bwd_fast_gwrite[(ng, triton.cdiv(cn, _BLOCK_D))](
+            dy,
+            y_vals,
+            gstart,
+            order,
+            acc,
+            o_flat,
+            cn,
+            F64=dy.dtype == torch.float64,
+            BLOCK_D=_BLOCK_D,
+        )
+    else:
+        a = min(max(dim - sparse_dim, 0), max(len(tail) - 1, 0))
+        dsize = max(tail[a] if tail else 1, 1)
+        inner = 1
+        for s in tail[a + 1 :]:
+            inner *= s
+        outer = 1
+        for s in tail[:a]:
+            outer *= s
+        oi = max(outer, 1) * max(inner, 1)
+        # Lane budget: every lane walks the reduce axis in ascending chunks.
+        # BLOCK_CI covers the dense positions of one (row, outer) pair, then
+        # rows fill the remaining lanes of a 128-wide tile.
+        bci = max(min(_BLOCK_CI, triton.next_power_of_2(oi)), 1)
+        cols = triton.cdiv(oi, bci)
+        rows = max(1, min(_BLOCK_CI // bci, y_nnz))
+        rows = triton.next_power_of_2(rows)
+        chunk = 8
+        _bwd_fast_dense[(triton.cdiv(y_nnz, rows), cols)](
+            dy,
+            y_vals,
+            o_flat,
+            dsize,
+            max(inner, 1),
+            oi,
+            y_nnz,
+            F64=dy.dtype == torch.float64,
+            BLOCK_ROWS=rows,
+            BLOCK_CI=bci,
+            CHUNK=chunk,
+        )
+    return o_vals
+
+
+def sparse_log_softmax_backward(grad_output, output, dim, input_dtype=None):
+    """Return a sparse COO gradient on the coalesced log-softmax output support."""
+    if grad_output.layout != torch.sparse_coo or output.layout != torch.sparse_coo:
+        raise ValueError("sparse_log_softmax_backward requires sparse COO tensors")
+    if (
+        grad_output.shape != output.shape
+        or grad_output.sparse_dim() != output.sparse_dim()
+    ):
+        raise ValueError(
+            "grad_output must match the output shape and sparse dimensions"
+        )
+    if not -output.dim() <= dim < output.dim():
+        raise IndexError(f"Dimension out of range: {dim}")
+    if input_dtype is None:
+        input_dtype = output.dtype
+    real_dtypes = (torch.float32, torch.float64)
+    if any(
+        t not in real_dtypes for t in (input_dtype, output.dtype, grad_output.dtype)
+    ):
+        raise NotImplementedError(
+            "sparse_log_softmax_backward requires float32 or float64"
+        )
+    size, sparse_dim, dense_shape, dnumel = _sparse_meta(output)
+    if sparse_dim > 8:
+        raise NotImplementedError(
+            "sparse_log_softmax_backward supports up to eight sparse dimensions"
+        )
+    if not output.is_coalesced():
+        raise ValueError("output must be the coalesced result of sparse log-softmax")
+    dim %= output.dim()
+    indices = output._indices()
+    nnz = output._nnz()
+    values = output._values()
+    if nnz and dnumel:
+        ginfo = None
+        if dim < sparse_dim:
+            keys = _pool_key(output, dim, indices)
+            sorted_keys, order = sort(keys)
+            _, starts, _ = _seg_boundaries(sorted_keys)
+            ginfo = (starts, order)
+        if grad_output.is_coalesced():
+            grad_indices = grad_output._indices().contiguous()
+            grad_values = grad_output._values()
+            grad_nnz = grad_output._nnz()
+        else:
+            grad_indices, grad_values, grad_nnz = triton_coalesce(grad_output)
+        values = _bwd_fast_backward(
+            dim,
+            sparse_dim,
+            size,
+            dense_shape,
+            values.reshape(nnz, dnumel),
+            indices,
+            grad_indices,
+            grad_values.reshape(grad_nnz, dnumel),
+            ginfo,
+        )
+    return torch.sparse_coo_tensor(  # allow-torch-compute: package gradient values
+        indices,
+        values,
+        size,
+        dtype=input_dtype,
+        device=output.device,
+        is_coalesced=True,
+    )
