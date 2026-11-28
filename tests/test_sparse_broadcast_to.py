@@ -37,6 +37,15 @@ def _assert_sparse_close(res_out, ref_out, dtype):
     assert res_out.layout == torch.sparse_coo
     assert ref_out.layout == torch.sparse_coo
 
+    if flag_gems.vendor_name == "kunlunxin":
+        # ``to_dense`` raises "invalid device function" on kunlunxin for sparse
+        # COO tensors, unrelated to the kernel under test, so compare the parts
+        # the operator is defined by (same as test_sparse_broadcast_to_copy).
+        assert res_out._nnz() == ref_out._nnz()
+        utils.gems_assert_equal(res_out._indices(), ref_out._indices())
+        utils.gems_assert_close(res_out._values(), ref_out._values(), dtype)
+        return
+
     res_dense = res_out.to_dense()
     ref_dense = ref_out.to_dense()
     if not utils.TO_CPU:
