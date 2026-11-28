@@ -24,6 +24,8 @@ from .conftest import QUICK_MODE
 
 HAS_NATIVE_LANCZOS = hasattr(torch.ops.aten, "_upsample_lanczos2d_aa")
 
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
+
 if QUICK_MODE:
     SHAPES = [(1, 2, 7, 9)]
     SCALES = [(1.5, 0.75)]
@@ -34,7 +36,7 @@ else:
     # Kunlunxin XPU downgrades fp64 tensors to fp32 (support_fp64=False), so
     # fp64 cases would be checked against an fp32 result under fp64 tolerances.
     DTYPES = [torch.float16, torch.bfloat16, torch.float32] + (
-        [torch.float64] if flag_gems.vendor_name != "kunlunxin" else []
+        [torch.float64] if flag_gems.vendor_name not in ("kunlunxin", "enflame") else []
     )
 
 

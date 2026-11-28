@@ -8,272 +8,812 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-
-# ============================================================
-# Kernels
-# ============================================================
-
-
-@triton.jit
-def _pad_sequence_small_kernel(
-    out_ptr,
-    seq_ptr,
-    seq_len,
-    max_len,
-    feature,
-    batch_index,
-    batch,
-    padding_value,
-    BLOCK: tl.constexpr,
-    BATCH_FIRST: tl.constexpr,
-):
-    """Kernel for small batches (batch <= 2)."""
-    pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-
-    total = max_len * feature
-    mask = offs < total
-
-    t = offs // feature
-    f = offs % feature
-    valid = t < seq_len
-
-    value = tl.load(
-        seq_ptr + t * feature + f,
-        mask=mask & valid,
-        other=padding_value,
-    )
-
-    if BATCH_FIRST:
-        dst = out_ptr + batch_index * max_len * feature + offs
-    else:
-        dst = out_ptr + t * batch * feature + batch_index * feature + f
-
-    tl.store(dst, value, mask=mask)
+_NUM_CTAS = 96
+_MAX_GROUP = 32
+_SLAB_SMALL = 8192
+_TILE_LANES = 16384
 
 
 @triton.jit
-def _pad_sequence_batch_copy_kernel(
-    out_ptr,
-    src_ptr,
-    total,
-    BLOCK: tl.constexpr,
+def _pad_sequence_slab_kernel(
+    Out,
+    Sources,
+    Lengths,
+    TilesPerSeq,
+    SlabSize,
+    Feature,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    CHUNK: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
 ):
-    """Linear copy kernel for medium workloads (batch_first=False)."""
+    """batch_first=True: copy each sequence slab into Out[b] with flat chunks."""
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < total
-
-    value = tl.load(src_ptr + offs, mask=mask, other=0)
-    tl.store(out_ptr + offs, value, mask=mask)
+    total = TilesPerSeq * GroupCount
+    offs = tl.arange(0, CHUNK)
+    for item in range(pid, total, NumCTAs):
+        b = item // TilesPerSeq
+        tile = item % TilesPerSeq
+        src = Sources[0]
+        length = Lengths[0]
+        for i in tl.static_range(1, len(Sources)):
+            src = tl.where(b == i, Sources[i], src)
+            length = tl.where(b == i, Lengths[i], length)
+        if INDEX64:
+            base = (BatchOffset + b).to(tl.int64) * SlabSize.to(tl.int64)
+            soffs = tile.to(tl.int64) * CHUNK + offs.to(tl.int64)
+            valid_end = length.to(tl.int64) * Feature.to(tl.int64)
+            load_end = (tile + 1) * CHUNK <= length * Feature
+            slab_end = (tile + 1) * CHUNK <= SlabSize
+        else:
+            base = (BatchOffset + b) * SlabSize
+            soffs = tile * CHUNK + offs
+            valid_end = length * Feature
+            load_end = (tile + 1) * CHUNK <= length * Feature
+            slab_end = (tile + 1) * CHUNK <= SlabSize
+        if load_end & slab_end:
+            value = tl.load(src + soffs)
+            tl.store(Out + base + soffs, value)
+        elif (tile * CHUNK >= length * Feature) & slab_end:
+            value = tl.full((CHUNK,), PaddingValue, Out.dtype.element_ty)
+            tl.store(Out + base + soffs, value)
+        else:
+            value = tl.load(src + soffs, mask=soffs < valid_end, other=PaddingValue)
+            tl.store(Out + base + soffs, value, mask=soffs < SlabSize)
 
 
 @triton.jit
-def _pad_sequence_flat_kernel(
-    out_ptr,
-    seq_base_ptr,
-    seq_offsets,
-    seq_lens,
-    batch,
-    max_len,
-    feature,
-    padding_value,
-    BLOCK: tl.constexpr,
-    BATCH_FIRST: tl.constexpr,
+def _pad_sequence_tiled_kernel(
+    Out,
+    Sources,
+    Lengths,
+    RowTiles,
+    FTiles,
+    MaxLength,
+    Feature,
+    Batch,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    BLOCK_R: tl.constexpr,
+    BLOCK_F: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
 ):
-    """Kernel for large batches (batch > 8)."""
+    """batch_first=False: 2D row tiles, f-contiguous, scalar row bases."""
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-
-    total = batch * max_len * feature
-    mask = offs < total
-
-    if BATCH_FIRST:
-        batch_id = offs // (max_len * feature)
-        remain = offs % (max_len * feature)
-        t = remain // feature
-        f = remain % feature
-    else:
-        t = offs // (batch * feature)
-        remain = offs % (batch * feature)
-        batch_id = remain // feature
-        f = remain % feature
-
-    seq_len = tl.load(seq_lens + batch_id, mask=mask, other=0)
-    valid = t < seq_len
-
-    offset = tl.load(seq_offsets + batch_id, mask=mask, other=0)
-
-    value = tl.load(
-        seq_base_ptr + offset + t * feature + f,
-        mask=mask & valid,
-        other=padding_value,
-    )
-
-    tl.store(out_ptr + offs, value, mask=mask)
-
-
-# ============================================================
-# Helper functions
-# ============================================================
-
-
-def _select_block(feature):
-    """Select block size based on feature dimension."""
-    if feature <= 32:
-        return 64
-    elif feature <= 128:
-        return 128
-    elif feature <= 512:
-        return 256
-    else:
-        return 512
-
-
-def _select_warps(feature):
-    """Select number of warps based on feature dimension."""
-    if feature <= 128:
-        return 2
-    elif feature <= 512:
-        return 4
-    else:
-        return 8
-
-
-def _build_metadata(sequences, device):
-    """Build flat offsets and lengths for each sequence."""
-    offsets = []
-    lengths = []
-    offset = 0
-
-    for seq in sequences:
-        offsets.append(offset)
-        lengths.append(seq.shape[0])
-        offset += seq.numel()
-
-    seq_offsets = torch.tensor(offsets, dtype=torch.int64, device=device)
-    seq_lens = torch.tensor(lengths, dtype=torch.int32, device=device)
-
-    return seq_offsets, seq_lens
-
-
-# ============================================================
-# Strategy wrappers
-# ============================================================
-
-_DIRECT_COPY_THRESHOLD = 8192
-
-
-def _pad_sequence_small(
-    sequences, out, batch, max_len, feature, batch_first, padding_value
-):
-    """Strategy for batch <= 2."""
-    BLOCK = _select_block(feature)
-    WARPS = _select_warps(feature)
-    grid = (triton.cdiv(max_len * feature, BLOCK),)
-
-    with torch_device_fn.device(out.device):
-        for batch_id, seq in enumerate(sequences):
-            _pad_sequence_small_kernel[grid](
-                out,
-                seq,
-                seq.shape[0],
-                max_len,
-                feature,
-                batch_id,
-                batch,
-                padding_value,
-                BLOCK=BLOCK,
-                BATCH_FIRST=batch_first,
-                num_warps=WARPS,
+    tiles_per_seq = RowTiles * FTiles
+    total = tiles_per_seq * GroupCount
+    r = tl.arange(0, BLOCK_R)
+    f = tl.arange(0, BLOCK_F)
+    for item in range(pid, total, NumCTAs):
+        b = item // tiles_per_seq
+        rem = item % tiles_per_seq
+        rt = rem // FTiles
+        ft = rem % FTiles
+        src = Sources[0]
+        length = Lengths[0]
+        for i in tl.static_range(1, len(Sources)):
+            src = tl.where(b == i, Sources[i], src)
+            length = tl.where(b == i, Lengths[i], length)
+        t = rt * BLOCK_R + r
+        ff = ft * BLOCK_F + f
+        if INDEX64:
+            t64 = t.to(tl.int64)
+            f64 = ff.to(tl.int64)
+            feature64 = Feature.to(tl.int64)
+            sbase = t64[:, None] * feature64 + f64[None, :]
+            dst = (
+                t64[:, None] * (Batch.to(tl.int64) * feature64)
+                + (BatchOffset + b).to(tl.int64) * feature64
+                + f64[None, :]
+            )
+        else:
+            sbase = t[:, None] * Feature + ff[None, :]
+            dst = (
+                t[:, None] * (Batch * Feature)
+                + (BatchOffset + b) * Feature
+                + ff[None, :]
+            )
+        row_in = (rt + 1) * BLOCK_R <= length
+        f_in = (ft + 1) * BLOCK_F <= Feature
+        if row_in & f_in:
+            value = tl.load(src + sbase)
+            tl.store(Out + dst, value)
+        elif rt * BLOCK_R >= length:
+            # The whole tile sits in the padding region: no source read is needed, so
+            # store the constant directly and save one masked load.
+            fill = tl.full((BLOCK_R, BLOCK_F), PaddingValue, Out.dtype.element_ty)
+            tl.store(
+                Out + dst,
+                fill,
+                mask=(t < MaxLength)[:, None] & (ff < Feature)[None, :],
+            )
+        else:
+            ff_mask = ff < Feature
+            value = tl.load(
+                src + sbase,
+                mask=(t < length)[:, None] & ff_mask[None, :],
+                other=PaddingValue,
+            )
+            tl.store(
+                Out + dst,
+                value,
+                mask=(t < MaxLength)[:, None] & ff_mask[None, :],
             )
 
-    return out
 
-
-def _pad_sequence_direct_copy(
-    sequences, out, batch, max_len, feature, batch_first, padding_value
+@triton.jit
+def _pad_sequence_slab_w4(
+    Out,
+    S0,
+    S1,
+    S2,
+    S3,
+    L0,
+    L1,
+    L2,
+    L3,
+    TilesPerSeq,
+    SlabSize,
+    Feature,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    CHUNK: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
 ):
-    """Direct copy strategy for small workloads or batch_first=True."""
-    out.fill_(padding_value)
-
-    for i, seq in enumerate(sequences):
-        length = seq.shape[0]
-        if batch_first:
-            out[i, :length].copy_(seq)
-        else:
-            out[:length, i].copy_(seq)
-
-    return out
-
-
-def _pad_sequence_batch_copy(sequences, out, batch, max_len, feature, padding_value):
-    """Linear copy strategy for medium workloads with batch_first=False."""
-    # Preserve the trailing dimensions for copy_; the kernel still copies linearly.
-    temp = torch.full(
-        out.shape,
-        padding_value,
-        dtype=out.dtype,
-        device=out.device,
+    _pad_sequence_slab_kernel(
+        Out,
+        (S0, S1, S2, S3),
+        (L0, L1, L2, L3),
+        TilesPerSeq,
+        SlabSize,
+        Feature,
+        GroupCount,
+        BatchOffset,
+        PaddingValue,
+        CHUNK,
+        NumCTAs,
+        INDEX64,
     )
 
-    for i, seq in enumerate(sequences):
-        length = seq.shape[0]
-        temp[:length, i].copy_(seq)
 
-    numel = temp.numel()
-    BLOCK = _select_block(feature)
-    WARPS = _select_warps(feature)
-    grid = (triton.cdiv(numel, BLOCK),)
-
-    with torch_device_fn.device(out.device):
-        _pad_sequence_batch_copy_kernel[grid](
-            out, temp, numel, BLOCK=BLOCK, num_warps=WARPS
-        )
-
-    return out
-
-
-def _pad_sequence_flat(
-    sequences, out, batch, max_len, feature, batch_first, padding_value
+@triton.jit
+def _pad_sequence_slab_w8(
+    Out,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    L0,
+    L1,
+    L2,
+    L3,
+    L4,
+    L5,
+    L6,
+    L7,
+    TilesPerSeq,
+    SlabSize,
+    Feature,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    CHUNK: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
 ):
-    """Flatten strategy for batch > 8."""
-    flat = [seq.reshape(-1) for seq in sequences]
-    seq_base = torch.cat(flat)
-
-    seq_offsets, seq_lens = _build_metadata(sequences, out.device)
-
-    numel = batch * max_len * feature
-    BLOCK = _select_block(feature)
-    WARPS = _select_warps(feature)
-    grid = (triton.cdiv(numel, BLOCK),)
-
-    with torch_device_fn.device(out.device):
-        _pad_sequence_flat_kernel[grid](
-            out,
-            seq_base,
-            seq_offsets,
-            seq_lens,
-            batch,
-            max_len,
-            feature,
-            padding_value,
-            BLOCK=BLOCK,
-            BATCH_FIRST=batch_first,
-            num_warps=WARPS,
-        )
-
-    return out
+    _pad_sequence_slab_kernel(
+        Out,
+        (S0, S1, S2, S3, S4, S5, S6, S7),
+        (L0, L1, L2, L3, L4, L5, L6, L7),
+        TilesPerSeq,
+        SlabSize,
+        Feature,
+        GroupCount,
+        BatchOffset,
+        PaddingValue,
+        CHUNK,
+        NumCTAs,
+        INDEX64,
+    )
 
 
-# ============================================================
-# Public API
-# ============================================================
+@triton.jit
+def _pad_sequence_slab_w16(
+    Out,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
+    S9,
+    S10,
+    S11,
+    S12,
+    S13,
+    S14,
+    S15,
+    L0,
+    L1,
+    L2,
+    L3,
+    L4,
+    L5,
+    L6,
+    L7,
+    L8,
+    L9,
+    L10,
+    L11,
+    L12,
+    L13,
+    L14,
+    L15,
+    TilesPerSeq,
+    SlabSize,
+    Feature,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    CHUNK: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
+):
+    _pad_sequence_slab_kernel(
+        Out,
+        (S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15),
+        (L0, L1, L2, L3, L4, L5, L6, L7, L8, L9, L10, L11, L12, L13, L14, L15),
+        TilesPerSeq,
+        SlabSize,
+        Feature,
+        GroupCount,
+        BatchOffset,
+        PaddingValue,
+        CHUNK,
+        NumCTAs,
+        INDEX64,
+    )
+
+
+@triton.jit
+def _pad_sequence_slab_w32(
+    Out,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
+    S9,
+    S10,
+    S11,
+    S12,
+    S13,
+    S14,
+    S15,
+    S16,
+    S17,
+    S18,
+    S19,
+    S20,
+    S21,
+    S22,
+    S23,
+    S24,
+    S25,
+    S26,
+    S27,
+    S28,
+    S29,
+    S30,
+    S31,
+    L0,
+    L1,
+    L2,
+    L3,
+    L4,
+    L5,
+    L6,
+    L7,
+    L8,
+    L9,
+    L10,
+    L11,
+    L12,
+    L13,
+    L14,
+    L15,
+    L16,
+    L17,
+    L18,
+    L19,
+    L20,
+    L21,
+    L22,
+    L23,
+    L24,
+    L25,
+    L26,
+    L27,
+    L28,
+    L29,
+    L30,
+    L31,
+    TilesPerSeq,
+    SlabSize,
+    Feature,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    CHUNK: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
+):
+    _pad_sequence_slab_kernel(
+        Out,
+        (
+            S0,
+            S1,
+            S2,
+            S3,
+            S4,
+            S5,
+            S6,
+            S7,
+            S8,
+            S9,
+            S10,
+            S11,
+            S12,
+            S13,
+            S14,
+            S15,
+            S16,
+            S17,
+            S18,
+            S19,
+            S20,
+            S21,
+            S22,
+            S23,
+            S24,
+            S25,
+            S26,
+            S27,
+            S28,
+            S29,
+            S30,
+            S31,
+        ),
+        (
+            L0,
+            L1,
+            L2,
+            L3,
+            L4,
+            L5,
+            L6,
+            L7,
+            L8,
+            L9,
+            L10,
+            L11,
+            L12,
+            L13,
+            L14,
+            L15,
+            L16,
+            L17,
+            L18,
+            L19,
+            L20,
+            L21,
+            L22,
+            L23,
+            L24,
+            L25,
+            L26,
+            L27,
+            L28,
+            L29,
+            L30,
+            L31,
+        ),
+        TilesPerSeq,
+        SlabSize,
+        Feature,
+        GroupCount,
+        BatchOffset,
+        PaddingValue,
+        CHUNK,
+        NumCTAs,
+        INDEX64,
+    )
+
+
+@triton.jit
+def _pad_sequence_tiled_w4(
+    Out,
+    S0,
+    S1,
+    S2,
+    S3,
+    L0,
+    L1,
+    L2,
+    L3,
+    RowTiles,
+    FTiles,
+    MaxLength,
+    Feature,
+    Batch,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    BLOCK_R: tl.constexpr,
+    BLOCK_F: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
+):
+    _pad_sequence_tiled_kernel(
+        Out,
+        (S0, S1, S2, S3),
+        (L0, L1, L2, L3),
+        RowTiles,
+        FTiles,
+        MaxLength,
+        Feature,
+        Batch,
+        GroupCount,
+        BatchOffset,
+        PaddingValue,
+        BLOCK_R,
+        BLOCK_F,
+        NumCTAs,
+        INDEX64,
+    )
+
+
+@triton.jit
+def _pad_sequence_tiled_w8(
+    Out,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    L0,
+    L1,
+    L2,
+    L3,
+    L4,
+    L5,
+    L6,
+    L7,
+    RowTiles,
+    FTiles,
+    MaxLength,
+    Feature,
+    Batch,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    BLOCK_R: tl.constexpr,
+    BLOCK_F: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
+):
+    _pad_sequence_tiled_kernel(
+        Out,
+        (S0, S1, S2, S3, S4, S5, S6, S7),
+        (L0, L1, L2, L3, L4, L5, L6, L7),
+        RowTiles,
+        FTiles,
+        MaxLength,
+        Feature,
+        Batch,
+        GroupCount,
+        BatchOffset,
+        PaddingValue,
+        BLOCK_R,
+        BLOCK_F,
+        NumCTAs,
+        INDEX64,
+    )
+
+
+@triton.jit
+def _pad_sequence_tiled_w16(
+    Out,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
+    S9,
+    S10,
+    S11,
+    S12,
+    S13,
+    S14,
+    S15,
+    L0,
+    L1,
+    L2,
+    L3,
+    L4,
+    L5,
+    L6,
+    L7,
+    L8,
+    L9,
+    L10,
+    L11,
+    L12,
+    L13,
+    L14,
+    L15,
+    RowTiles,
+    FTiles,
+    MaxLength,
+    Feature,
+    Batch,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    BLOCK_R: tl.constexpr,
+    BLOCK_F: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
+):
+    _pad_sequence_tiled_kernel(
+        Out,
+        (S0, S1, S2, S3, S4, S5, S6, S7, S8, S9, S10, S11, S12, S13, S14, S15),
+        (L0, L1, L2, L3, L4, L5, L6, L7, L8, L9, L10, L11, L12, L13, L14, L15),
+        RowTiles,
+        FTiles,
+        MaxLength,
+        Feature,
+        Batch,
+        GroupCount,
+        BatchOffset,
+        PaddingValue,
+        BLOCK_R,
+        BLOCK_F,
+        NumCTAs,
+        INDEX64,
+    )
+
+
+@triton.jit
+def _pad_sequence_tiled_w32(
+    Out,
+    S0,
+    S1,
+    S2,
+    S3,
+    S4,
+    S5,
+    S6,
+    S7,
+    S8,
+    S9,
+    S10,
+    S11,
+    S12,
+    S13,
+    S14,
+    S15,
+    S16,
+    S17,
+    S18,
+    S19,
+    S20,
+    S21,
+    S22,
+    S23,
+    S24,
+    S25,
+    S26,
+    S27,
+    S28,
+    S29,
+    S30,
+    S31,
+    L0,
+    L1,
+    L2,
+    L3,
+    L4,
+    L5,
+    L6,
+    L7,
+    L8,
+    L9,
+    L10,
+    L11,
+    L12,
+    L13,
+    L14,
+    L15,
+    L16,
+    L17,
+    L18,
+    L19,
+    L20,
+    L21,
+    L22,
+    L23,
+    L24,
+    L25,
+    L26,
+    L27,
+    L28,
+    L29,
+    L30,
+    L31,
+    RowTiles,
+    FTiles,
+    MaxLength,
+    Feature,
+    Batch,
+    GroupCount,
+    BatchOffset,
+    PaddingValue,
+    BLOCK_R: tl.constexpr,
+    BLOCK_F: tl.constexpr,
+    NumCTAs,
+    INDEX64: tl.constexpr,
+):
+    _pad_sequence_tiled_kernel(
+        Out,
+        (
+            S0,
+            S1,
+            S2,
+            S3,
+            S4,
+            S5,
+            S6,
+            S7,
+            S8,
+            S9,
+            S10,
+            S11,
+            S12,
+            S13,
+            S14,
+            S15,
+            S16,
+            S17,
+            S18,
+            S19,
+            S20,
+            S21,
+            S22,
+            S23,
+            S24,
+            S25,
+            S26,
+            S27,
+            S28,
+            S29,
+            S30,
+            S31,
+        ),
+        (
+            L0,
+            L1,
+            L2,
+            L3,
+            L4,
+            L5,
+            L6,
+            L7,
+            L8,
+            L9,
+            L10,
+            L11,
+            L12,
+            L13,
+            L14,
+            L15,
+            L16,
+            L17,
+            L18,
+            L19,
+            L20,
+            L21,
+            L22,
+            L23,
+            L24,
+            L25,
+            L26,
+            L27,
+            L28,
+            L29,
+            L30,
+            L31,
+        ),
+        RowTiles,
+        FTiles,
+        MaxLength,
+        Feature,
+        Batch,
+        GroupCount,
+        BatchOffset,
+        PaddingValue,
+        BLOCK_R,
+        BLOCK_F,
+        NumCTAs,
+        INDEX64,
+    )
+
+
+_SLAB_KERNELS = {
+    4: _pad_sequence_slab_w4,
+    8: _pad_sequence_slab_w8,
+    16: _pad_sequence_slab_w16,
+    32: _pad_sequence_slab_w32,
+}
+
+_TILED_KERNELS = {
+    4: _pad_sequence_tiled_w4,
+    8: _pad_sequence_tiled_w8,
+    16: _pad_sequence_tiled_w16,
+    32: _pad_sequence_tiled_w32,
+}
+
+
+def _group_width(batch):
+    width = 4
+    while width < batch and width < _MAX_GROUP:
+        width *= 2
+    return width
+
+
+def _slab_chunk(slab, item_size):
+    if slab <= _SLAB_SMALL:
+        return 2048
+    if item_size >= 4:
+        return 8192
+    return 16384
+
+
+def _tile_shape(feature, item_size):
+    block_f = min(4096, triton.next_power_of_2(max(1, feature)))
+    block_r = max(4, min(64, _TILE_LANES // block_f))
+    if item_size < 4 and block_f >= 4096:
+        block_r = min(64, block_r * 2)
+    return block_r, block_f
 
 
 def pad_sequence(sequences, batch_first=False, padding_value=0.0):
     """Pad variable length tensors into a single batch tensor."""
-    logger.debug("GEMS_ENFLAME_GCU400 PAD_SEQUENCE")
+    logger.debug("GEMS_ENFLAME PAD_SEQUENCE")
 
     batch = len(sequences)
     if batch == 0:
@@ -322,21 +862,60 @@ def pad_sequence(sequences, batch_first=False, padding_value=0.0):
     if total_elements == 0:
         return out
 
-    # Keep the existing dispatch thresholds and kernel implementations.
-    if batch <= 2:
-        return _pad_sequence_small(
-            seqs, out, batch, max_len, feature, batch_first, padding_value
-        )
-    elif batch <= 8:
-        if total_elements <= _DIRECT_COPY_THRESHOLD or batch_first:
-            return _pad_sequence_direct_copy(
-                seqs, out, batch, max_len, feature, batch_first, padding_value
-            )
-        else:
-            return _pad_sequence_batch_copy(
-                seqs, out, batch, max_len, feature, padding_value
-            )
-    else:
-        return _pad_sequence_flat(
-            seqs, out, batch, max_len, feature, batch_first, padding_value
-        )
+    item_size = out.element_size()
+    index64 = total_elements >= 2**31
+    width = _group_width(batch)
+    num_warps = 4
+    with torch_device_fn.device(device):
+        for start in range(0, batch, width):
+            group = seqs[start : start + width]
+            count = len(group)
+            ptrs = list(group)
+            lens = [seq.shape[0] for seq in group]
+            ptrs += [group[0]] * (width - count)
+            lens += [0] * (width - count)
+            if batch_first:
+                slab = max_len * feature
+                chunk = _slab_chunk(slab, item_size)
+                tiles_per_seq = triton.cdiv(slab, chunk)
+                grid = (min(_NUM_CTAS, tiles_per_seq * count),)
+                _SLAB_KERNELS[width][grid](
+                    out,
+                    *ptrs,
+                    *lens,
+                    tiles_per_seq,
+                    slab,
+                    feature,
+                    count,
+                    start,
+                    padding_value,
+                    CHUNK=chunk,
+                    NumCTAs=grid[0],
+                    INDEX64=index64,
+                    num_warps=num_warps,
+                )
+            else:
+                block_r, block_f = _tile_shape(feature, item_size)
+                row_tiles = triton.cdiv(max_len, block_r)
+                ftiles = triton.cdiv(feature, block_f)
+                grid = (min(_NUM_CTAS, row_tiles * ftiles * count),)
+                _TILED_KERNELS[width][grid](
+                    out,
+                    *ptrs,
+                    *lens,
+                    row_tiles,
+                    ftiles,
+                    max_len,
+                    feature,
+                    batch,
+                    count,
+                    start,
+                    padding_value,
+                    BLOCK_R=block_r,
+                    BLOCK_F=block_f,
+                    NumCTAs=grid[0],
+                    INDEX64=index64,
+                    num_warps=num_warps,
+                )
+
+    return out

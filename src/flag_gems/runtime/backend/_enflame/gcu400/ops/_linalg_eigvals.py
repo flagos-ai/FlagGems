@@ -42,7 +42,7 @@ def _linalg_eigvals(inp):
     float64/complex128 paths and the complex64 output dtype for real input)
     matches the un-overloaded operator exactly.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _LINALG_EIGVALS")
+    logger.debug("GEMS_ENFLAME _LINALG_EIGVALS")
     if _CAN_CAPTURE_NATIVE_KERNEL:
         return _NATIVE_EIGVALS.call_boxed(
             torch._C.DispatchKeySet(

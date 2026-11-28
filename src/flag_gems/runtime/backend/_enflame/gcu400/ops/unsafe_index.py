@@ -63,6 +63,7 @@ def _emit_gather_kernel(
             "N,",
             "BLOCK_SIZE0: tl.constexpr,",
             "BLOCK_SIZE1: tl.constexpr,",
+            "IDX_INT32: tl.constexpr,",
         ]
         code.writelines(args)
     code.writeline("):")
@@ -120,6 +121,12 @@ def _emit_gather_kernel(
                 f"cur_index{i} = tl.minimum(tl.maximum(cur_index{i}, 0), "
                 f"input_shape{dim} - 1)"
             )
+            # int64 indices make the address arithmetic for the whole tile run in 64 bits (doubling register usage).
+            # When indices have been clamped to [0, dim-1] and both input and output element counts are < 2^31,
+            # the upper bound of offset is < numel < 2^31, so it can be safely truncated to int32.
+            code.writeline("if IDX_INT32:")
+            with code.indent():
+                code.writeline(f"cur_index{i} = cur_index{i}.to(tl.int32)")
         code.newline()
         # Bounds mask: out-of-range indices (UB under "unsafe" semantics, but
         # cheap to handle) skip the store, leaving the output element
@@ -186,13 +193,30 @@ def _emit_gather_wrapper(
             )
             code.writeline("BLOCK_SIZE1 = max(1, BLOCK_SIZE1 >> (shift + 1) // 2)")
             code.writeline("BLOCK_SIZE0 = max(1, BLOCK_SIZE0 >> shift // 2)")
-        # gridDim.y is capped at 65535: spill the N-block index into axis 2
-        # (the kernel flattens axes 1 and 2 back into pid1).
+        # The GCU backend's grid limits are grid.x ≤ 65535 and grid.y/grid.z ≤ 255 (not CUDA's
+        # 65535), so when the number of blocks along N exceeds 255*255, BLOCK_SIZE1 must be enlarged first,
+        # then split the N-block index across the (y, z) axes (the kernel flattens the two axes back into pid1).
         code.writeline("grid1 = triton.cdiv(N, BLOCK_SIZE1)")
-        code.writeline("grid_y = min(grid1, 65535)")
+        code.writeline("if grid1 > 255 * 255:")
+        with code.indent():
+            code.writeline(
+                "BLOCK_SIZE1 = max(BLOCK_SIZE1, "
+                "2 ** (triton.cdiv(N, 255 * 255) - 1).bit_length())"
+            )
+            code.writeline(
+                "BLOCK_SIZE0 = min(BLOCK_SIZE0, max(1, 8192 // BLOCK_SIZE1))"
+            )
+            code.writeline(
+                "BLOCK_SIZE0 = min(BLOCK_SIZE0, max(1, 2 ** (M - 1).bit_length()))"
+            )
+            code.writeline("grid1 = triton.cdiv(N, BLOCK_SIZE1)")
+        code.writeline("grid_y = min(grid1, 255)")
         code.writeline(
             "grid = (triton.cdiv(M, BLOCK_SIZE0), grid_y, triton.cdiv(grid1, grid_y))"
         )
+        # Condition under which index/address arithmetic can degrade to int32: both input and output element counts are
+        # < 2^31.
+        code.writeline("IDX_INT32 = input.numel() < 2**31 and out.numel() < 2**31")
         code.newline()
         code.writeline(f"{kernel_name}[grid](")
         with code.indent():
@@ -210,6 +234,7 @@ def _emit_gather_wrapper(
                 "N,",
                 "BLOCK_SIZE0=BLOCK_SIZE0,",
                 "BLOCK_SIZE1=BLOCK_SIZE1,",
+                "IDX_INT32=IDX_INT32,",
             ]
             code.writelines(args)
         code.writeline(")")
@@ -369,7 +394,7 @@ def unsafe_index(inp, indices):
     input/output strides, so no input permute/contiguous and no output
     post-permute is ever needed.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNSAFE_INDEX")
+    logger.debug("GEMS_ENFLAME UNSAFE_INDEX")
     if not indices:
         raise ValueError("at least one index must be provided")
     indices = _check_indices(inp, list(indices))

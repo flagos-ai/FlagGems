@@ -69,7 +69,7 @@ def cosine_similarity_kernel(
 
 
 def cosine_similarity(x1, x2, dim=1, eps=1e-8):
-    logger.debug("GEMS_ENFLAME_GCU400 COSINE_SIMILARITY")
+    logger.debug("GEMS_ENFLAME COSINE_SIMILARITY")
     assert x1.dtype in (
         torch.float16,
         torch.bfloat16,

@@ -387,7 +387,7 @@ def _upsample_nearest_exact3d_backward(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_NEAREST_EXACT3D_BACKWARD")
     return _upsample_nearest_exact3d_backward_impl(
         grad_output,
         output_size,
@@ -409,7 +409,7 @@ def _upsample_nearest_exact3d_backward_grad_input(
     *,
     grad_input: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT3D_BACKWARD_GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_NEAREST_EXACT3D_BACKWARD_GRAD_INPUT")
     return _upsample_nearest_exact3d_backward_impl(
         grad_output,
         output_size,
@@ -502,49 +502,3 @@ def _dispatch_grad_input(
         scales_w,
         grad_input=grad_input,
     )
-
-
-def _install_dispatch_wrapper():
-    global _DISPATCH_LIBRARY, _NATIVE_DEFAULT, _NATIVE_GRAD_INPUT, _DEVICE_KEYSET
-    if getattr(torch, _DISPATCH_FLAG, False):
-        return
-    if not hasattr(torch.library, "get_kernel"):
-        return
-    try:
-        _NATIVE_DEFAULT = torch.library.get_kernel(
-            torch.ops.aten._upsample_nearest_exact3d_backward.default,
-            device.dispatch_key,
-        )
-        _NATIVE_GRAD_INPUT = torch.library.get_kernel(
-            torch.ops.aten._upsample_nearest_exact3d_backward.grad_input,
-            device.dispatch_key,
-        )
-        _DEVICE_KEYSET = torch._C.DispatchKeySet(
-            getattr(torch._C.DispatchKey, device.dispatch_key)
-        )
-        library = torch.library.Library("aten", "IMPL")
-        # The ".default" suffix is not a legal overload name, so the default
-        # overload registers under the bare op name (matched by signature)
-        # while the grad_input overload uses its real overload name.  The
-        # grad_input wrapper needs an all-positional signature because the
-        # dispatcher shim passes the schema args positionally.
-        library.impl(
-            "_upsample_nearest_exact3d_backward",
-            _dispatch_default,
-            device.dispatch_key,
-        )
-        library.impl(
-            "_upsample_nearest_exact3d_backward.grad_input",
-            _dispatch_grad_input,
-            device.dispatch_key,
-        )
-    except RuntimeError as error:
-        logger.warning(
-            "_upsample_nearest_exact3d_backward uint8 dispatch skipped: %s", error
-        )
-        return
-    _DISPATCH_LIBRARY = library
-    setattr(torch, _DISPATCH_FLAG, True)
-
-
-_install_dispatch_wrapper()

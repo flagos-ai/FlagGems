@@ -51,6 +51,11 @@ class SparseSemiStructuredTileBenchmark(base.Benchmark):  # noqa: E501
             yield (_make_dense(shape, cur_dtype, self.device),)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="aten::_sparse_semi_structured_tile has neither a GCU kernel nor a CPU "
+    "kernel, so there is no native baseline to compare against",
+)
 @pytest.mark.sparse_semi_structured_tile
 def test_sparse_semi_structured_tile():
     bench = SparseSemiStructuredTileBenchmark(

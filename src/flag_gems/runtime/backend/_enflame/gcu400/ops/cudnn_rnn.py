@@ -1119,6 +1119,327 @@ def _gru_packed_kernel(
 
 
 # ===================================================================
+#  Uniform-batch fast path (enflame GCU400)
+# ===================================================================
+# Two kernels per (layer, direction):
+#   * `_rnn_proj_kernel`: the W_ih input projection for every timestep as
+#     one parallel GEMM (full-K tl.dot, no K-loop accumulation chains --
+#     GCU400 miscompiles loop-carried dot accumulators, see mm.py and the
+#     chunked_sgmv compiler issue).
+#   * `_rnn_rec_kernel`: the serial recurrence. grid=(cdiv(B, 16),); each
+#     program owns 16 batch rows, keeps h as a register snapshot per step
+#     (no 2D register-carried state across steps: h/c go through a small
+#     fp32 global scratch with one debug_barrier per step), and computes
+#     every gate block with a single full-K dot into a fresh accumulator.
+# Batch rows beyond B pad the dot M dimension (tl.dot needs M >= 16; M < 16
+# silently corrupts on this backend) and are never stored.
+# ===================================================================
+
+
+@libentry()
+@triton.jit
+def _rnn_proj_kernel(
+    x_ptr,  # [S, B, I] input dtype, contiguous
+    w_ptr,  # [GH, I] input dtype
+    b_ptr,  # [GH] input dtype (dummy when !HAS_BIAS)
+    p_ptr,  # [S, B_pad, GH] fp32 workspace
+    B,
+    B_pad,
+    S,
+    I: tl.constexpr,
+    GH: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    I_PAD: tl.constexpr,
+    MASK_I: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    grid_n = tl.cdiv(GH, BN)
+    pid_m = pid // grid_n
+    pid_n = pid % grid_n
+    rm = pid_m * BM + tl.arange(0, BM)  # [0, S*B_pad)
+    rn = pid_n * BN + tl.arange(0, BN)  # [0, GH)
+    s = rm // B_pad
+    b = rm % B_pad
+    b_safe = tl.where(b < B, b, 0)
+    row_ok = (s < S) & (b < B)
+    n_mask = rn < GH
+    k = tl.arange(0, I_PAD)  # full-K dot over the padded contraction dim
+    if MASK_I:
+        km = k < I
+        a_mask = row_ok[:, None] & km[None, :]
+        w_mask = n_mask[None, :] & km[:, None]
+    else:
+        a_mask = row_ok[:, None]
+        w_mask = n_mask[None, :]
+    a = tl.load(
+        x_ptr + (s * B + b_safe)[:, None] * I + k[None, :],
+        mask=a_mask,
+        other=0.0,
+    )
+    w = tl.load(w_ptr + rn[None, :] * I + k[:, None], mask=w_mask, other=0.0)
+    acc = tl.dot(a, w, out_dtype=tl.float32, allow_tf32=False)
+    if HAS_BIAS:
+        acc += tl.load(b_ptr + rn, mask=n_mask, other=0.0).to(tl.float32)[None, :]
+    # Store every padded row: phantom rows hold the projection of zeros
+    # (i.e. the bias), so the recurrent kernel can read them unmasked. The
+    # last M block may reach past S*B_pad, so guard the row on the store.
+    tl.store(
+        p_ptr + (s * B_pad + b)[:, None] * GH + rn[None, :],
+        acc,
+        mask=((s < S) & (b < B_pad))[:, None] & n_mask[None, :],
+    )
+
+
+@libentry()
+@triton.jit
+def _rnn_rec_kernel(
+    p_ptr,  # [S, B_pad, GH] fp32 (input projection incl. b_ih)
+    w_ptr,  # [GH, H] input dtype
+    b_ptr,  # [GH] input dtype (dummy when !HAS_BIAS)
+    out_ptr,  # [S, B, D*H] input dtype
+    hy_ptr,  # [L*D, B, H] input dtype
+    cy_ptr,  # [L*D, B, H] input dtype (dummy when !HAS_CY)
+    hx_ptr,  # [L*D, B, H] input dtype
+    cx_ptr,  # [L*D, B, H] input dtype (dummy for non-LSTM)
+    h_scr_ptr,  # [B_pad, H] fp32
+    c_scr_ptr,  # [B_pad, H] fp32
+    S,
+    B,
+    B_pad,
+    state_off,  # (l*D + d) * B * H
+    out_col,  # d * H
+    out_row,  # B * D * H
+    H: tl.constexpr,
+    GH: tl.constexpr,
+    GATES: tl.constexpr,
+    MODE: tl.constexpr,  # 0=relu, 1=tanh, 2=lstm, 3=gru
+    D: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    HAS_CY: tl.constexpr,
+    REVERSE: tl.constexpr,
+    BN: tl.constexpr,
+    K_PAD: tl.constexpr,
+    MASK_K: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offs_m = pid * 16 + tl.arange(0, 16)
+    k0 = tl.arange(0, K_PAD)
+    n0 = tl.arange(0, BN)
+    N_BLOCKS: tl.constexpr = (H + BN - 1) // BN
+    row_mask = offs_m < B
+
+    # ---- init h (and c) scratch from hx/cx, fp32 ----
+    for jb in tl.static_range(N_BLOCKS):
+        nb = jb * BN + n0
+        nm = nb < H
+        h0 = tl.load(
+            hx_ptr + state_off + offs_m[:, None] * H + nb[None, :],
+            mask=row_mask[:, None] & nm[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        tl.store(h_scr_ptr + offs_m[:, None] * H + nb[None, :], h0, mask=nm[None, :])
+        if MODE == 2:
+            c0 = tl.load(
+                cx_ptr + state_off + offs_m[:, None] * H + nb[None, :],
+                mask=row_mask[:, None] & nm[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            tl.store(
+                c_scr_ptr + offs_m[:, None] * H + nb[None, :], c0, mask=nm[None, :]
+            )
+    tl.debug_barrier()
+
+    out_ty = out_ptr.dtype.element_ty
+    p_stride = B_pad * GH
+    for step in range(S):
+        if REVERSE:
+            t = S - 1 - step
+        else:
+            t = step
+        # register snapshot of h (fp32); padded rows carry defined values
+        if MASK_K:
+            h = tl.load(
+                h_scr_ptr + offs_m[:, None] * H + k0[None, :],
+                mask=(k0 < H)[None, :],
+                other=0.0,
+            )
+        else:
+            h = tl.load(h_scr_ptr + offs_m[:, None] * H + k0[None, :])
+        h_d = h.to(w_ptr.dtype.element_ty)
+        p_base = p_ptr + t * p_stride + offs_m * GH
+        out_base = out_ptr + t * out_row + offs_m * (D * H) + out_col
+
+        for jb in tl.static_range(N_BLOCKS):
+            nb = jb * BN + n0
+            nm = nb < H
+            if MASK_K:
+                km = k0 < H
+                w_mask = km[:, None] & nm[None, :]
+            else:
+                w_mask = nm[None, :]
+
+            if GATES == 4:
+                wi = tl.load(
+                    w_ptr + (0 * H + nb)[None, :] * H + k0[:, None],
+                    mask=w_mask,
+                    other=0.0,
+                )
+                acc_i = tl.dot(h_d, wi, out_dtype=tl.float32, allow_tf32=False)
+                wf = tl.load(
+                    w_ptr + (1 * H + nb)[None, :] * H + k0[:, None],
+                    mask=w_mask,
+                    other=0.0,
+                )
+                acc_f = tl.dot(h_d, wf, out_dtype=tl.float32, allow_tf32=False)
+                wg = tl.load(
+                    w_ptr + (2 * H + nb)[None, :] * H + k0[:, None],
+                    mask=w_mask,
+                    other=0.0,
+                )
+                acc_g = tl.dot(h_d, wg, out_dtype=tl.float32, allow_tf32=False)
+                wo = tl.load(
+                    w_ptr + (3 * H + nb)[None, :] * H + k0[:, None],
+                    mask=w_mask,
+                    other=0.0,
+                )
+                acc_o = tl.dot(h_d, wo, out_dtype=tl.float32, allow_tf32=False)
+                gi = acc_i + tl.load(
+                    p_base[:, None] + (0 * H + nb)[None, :], mask=nm[None, :], other=0.0
+                )
+                gf = acc_f + tl.load(
+                    p_base[:, None] + (1 * H + nb)[None, :], mask=nm[None, :], other=0.0
+                )
+                gg = acc_g + tl.load(
+                    p_base[:, None] + (2 * H + nb)[None, :], mask=nm[None, :], other=0.0
+                )
+                go = acc_o + tl.load(
+                    p_base[:, None] + (3 * H + nb)[None, :], mask=nm[None, :], other=0.0
+                )
+                if HAS_BIAS:
+                    bi = tl.load(b_ptr + (0 * H + nb), mask=nm, other=0.0)
+                    bf = tl.load(b_ptr + (1 * H + nb), mask=nm, other=0.0)
+                    bg = tl.load(b_ptr + (2 * H + nb), mask=nm, other=0.0)
+                    bo = tl.load(b_ptr + (3 * H + nb), mask=nm, other=0.0)
+                    gi += bi.to(tl.float32)[None, :]
+                    gf += bf.to(tl.float32)[None, :]
+                    gg += bg.to(tl.float32)[None, :]
+                    go += bo.to(tl.float32)[None, :]
+                i_g = tl.sigmoid(gi)
+                f_g = tl.sigmoid(gf)
+                g_g = tl_extra_shim.tanh(gg)
+                o_g = tl.sigmoid(go)
+                c_prev = tl.load(
+                    c_scr_ptr + offs_m[:, None] * H + nb[None, :],
+                    mask=nm[None, :],
+                    other=0.0,
+                )
+                c_new = f_g * c_prev + i_g * g_g
+                h_new = o_g * tl_extra_shim.tanh(c_new)
+                tl.store(
+                    c_scr_ptr + offs_m[:, None] * H + nb[None, :],
+                    c_new,
+                    mask=nm[None, :],
+                )
+            elif GATES == 3:
+                wr = tl.load(
+                    w_ptr + (0 * H + nb)[None, :] * H + k0[:, None],
+                    mask=w_mask,
+                    other=0.0,
+                )
+                acc_r = tl.dot(h_d, wr, out_dtype=tl.float32, allow_tf32=False)
+                wz = tl.load(
+                    w_ptr + (1 * H + nb)[None, :] * H + k0[:, None],
+                    mask=w_mask,
+                    other=0.0,
+                )
+                acc_z = tl.dot(h_d, wz, out_dtype=tl.float32, allow_tf32=False)
+                wn = tl.load(
+                    w_ptr + (2 * H + nb)[None, :] * H + k0[:, None],
+                    mask=w_mask,
+                    other=0.0,
+                )
+                acc_n = tl.dot(h_d, wn, out_dtype=tl.float32, allow_tf32=False)
+                gr = acc_r + tl.load(
+                    p_base[:, None] + (0 * H + nb)[None, :], mask=nm[None, :], other=0.0
+                )
+                gz = acc_z + tl.load(
+                    p_base[:, None] + (1 * H + nb)[None, :], mask=nm[None, :], other=0.0
+                )
+                gn_hh = acc_n
+                if HAS_BIAS:
+                    br = tl.load(b_ptr + (0 * H + nb), mask=nm, other=0.0)
+                    bz = tl.load(b_ptr + (1 * H + nb), mask=nm, other=0.0)
+                    bn_ = tl.load(b_ptr + (2 * H + nb), mask=nm, other=0.0)
+                    gr += br.to(tl.float32)[None, :]
+                    gz += bz.to(tl.float32)[None, :]
+                    gn_hh += bn_.to(tl.float32)[None, :]
+                r_g = tl.sigmoid(gr)
+                z_g = tl.sigmoid(gz)
+                # the n-gate input projection (b_in) already sits in P
+                gn_in = tl.load(
+                    p_base[:, None] + (2 * H + nb)[None, :], mask=nm[None, :], other=0.0
+                )
+                n_g = tl_extra_shim.tanh(gn_in + r_g * gn_hh)
+                h_prev = tl.load(
+                    h_scr_ptr + offs_m[:, None] * H + nb[None, :],
+                    mask=nm[None, :],
+                    other=0.0,
+                )
+                h_new = (1.0 - z_g) * n_g + z_g * h_prev
+            else:
+                w0 = tl.load(
+                    w_ptr + nb[None, :] * H + k0[:, None], mask=w_mask, other=0.0
+                )
+                acc0 = tl.dot(h_d, w0, out_dtype=tl.float32, allow_tf32=False)
+                g0 = acc0 + tl.load(
+                    p_base[:, None] + nb[None, :], mask=nm[None, :], other=0.0
+                )
+                if HAS_BIAS:
+                    b0 = tl.load(b_ptr + nb, mask=nm, other=0.0)
+                    g0 += b0.to(tl.float32)[None, :]
+                if MODE == 0:
+                    h_new = tl.maximum(g0, 0.0)
+                else:
+                    h_new = tl_extra_shim.tanh(g0)
+
+            tl.store(
+                h_scr_ptr + offs_m[:, None] * H + nb[None, :], h_new, mask=nm[None, :]
+            )
+            tl.store(
+                out_base[:, None] + nb[None, :],
+                h_new.to(out_ty),
+                mask=row_mask[:, None] & nm[None, :],
+            )
+        tl.debug_barrier()
+
+    # ---- final states ----
+    for jb in tl.static_range(N_BLOCKS):
+        nb = jb * BN + n0
+        nm = nb < H
+        hv = tl.load(
+            h_scr_ptr + offs_m[:, None] * H + nb[None, :], mask=nm[None, :], other=0.0
+        )
+        tl.store(
+            hy_ptr + state_off + offs_m[:, None] * H + nb[None, :],
+            hv.to(out_ty),
+            mask=row_mask[:, None] & nm[None, :],
+        )
+        if (MODE == 2) and HAS_CY:
+            cv = tl.load(
+                c_scr_ptr + offs_m[:, None] * H + nb[None, :],
+                mask=nm[None, :],
+                other=0.0,
+            )
+            tl.store(
+                cy_ptr + state_off + offs_m[:, None] * H + nb[None, :],
+                cv.to(out_ty),
+                mask=row_mask[:, None] & nm[None, :],
+            )
+
+
+# ===================================================================
 #  Host-side dispatch layer
 # ===================================================================
 
@@ -1382,6 +1703,206 @@ def _triton_layer_forward(
 
 
 # ===================================================================
+#  Uniform-batch fast path (enflame GCU400) — host driver
+# ===================================================================
+
+# Per-program DSM budget on GCU400 (Libra): OutOfResources reports 917504
+# bytes. The recurrent kernel's dominant consumer is the GATES weight tiles
+# (GATES * H * BN * dtype_size, all live before the cell math); keep a
+# conservative slack of ~200KB for h/accs/P/c tiles. The projection GEMM's
+# DSM accounting is far above its raw tile sizes (compiler staging), so its
+# block width comes from a try/except fallback ladder cached per config.
+_REC_DSM_BUDGET = 800 * 1024
+_REC_DSM_SLACK = 200 * 1024
+
+_rec_bn_cache = {}
+_proj_bn_cache = {}
+
+
+def _next_pow2(value):
+    return 1 << max(0, (value - 1).bit_length())
+
+
+def _is_dsm_error(exc):
+    return "out of resource" in str(exc).lower()
+
+
+def _rec_pick_bn(H, gates, item_size):
+    """Pick the recurrent gate-block width that fits the DSM budget."""
+    key = (H, gates, item_size)
+    cached = _rec_bn_cache.get(key)
+    if cached is not None:
+        return cached
+    bn = _next_pow2(H) if H >= 16 else 16
+    while bn > 16 and gates * H * bn * item_size + _REC_DSM_SLACK > _REC_DSM_BUDGET:
+        bn //= 2
+    return bn
+
+
+def _proj_pick_bn(I, GH, item_size, BM):  # noqa: E741
+    """Initial projection N width (DSM-validated at first launch)."""
+    bn = min(_next_pow2(GH), 256)
+    while bn > 16 and (BM * I + I * bn) * item_size + 64 * 1024 > 700 * 1024:
+        bn //= 2
+    return bn
+
+
+def _uniform_fast_forward(
+    input_seq,
+    hx,
+    cx,
+    weight,
+    weight_stride0,
+    mode,
+    hidden_size,
+    num_layers,
+    bidirectional,
+    seq_len,
+    max_batch,
+    dropout,
+    train,
+    output,
+    hy,
+    cy,
+):
+    """Uniform-batch forward: proj GEMM + fused recurrent kernel per
+    layer/direction, writing straight into output/hy/cy (no slice copies,
+    no host-side flips: the reverse direction maps steps to real t inside
+    the recurrent kernel)."""
+    device = input_seq.device  # noqa: F841
+    dtype = input_seq.dtype
+    item_size = input_seq.element_size()
+    num_directions = 2 if bidirectional else 1
+    has_bias = weight_stride0 in (4, 5)
+    gates = {0: 1, 1: 1, 2: 4, 3: 3}[mode]
+    H = hidden_size
+    GH = gates * H
+    B = max_batch
+    B_pad = ((B + 15) // 16) * 16
+
+    if not hx.is_contiguous():
+        hx = hx.contiguous()
+    if cx is not None and not cx.is_contiguous():
+        cx = cx.contiguous()
+
+    p_ws = input_seq.new_empty(num_directions, seq_len, B_pad, GH, dtype=torch.float32)
+    h_scr = input_seq.new_empty(B_pad, H, dtype=torch.float32)
+    c_scr = input_seq.new_empty(B_pad, H, dtype=torch.float32)
+    b_dummy = input_seq.new_empty(0, dtype=dtype)
+
+    BN = _rec_pick_bn(H, gates, item_size)
+    # tl.arange needs a power-of-2 span; H (and the projection's input dim)
+    # may be anything, so pad to the next power of two and mask the tail.
+    K_PAD = max(16, _next_pow2(H))
+    MASK_K = K_PAD != H
+    BM = 32
+
+    layer_input = input_seq
+    cx_tensor = cx
+    for layer_idx in range(num_layers):
+        layer_in_dim = input_seq.size(2) if layer_idx == 0 else num_directions * H
+        # -- projections for every direction first: a later layer reads the
+        #    previous layer's output tensor, which the recurrent kernels
+        #    overwrite in place, so all readers must run before any writer.
+        for direction_idx in range(num_directions):
+            w_idx = (layer_idx * num_directions + direction_idx) * weight_stride0
+            w_ih = weight[w_idx]
+            if not w_ih.is_contiguous():
+                w_ih = w_ih.contiguous()
+            b_ih = weight[w_idx + 2] if has_bias else None
+            if b_ih is not None and not b_ih.is_contiguous():
+                b_ih = b_ih.contiguous()
+            p_key = (layer_in_dim, GH, item_size, b_ih is not None, BM)
+            bn_p = _proj_bn_cache.get(p_key)
+            if bn_p is None:
+                bn_p = _proj_pick_bn(layer_in_dim, GH, item_size, BM)
+            i_pad = max(16, _next_pow2(layer_in_dim))
+            mask_i = i_pad != layer_in_dim
+            while True:
+                grid_p = (
+                    ((seq_len * B_pad + BM - 1) // BM) * ((GH + bn_p - 1) // bn_p),
+                )
+                try:
+                    _rnn_proj_kernel[grid_p](
+                        layer_input,
+                        w_ih,
+                        b_ih if b_ih is not None else b_dummy,
+                        p_ws[direction_idx],
+                        B,
+                        B_pad,
+                        seq_len,
+                        I=layer_in_dim,
+                        GH=GH,
+                        HAS_BIAS=b_ih is not None,
+                        BM=BM,
+                        BN=bn_p,
+                        I_PAD=i_pad,
+                        MASK_I=mask_i,
+                        num_warps=4,
+                        num_stages=1,
+                    )
+                    _proj_bn_cache[p_key] = bn_p
+                    break
+                except Exception as exc:
+                    if not _is_dsm_error(exc) or bn_p <= 16:
+                        raise
+                    bn_p //= 2
+        # -- fused recurrence per direction
+        for direction_idx in range(num_directions):
+            w_idx = (layer_idx * num_directions + direction_idx) * weight_stride0
+            w_hh = weight[w_idx + 1]
+            if not w_hh.is_contiguous():
+                w_hh = w_hh.contiguous()
+            b_hh = weight[w_idx + 3] if has_bias else None
+            if b_hh is not None and not b_hh.is_contiguous():
+                b_hh = b_hh.contiguous()
+            has_cy = cy.numel() > 0
+            bn = BN
+            while True:
+                try:
+                    _rnn_rec_kernel[((B + 15) // 16,)](
+                        p_ws[direction_idx],
+                        w_hh,
+                        b_hh if b_hh is not None else b_dummy,
+                        output,
+                        hy,
+                        cy if has_cy else b_dummy,
+                        hx,
+                        cx_tensor if cx_tensor is not None else b_dummy,
+                        h_scr,
+                        c_scr,
+                        seq_len,
+                        B,
+                        B_pad,
+                        (layer_idx * num_directions + direction_idx) * B * H,
+                        direction_idx * H,
+                        B * num_directions * H,
+                        H=H,
+                        GH=GH,
+                        GATES=gates,
+                        MODE=mode,
+                        D=num_directions,
+                        HAS_BIAS=b_hh is not None,
+                        HAS_CY=has_cy,
+                        REVERSE=direction_idx == 1,
+                        BN=bn,
+                        K_PAD=K_PAD,
+                        MASK_K=MASK_K,
+                        num_warps=2,
+                    )
+                    _rec_bn_cache[(H, gates, item_size)] = bn
+                    break
+                except Exception as exc:
+                    if not _is_dsm_error(exc) or bn <= 16:
+                        raise
+                    bn //= 2
+        if layer_idx < num_layers - 1:
+            # dropout between layers (no-op clone-free alias when inactive)
+            layer_input = _triton_dropout(output, dropout, train)
+    return output, hy, cy
+
+
+# ===================================================================
 #  Triton dropout between layers
 # ===================================================================
 
@@ -1479,7 +2000,7 @@ def cudnn_rnn(
             Philox stream, so results are reproducible via ``manual_seed``
             rather than through this tensor.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_RNN")
+    logger.debug("GEMS_ENFLAME CUDNN_RNN")
 
     num_directions = 2 if bidirectional else 1
     has_bias, has_proj = _decode_layout(weight_stride0, mode)
@@ -1535,6 +2056,38 @@ def cudnn_rnn(
         cy = input_seq.new_empty(0, dtype=input.dtype)
     else:
         cy = input_seq.new_empty(cx.shape, dtype=cx.dtype)
+
+    # --- enflame GCU400 fast path: uniform batch without projection ---
+    # Packed sequences and LSTM projection stay on the generic per-layer
+    # kernels below. The fused path targets the projection-heavy shapes of
+    # the official benchmark (hidden >= 128); smaller hidden sizes stay on
+    # the generic kernels, which already pass the whole accuracy suite.
+    if not is_packed and not has_proj and hidden_size >= 128:
+        _uniform_fast_forward(
+            input_seq,
+            hx,
+            cx,
+            weight,
+            weight_stride0,
+            mode,
+            hidden_size,
+            num_layers,
+            bidirectional,
+            seq_len,
+            max_batch,
+            dropout,
+            train,
+            output,
+            hy,
+            cy,
+        )
+        if batch_first:
+            output = output.transpose(0, 1).contiguous()
+        reserve = input_seq.new_empty(0, dtype=torch.uint8)
+        weight_buf_out = _build_weight_buf(
+            weight, weight_stride0, has_bias, has_proj, num_layers, num_directions
+        )
+        return output, hy, cy, reserve, weight_buf_out
 
     # --- Layer-by-layer ---
     layer_input = input_seq
@@ -1603,3 +2156,12 @@ def cudnn_rnn(
         weight, weight_stride0, has_bias, has_proj, num_layers, num_directions
     )
     return output, hy, cy, reserve, weight_buf_out
+
+
+# ---------------------------------------------------------------------------
+#  aten dispatch registration
+# ---------------------------------------------------------------------------
+
+
+# Module-level handle keeps the Library (and its kernels) alive for the
+# process; the registration itself must never break the flag_gems import.

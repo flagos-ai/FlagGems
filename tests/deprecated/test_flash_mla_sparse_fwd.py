@@ -36,7 +36,8 @@ except ImportError:
     print(
         "vLLM not installed, the native pytorch implementation of FlashMLA for comparison"
     )
-    torch.set_float32_matmul_precision("high")
+    if flag_gems.vendor_name != "enflame":
+        torch.set_float32_matmul_precision("high")
 
 
 @dataclasses.dataclass
@@ -99,6 +100,14 @@ class FlashmlaSparseTestKit:
         - max_logits: [s_q, h_q]
         - lse: [s_q, h_q]
         """
+        # On enflame the native fp32 reference needs the fast (non-ieee) fp32
+        # matmul path. Use the fp32_precision/allow_tf32 API family that the
+        # rest of the suite uses instead of the legacy
+        # torch.set_float32_matmul_precision spelling, because mixing the two
+        # makes torch refuse the matmul precision query that sibling references
+        # need. Other vendors keep their original import-time setting.
+        if flag_gems.vendor_name == "enflame":
+            torch.backends.cuda.matmul.allow_tf32 = True
         indices = indices.clone().squeeze(1)
         if topk_length is not None:
             mask = torch.arange(topk, device=topk_length.device).unsqueeze(

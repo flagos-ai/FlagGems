@@ -20,6 +20,10 @@ import flag_gems
 from . import base, consts
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.max
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -31,6 +35,10 @@ def test_max():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.max_dim
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
@@ -75,11 +83,18 @@ def test_max_backward():
     `torch.autograd.Function` backward launches the Triton kernels. The baseline
     is the native `torch.max` autograd formula on the same inputs.
     """
+    dtypes = consts.FLOAT_DTYPES
+    if flag_gems.vendor_name == "enflame":
+        # The baseline leg is the native max.dim autograd chain, whose int64
+        # index output topsaten only supports for int64/fp32/int32 data. For the
+        # 16-bit dtypes the native call aborts the process, so only the fp32
+        # chain can be timed on this backend.
+        dtypes = [dtype for dtype in dtypes if dtype == torch.float32]
     bench = base.UnaryReductionBenchmark(
         op_name="max_backward",
         torch_op=_max_backward_values,
         gems_op=_max_backward_gems,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=dtypes,
         is_backward=True,
     )
     bench.run()

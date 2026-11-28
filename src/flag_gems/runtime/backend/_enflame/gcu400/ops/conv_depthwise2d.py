@@ -123,7 +123,7 @@ def conv_depthwise2d_kernel(
 
 
 def _conv_depthwise2d(input, weight, kernel_size, bias, stride, padding, dilation):
-    logger.debug("GEMS_ENFLAME_GCU400 DEPTHWISE")
+    logger.debug("GEMS_ENFLAME DEPTHWISE")
 
     if isinstance(stride, (list, tuple)):
         stride_height, stride_width = stride

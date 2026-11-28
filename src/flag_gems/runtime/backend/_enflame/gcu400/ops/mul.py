@@ -42,6 +42,14 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 # per-tile overhead, and the libtuner picks per (n_elements, dtype).
 _GRID_SIZE = 48
 
+# 2D broadcast tiling: column-direction block cap, target total CTA count, and minimum column width to enable this path.
+# When columns are too narrow, in-row vectors cannot fill a full vector load, the row-loop iteration count explodes, and
+# it becomes much slower than the generic kernel,
+# so narrow columns still use the original path.
+_TILE_MAX_BLOCK = 2048
+_TILE_TARGET_CTAS = 64
+_TILE_MIN_COLS = 128
+
 
 def mul_get_configs():
     return [
@@ -559,15 +567,23 @@ def mul_contig_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
     GRID_SIZE: tl.constexpr,
+    NS: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
     num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
-    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=4):
+    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=NS):
         offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < n_elements
-        x = tl.load(x_ptr + offsets, mask=mask)
-        y = tl.load(y_ptr + offsets, mask=mask)
-        out = x & y if IS_BOOL else x * y
-        tl.store(output_ptr + offsets, out, mask=mask)
+        if EVEN:
+            x = tl.load(x_ptr + offsets)
+            y = tl.load(y_ptr + offsets)
+            out = x & y if IS_BOOL else x * y
+            tl.store(output_ptr + offsets, out)
+        else:
+            mask = offsets < n_elements
+            x = tl.load(x_ptr + offsets, mask=mask)
+            y = tl.load(y_ptr + offsets, mask=mask)
+            out = x & y if IS_BOOL else x * y
+            tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @triton.jit
@@ -579,14 +595,21 @@ def mul_scalar_contig_kernel(
     BLOCK_SIZE: tl.constexpr,
     IS_BOOL: tl.constexpr,
     GRID_SIZE: tl.constexpr,
+    NS: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
     num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
-    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=4):
+    for tile_id in tl.range(tl.program_id(0), num_tile, GRID_SIZE, num_stages=NS):
         offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-        mask = offsets < n_elements
-        x = tl.load(x_ptr + offsets, mask=mask)
-        out = x & scalar if IS_BOOL else x * scalar
-        tl.store(output_ptr + offsets, out, mask=mask)
+        if EVEN:
+            x = tl.load(x_ptr + offsets)
+            out = x & scalar if IS_BOOL else x * scalar
+            tl.store(output_ptr + offsets, out)
+        else:
+            mask = offsets < n_elements
+            x = tl.load(x_ptr + offsets, mask=mask)
+            out = x & scalar if IS_BOOL else x * scalar
+            tl.store(output_ptr + offsets, out, mask=mask)
 
 
 def _pick_block(n_elements, element_size, scalar_path=False):
@@ -608,32 +631,67 @@ def _pick_block(n_elements, element_size, scalar_path=False):
 
 _HUGE_STREAM_ELEMENTS = 1 << 25
 
+# Wide-stream bands re-probed 2026-11-17 (GCU400, same-process round-robin
+# do_bench w1000/r100 vs native anchor): the 2-byte tensor-tensor stream and
+# both scalar wide bands win with bigger tiles + shallower pipelining than the
+# mid-stream tiers below.
+_TT_WIDE_2B_N = 1 << 28  # gs48 B131072/nw2/st2: 2^30 f16 2.214 vs 2.271 ms
+_SCALAR_WIDE_N = 1 << 22  # f16 B131072/nw4/st2, f32 B65536/nw4/st2
+
 
 def _pick_tensor_tensor_launch(n_elements, element_size):
-    """(BLOCK_SIZE, num_warps) for the tensor-by-tensor contiguous kernel.
+    """(BLOCK_SIZE, num_warps, num_stages) for the tensor-by-tensor kernel.
 
-    Probe sweep on GCU400 (do_bench warmup=1000ms rep=100ms median, 3-stream
-    flat copy roofline ~2.95TB/s): num_warps must be scaled with the stream
-    size. nw4 collapses on huge streams (1G fp16 BLOCK 32768: nw4 3161us vs
-    nw1 2181us, +45%) while nw1 gives back ~1.5% on mid streams, so mid
-    streams (<32M elements) run nw2 and huge streams run nw1. Mid streams
-    peak at BLOCK 65536 for 2-byte types (BLOCK 8192 left ~5% on the table
-    at 16M fp16: 42.9 vs 40.9us) and BLOCK 32768 for 4-byte types. Huge
-    streams are saturated by the same blocks. 8-byte types keep the 384KB
-    on-chip tile budget of the validated 4-byte config. Tiny inputs stay on
-    BLOCK 1024 at the launch floor (~3.3us, all configs within noise).
+    Probe sweep on GCU400 (do_bench warmup=1000ms rep=100ms median, 3-round
+    round-robin vs native anchor): the wide 2-byte stream (>=2^28 elements)
+    runs 2.5% faster with a 131072-wide tile at nw2/st2 (2.214 vs 2.271 ms at
+    2^30 f16) than the 65536/nw2/st4 mid-stream config; the 131072 tile is
+    768KB per program so those launches run 24-way, which the sweep shows is
+    still the fastest shape at that size. All other tiers keep their probe
+    history: nw4 collapses on huge streams (1G fp16 BLOCK 32768: nw4 3161us
+    vs nw1 2181us, +45%) while nw1 gives back ~1.5% on mid streams, so mid
+    streams (<32M elements) run nw2 and huge streams run nw1. Mid-stream
+    2-byte types now use BLOCK 16384: a 2026-11 re-probe at 2^24 elements
+    beats BLOCK 65536 in all three dtypes (fp16 1.006x vs 0.996x, bf16
+    1.005x vs 0.996x, num_stages 2/4 indistinguishable), because the 16K
+    tile spreads the 16M stream over 1024 tiles instead of 256. 4-byte
+    types keep BLOCK 32768. 8-byte types keep the 384KB on-chip tile budget
+    of the validated 4-byte config. Tiny inputs stay on BLOCK 1024 at the
+    launch floor (~3.3us).
     """
+    if element_size == 2 and n_elements >= _TT_WIDE_2B_N:
+        return 131072, 2, 2
     if n_elements <= 4096:
-        return 1024, 4
+        return 1024, 4, 4
     if element_size >= 8:
         block = 16384
     elif element_size <= 2:
-        block = 65536
+        block = 16384
     else:
         block = 32768
     if n_elements >= _HUGE_STREAM_ELEMENTS:
-        return block, 1
-    return block, 2
+        return block, 1, 4
+    return block, 2, 4
+
+
+def _pick_scalar_launch(n_elements, element_size):
+    """(BLOCK_SIZE, num_warps, num_stages) for the tensor-by-scalar kernel.
+
+    Re-probed 2026-11-17 (same-process round-robin vs native anchor): the
+    two-stream profile saturates with wider tiles than the old
+    ``_pick_block`` ladder -- 2-byte streams >=2^22 elements run
+    B131072/nw4/st2 (2^30 f16 1.374 vs 1.659 ms, -17%; 2^24 f16 27.3 vs
+    29.8us, -8%) and 4-byte streams run B65536/nw4/st2 (2^30 f32 2.775 vs
+    2.949 ms, -6%). 1/8-byte and smaller streams keep the historical
+    ``_pick_block`` picks (a 16384-wide tile collapses on huge streams: the
+    old config lost 13% to native at 2^30 f16).
+    """
+    if n_elements >= _SCALAR_WIDE_N:
+        if element_size == 2:
+            return 131072, 4, 2
+        if element_size == 4:
+            return 65536, 4, 2
+    return _pick_block(n_elements, element_size, scalar_path=True), 4, 4
 
 
 def _grid_for(n_elements):
@@ -692,9 +750,14 @@ def _fast_contiguous_mul(a, b, out):
     n_elements = output.numel()
     if n_elements == 0:
         return output
-    block_size, num_warps = _pick_tensor_tensor_launch(n_elements, a.element_size())
+    block_size, num_warps, num_stages = _pick_tensor_tensor_launch(
+        n_elements, a.element_size()
+    )
     tiles = (n_elements + block_size - 1) // block_size
     grid = (_GRID_SIZE if tiles > _GRID_SIZE else tiles,)
+    launch_kwargs = {"num_warps": num_warps}
+    if num_stages == 4:
+        launch_kwargs["num_stages"] = 4
     with torch_device_fn.device(output.device):
         mul_contig_kernel[grid](
             a,
@@ -704,8 +767,9 @@ def _fast_contiguous_mul(a, b, out):
             BLOCK_SIZE=block_size,
             IS_BOOL=dtype is torch.bool,
             GRID_SIZE=grid[0],
-            num_warps=num_warps,
-            num_stages=4,
+            NS=num_stages,
+            EVEN=n_elements % block_size == 0,
+            **launch_kwargs,
         )
     return output
 
@@ -755,18 +819,121 @@ def _fast_scalar_mul(tensor, scalar, out):
     n_elements = output.numel()
     if n_elements == 0:
         return output
+    block_size, num_warps, num_stages = _pick_scalar_launch(
+        n_elements, tensor.element_size()
+    )
     grid = (_grid_for(n_elements),)
+    launch_kwargs = {"num_warps": num_warps}
+    if num_stages == 4:
+        launch_kwargs["num_stages"] = 4
     with torch_device_fn.device(output.device):
         mul_scalar_contig_kernel[grid](
             tensor,
             output,
             scalar,
             n_elements,
-            BLOCK_SIZE=_pick_block(n_elements, tensor.element_size(), scalar_path=True),
+            BLOCK_SIZE=block_size,
             IS_BOOL=dtype is torch.bool,
             GRID_SIZE=grid[0],
-            num_warps=4,
-            num_stages=4,
+            NS=num_stages,
+            EVEN=n_elements % block_size == 0,
+            **launch_kwargs,
+        )
+    return output
+
+
+@libentry()
+@triton.jit
+def mul_broadcast_2d_tile_kernel(
+    a_ptr,
+    b_ptr,
+    out_ptr,
+    n_rows,
+    n_cols,
+    a_s0: tl.constexpr,
+    a_s1: tl.constexpr,
+    b_s0: tl.constexpr,
+    b_s1: tl.constexpr,
+    A_ROW_CONST: tl.constexpr,
+    A_ROW_SCALAR: tl.constexpr,
+    B_ROW_CONST: tl.constexpr,
+    B_ROW_SCALAR: tl.constexpr,
+    dtype: tl.constexpr,
+    IS_BOOL: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    GRID_ROWS: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
+):
+    """Broadcast multiply using a 2-D "row scalar x in-row vector" tiling.
+
+    Compared with the generic broadcast kernel:
+    - the row comes from the row loop on program_id(1), removing per-element // and % n_cols;
+    - the broadcast axis (stride 0) is either loaded once outside the loop or degrades to a
+      scalar load plus broadcast, so it is no longer gathered element-wise;
+    - the output is written row-contiguously with coalesced column access.
+    """
+    pid_c = tl.program_id(0)
+    pid_r = tl.program_id(1)
+    cols = pid_c * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    col_mask = cols < n_cols
+    if A_ROW_CONST:
+        a_row_vec = tl.load(a_ptr + cols * a_s1, mask=col_mask)
+    if B_ROW_CONST:
+        b_row_vec = tl.load(b_ptr + cols * b_s1, mask=col_mask)
+    for row in tl.range(pid_r, n_rows, GRID_ROWS, num_stages=NUM_STAGES):
+        if A_ROW_CONST:
+            a = a_row_vec
+        elif A_ROW_SCALAR:
+            a = tl.load(a_ptr + row * a_s0)
+        else:
+            a = tl.load(a_ptr + row * a_s0 + cols * a_s1, mask=col_mask)
+        if B_ROW_CONST:
+            b = b_row_vec
+        elif B_ROW_SCALAR:
+            b = tl.load(b_ptr + row * b_s0)
+        else:
+            b = tl.load(b_ptr + row * b_s0 + cols * b_s1, mask=col_mask)
+        out = a & b if IS_BOOL else a * b
+        tl.store(out_ptr + row * n_cols + cols, out, mask=col_mask)
+
+
+def _can_use_2d_tile(out_shape, out_stride):
+    """2-D tiling requires: exactly 2-D, contiguous output rows, and a not-too-narrow column width."""
+    if len(out_shape) != 2:
+        return False
+    n_rows, n_cols = out_shape
+    if n_rows <= 0 or n_cols < _TILE_MIN_COLS:
+        return False
+    return tuple(out_stride) == (n_cols, 1)
+
+
+def _launch_2d_tile(a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype):
+    n_rows, n_cols = out_shape
+    block_size = min(_TILE_MAX_BLOCK, max(32, triton.next_power_of_2(n_cols)))
+    grid_cols = triton.cdiv(n_cols, block_size)
+    # Split along rows only until the "total program count is enough to fill the device"; remaining rows are consumed by
+    # the row loop
+    grid_rows = max(1, min(n_rows, -(-_TILE_TARGET_CTAS // grid_cols)))
+    with torch_device_fn.device(output.device):
+        mul_broadcast_2d_tile_kernel[(grid_cols, grid_rows)](
+            a_t,
+            b_t,
+            output,
+            n_rows,
+            n_cols,
+            a_s0=a_stride[0],
+            a_s1=a_stride[1],
+            b_s0=b_stride[0],
+            b_s1=b_stride[1],
+            A_ROW_CONST=a_stride[0] == 0,
+            A_ROW_SCALAR=a_stride[1] == 0,
+            B_ROW_CONST=b_stride[0] == 0,
+            B_ROW_SCALAR=b_stride[1] == 0,
+            dtype=_dtype_name(dtype),
+            IS_BOOL=_is_bool_dtype(dtype),
+            BLOCK_SIZE=block_size,
+            GRID_ROWS=grid_rows,
+            NUM_STAGES=4,
         )
     return output
 
@@ -910,6 +1077,10 @@ def mul_broadcast_func(a, b, out=None):
 
     out_shape = tuple(output.shape)
     a_stride, b_stride, out_stride = _real_layout(out_shape, a_t, b_t, output)
+    if _can_use_2d_tile(out_shape, out_stride):
+        return _launch_2d_tile(
+            a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype
+        )
     if _can_use_2d_broadcast(out_shape):
         return _launch_2d_broadcast(
             a_t, b_t, output, out_shape, a_stride, b_stride, out_stride, dtype

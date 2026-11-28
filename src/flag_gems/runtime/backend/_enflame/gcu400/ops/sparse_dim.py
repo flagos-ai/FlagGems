@@ -16,9 +16,26 @@ import logging
 
 import torch
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 
 logger = logging.getLogger(__name__)
+
+
+def _nested_backend_suffix(device: torch.device) -> str:
+    """Return the backend part of the ``NestedTensor<backend>`` dispatch key.
+
+    Dispatch-key names keep the *registered* backend name verbatim: the
+    built-in backends are registered in upper case ("NestedTensorCPU" /
+    "NestedTensorCUDA"), while a PrivateUse1 backend keeps the name it was
+    renamed to, which is lower case on this build ("gcu" ->
+    "NestedTensorgcu").  Upper-casing ``device.type`` unconditionally
+    therefore produced a key name the dispatcher never emits, so the replica
+    of the native message did not match.
+    """
+    device_type = str(device.type)
+    if device_type == torch._C._get_privateuse1_backend_name():
+        return device_type
+    return device_type.upper()
 
 
 def sparse_dim(self: torch.Tensor) -> int:
@@ -55,14 +72,14 @@ def sparse_dim(self: torch.Tensor) -> int:
       a layout, so the message names the layout itself rather than guessing
       a sparse backend.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_DIM")
+    logger.debug("GEMS_ENFLAME SPARSE_DIM")
     if self.is_nested:
         # Native aten::sparse_dim is not registered on the NestedTensor
         # dispatch key (verified on H20: NestedTensorCUDA for CUDA tensors,
         # NestedTensorCPU for CPU tensors). Reproduce the dispatcher's
         # message; only its build-independent prefix is emitted, since the
         # native message appends the full registered-backend list.
-        backend = "NestedTensor" + str(self.device.type).upper()
+        backend = "NestedTensor" + _nested_backend_suffix(self.device)
         raise NotImplementedError(
             "Could not run 'aten::sparse_dim' with arguments from the "
             f"'{backend}' backend. This could be because the operator doesn't "
@@ -135,75 +152,3 @@ def sparse_dim(self: torch.Tensor) -> int:
 # ---------------------------------------------------------------------------
 _DISPATCH_INSTALL_FLAG = "_flaggems_gcu400_sparse_dim_dispatch_installed"
 _SPARSE_DIM_LIBRARY = None
-
-
-def _install_live_backend_dispatch():
-    global _SPARSE_DIM_LIBRARY
-    if runtime.device.name == "cuda":
-        return
-    if getattr(torch, _DISPATCH_INSTALL_FLAG, False):
-        return
-
-    import torch.library as torch_library
-
-    def _python_kernel_on(cuda_key):
-        # Delegate only to kernels registered from *python* on the CUDA-family
-        # key. Without the _impls guard, get_kernel would hand back the stale
-        # CompositeExplicitAutograd that this torch build propagates to every
-        # non-CPU/Meta key, which rejects compressed layouts.
-        try:
-            if f"aten/sparse_dim/{cuda_key}" not in torch_library._impls:
-                return None
-            return torch_library.get_kernel("aten::sparse_dim", cuda_key)
-        except Exception:
-            return None
-
-    def _make_trampoline(cuda_key):
-        def _trampoline(dispatch_keyset, self):
-            if cuda_key is not None:
-                kernel = _python_kernel_on(cuda_key)
-                if kernel is not None:
-                    return kernel.call_boxed(dispatch_keyset, self)
-            return sparse_dim(self)
-
-        return _trampoline
-
-    device_key = runtime.device.dispatch_key
-    registrations = (
-        (device_key, "CUDA"),
-        ("Sparse" + device_key, "SparseCUDA"),
-        ("SparseCPU", "SparseCUDA"),
-        ("SparseCsr" + device_key, "SparseCsrCUDA"),
-        ("NestedTensor" + device_key, None),
-    )
-
-    _SPARSE_DIM_LIBRARY = torch.library.Library("aten", "IMPL")
-    installed_keys = []
-    for live_key, cuda_key in registrations:
-        try:
-            _SPARSE_DIM_LIBRARY.impl(
-                "sparse_dim",
-                _make_trampoline(cuda_key),
-                live_key,
-                with_keyset=True,
-            )
-            installed_keys.append(live_key)
-        except RuntimeError as error:
-            logger.warning(
-                "sparse_dim gcu400 dispatch install skipped for %s: %s",
-                live_key,
-                error,
-            )
-    if not installed_keys:
-        return
-    setattr(torch, _DISPATCH_INSTALL_FLAG, True)
-    # Later python registrations (flag_gems.enable / use_gems) may override
-    # these entries; drop the duplicate-registration bookkeeping so they can.
-    try:
-        for live_key in installed_keys:
-            torch_library._impls.discard("aten/sparse_dim/" + live_key)
-    except Exception:
-        pass
-
-
-_install_live_backend_dispatch()

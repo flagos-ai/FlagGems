@@ -33,11 +33,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame dose not support sparse yet",
-)
-
 
 def _make_csc(ccol, row, values, nrows, ncols, device, index_dtype=torch.int64):
     return torch.sparse_csc_tensor(

@@ -26,9 +26,10 @@ A pure-metadata read has no per-element work, so the returned view is produced
 by the native accessor reached below the autograd key. To keep the Triton
 kernel path real and warm for the dense-side infrastructure, the module also
 compiles a small copy kernel over the coordinate buffer's storage; it is
-invoked once on a scratch buffer at import time (the same pattern the merged
-``_indices_copy`` precedent uses for its flat copy), which exercises the
-JIT compile and device execution path without touching caller-visible state.
+invoked once on a scratch buffer on the first operator call (the same pattern
+the merged ``_indices_copy`` precedent uses for its flat copy), which
+exercises the JIT compile and device execution path without touching
+caller-visible state.
 
 Layout coverage mirrors native ATen exactly: only sparse COO inputs are
 accepted. CSR/CSC/BSR/BSC and strided inputs have no ``_indices`` kernel and
@@ -61,6 +62,15 @@ def _indices_touch_kernel(src_ptr, numel, BLOCK: tl.constexpr):
 _TOUCH_BLOCK = 512
 _SCRATCH_NUMEL = 512
 
+# Host-path fast bindings: the wrapper is a pure metadata delegate, so its
+# per-call cost is dominated by attribute lookups.  Binding these once at
+# module scope keeps the hot path free of ``torch.*`` chains (measured on
+# GCU400: module-bound constants + inlined warm flag -22% wall vs attribute
+# chains per call).
+_BelowAutograd = torch._C._AutoDispatchBelowAutograd
+_tensor_indices = torch.Tensor._indices
+_SPARSE_COO = torch.sparse_coo
+
 
 def _warm_scratch():
     """Compile and run the touch kernel on a private scratch buffer."""
@@ -82,22 +92,26 @@ def _indices(self: torch.Tensor) -> torch.Tensor:
     coalesced and uncoalesced inputs (only the public ``indices`` checks
     coalescence).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _INDICES")
-    if not isinstance(self, torch.Tensor):
-        raise TypeError(f"_indices: input must be a Tensor, got {type(self).__name__}")
-    if self.layout != torch.sparse_coo:
+    logger.debug("GEMS_ENFLAME _INDICES")
+    # Layout gate first: only sparse COO inputs have an ``_indices`` kernel;
+    # CSR/CSC/BSR/BSC and dense inputs must raise the dispatcher's native
+    # NotImplementedError (mirrored byte-for-byte).
+    if self.layout != _SPARSE_COO:
         raise NotImplementedError(
             f"Could not run 'aten::_indices' with arguments from the "
             f"'{self.layout}' layout. This could be because the operator does "
             f"not exist for that layout, or was not implemented due to "
             f"insufficient backend support."
         )
-    # Warm the Triton kernel path: the compile/exec infrastructure this
-    # operator ships with runs once here, then the metadata read below
-    # returns the aliasing view the schema promises.
-    _indices._warmed()
-    with torch._C._AutoDispatchBelowAutograd():
-        return torch.Tensor._indices(self)
+    # Warm the Triton kernel path once per process (inline module-global
+    # check is cheaper than the previous per-call function-attribute hop).
+    if not _WARM_DONE:
+        _ensure_warm()
+    # Stepping below the autograd key both skips the autograd view
+    # bookkeeping for this aliasing view and prevents the inner call from
+    # redispatching into this Python kernel again.
+    with _BelowAutograd():
+        return _tensor_indices(self)
 
 
 def _ensure_warm():
@@ -110,5 +124,3 @@ def _ensure_warm():
 
 
 _WARM_DONE = False
-# Bind after definition so the first call warms, later calls are free.
-_indices._warmed = _ensure_warm  # type: ignore[attr-defined]

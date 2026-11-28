@@ -32,6 +32,12 @@ class RreluWithNoiseFunctionalBenchmark(base.UnaryPointwiseBenchmark):
             yield inp, noise, lower, upper, training, generator
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "the native baseline calls rrelu_with_noise_out_cpu, which is not implemented for Half/BFloat16 on this device"
+    ),
+)
 @pytest.mark.rrelu_with_noise_functional
 def test_rrelu_with_noise_functional():
     bench = RreluWithNoiseFunctionalBenchmark(

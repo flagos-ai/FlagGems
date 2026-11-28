@@ -205,6 +205,9 @@ def max_kernel_non_inner(
 def max(inp):
     logger.debug("GEMS_ENFLAME MAX")
 
+    if torch.is_grad_enabled() and inp.requires_grad:
+        return MaxFunction.apply(inp)
+
     if not inp.is_contiguous():
         inp = inp.contiguous()
     M = inp.numel()
@@ -252,6 +255,10 @@ def max_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_ENFLAME MAX_DIM")
 
     assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
+    if torch.is_grad_enabled() and inp.requires_grad:
+        values, indices = MaxDimFunction.apply(inp, dim, keepdim)
+        return MaxOut(values=values, indices=indices)
+
     shape = inp.shape
     dim = dim % inp.ndim
 
@@ -337,3 +344,332 @@ def max_dim(inp, dim=None, keepdim=False):
             )
 
     return MaxOut(values=out_value, indices=out_index.to(torch.int64))
+
+
+class MaxFunction(torch.autograd.Function):
+    """Autograd wrapper for ``torch.max(inp)`` on GCU400.
+
+    ``forward`` runs the backend reduction, ``backward`` the evenly distributed
+    formula that ATen keeps in the unregistered C++ helper
+    ``evenly_distribute_backward``. The derivative is first order only.
+    """
+
+    @staticmethod
+    def forward(ctx, inp):
+        inp = inp.contiguous()
+        out = max(inp)
+        ctx.save_for_backward(inp, out)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if not ctx.needs_input_grad[0]:
+            return None
+        inp, result = ctx.saved_tensors
+        return evenly_distribute_backward(grad_output, inp, result)
+
+
+class MaxDimFunction(torch.autograd.Function):
+    """Autograd wrapper for ``torch.max(inp, dim, keepdim)`` on GCU400.
+
+    ``indices`` is an integer output and is marked non-differentiable, matching
+    the native contract. ``backward`` scatters the values gradient onto the
+    argmax positions saved by the forward pass.
+    """
+
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim):
+        inp = inp.contiguous()
+        values, indices = max_dim(inp, dim, keepdim)
+        ctx.save_for_backward(inp, values, indices)
+        ctx.dim = dim % inp.ndim
+        ctx.mark_non_differentiable(indices)
+        return values, indices
+
+    @staticmethod
+    def backward(ctx, grad_values, grad_indices):
+        if not ctx.needs_input_grad[0]:
+            return None, None, None
+        inp, values, indices = ctx.saved_tensors
+        return max_backward(grad_values, inp, values, indices, ctx.dim), None, None
+
+
+# GCU400 limits the generic implementation runs into: grid.x/grid.y stop at 65535
+# and grid.z at 255 (a 512000-row last-dim slab or a 256-way split raises
+# OutOfResources), and an int64 lane comparison never matches, which zeroed every
+# gradient. The kernels below take an int32 index and cap the grid, striding
+# inside the kernel instead of growing a grid axis.
+_MAX_GRID = 65535
+_INDEX_SAFE_LIMIT = 0x7FFFFFFF
+_SHARE_BLOCK = 2048
+
+
+@libentry()
+@triton.jit
+def max_backward_fill_kernel(
+    out_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+    ALIGNED: tl.constexpr,
+):
+    """Zero the gradient slab with plain streaming stores.
+
+    GCU400 runs a masked select-store over the whole slab at roughly a quarter of
+    the streaming write bandwidth (measured 211 GB/s vs 780 GB/s for the same
+    shape), so the gradient is produced the way ATen does it: one full-speed
+    zero fill, then a scatter of the (tiny) argmax positions.
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    lane = tl.arange(0, BLOCK)
+    zero = tl.zeros((BLOCK,), dtype=out_ptr.dtype.element_ty)
+    for start in tl.range(pid * BLOCK, n_elements, num_pids * BLOCK):
+        offsets = start + lane
+        if ALIGNED:
+            tl.store(out_ptr + offsets, zero)
+        else:
+            tl.store(out_ptr + offsets, zero, mask=offsets < n_elements)
+
+
+@libentry()
+@triton.jit
+def max_backward_scatter_lastdim_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    reduction,
+    rows,
+    BLOCK: tl.constexpr,
+):
+    """Scatter the values gradient onto the argmax of each row (innermost dim).
+
+    One lane per row, so the whole launch moves ``rows`` elements regardless of
+    how wide the reduction is.
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    lane = tl.arange(0, BLOCK)
+    for start in tl.range(pid * BLOCK, rows, num_pids * BLOCK):
+        row = start + lane
+        keep = row < rows
+        index = tl.load(index_ptr + row, mask=keep, other=0)
+        grad = tl.load(grad_ptr + row, mask=keep, other=0.0)
+        tl.store(out_ptr + row * reduction + index, grad, mask=keep)
+
+
+@libentry()
+@triton.jit
+def max_backward_scatter_tile_kernel(
+    grad_ptr,
+    index_ptr,
+    out_ptr,
+    outer,
+    reduction,
+    inner,
+    BLOCK: tl.constexpr,
+):
+    """Scatter the values gradient when the reduced dim is interior.
+
+    One lane per ``(plane, inner)`` position: ``out[plane, index, j] = grad[plane,
+    j]``. The plane walk is strided inside the kernel so the grid stays inside the
+    axis limit.
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    lane = tl.arange(0, BLOCK)
+    for plane in tl.range(pid, outer, num_pids):
+        base = plane * inner
+        target = out_ptr + plane * (reduction * inner)
+        for start in tl.range(0, inner, BLOCK):
+            column = start + lane
+            keep = column < inner
+            index = tl.load(index_ptr + base + column, mask=keep, other=0)
+            grad = tl.load(grad_ptr + base + column, mask=keep, other=0.0)
+            tl.store(target + index * inner + column, grad, mask=keep)
+
+
+@libentry()
+@triton.jit
+def evenly_distribute_count_kernel(
+    inp_ptr,
+    result_ptr,
+    count_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    """Count the positions holding the maximum (a NaN maximum matches every NaN)."""
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    lane = tl.arange(0, BLOCK)
+    result = tl.load(result_ptr)
+    nan_result = result != result
+    for start in tl.range(pid * BLOCK, n_elements, num_pids * BLOCK):
+        offsets = start + lane
+        mask = offsets < n_elements
+        values = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
+        hits = ((values == result) | ((values != values) & nan_result)) & mask
+        tl.atomic_add(count_ptr, tl.sum(hits.to(tl.int32), axis=0))
+
+
+@libentry()
+@triton.jit
+def evenly_distribute_fill_kernel(
+    inp_ptr,
+    grad_ptr,
+    result_ptr,
+    count_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK: tl.constexpr,
+):
+    """Write one equal share of the upstream gradient on every matching position."""
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    lane = tl.arange(0, BLOCK)
+    result = tl.load(result_ptr)
+    nan_result = result != result
+    count = tl.load(count_ptr).to(tl.int32)
+    # The quotient is evaluated in float32, which keeps an even split exact for
+    # the 16-bit and 32-bit dtypes that GCU400 supports natively.
+    share = tl.load(grad_ptr).to(tl.float32) / count.to(tl.float32)
+    zero = tl.zeros_like(share)
+    for start in tl.range(pid * BLOCK, n_elements, num_pids * BLOCK):
+        offsets = start + lane
+        mask = offsets < n_elements
+        values = tl.load(inp_ptr + offsets, mask=mask, other=0.0)
+        match = ((values == result) | ((values != values) & nan_result)) & mask
+        tl.store(
+            out_ptr + offsets,
+            tl.where(match, share, zero).to(out_ptr.dtype.element_ty),
+            mask=mask,
+        )
+
+
+def _backward_geometry(inp, dim):
+    """Return ``(outer, reduction, inner)`` of ``dim`` in ``inp``'s layout."""
+    ndim = inp.ndim
+    dim = dim + ndim if dim < 0 else dim
+    assert 0 <= dim < ndim, f"Invalid dim {dim} for a {ndim}-D tensor"
+    shape = inp.shape
+    outer = math.prod(shape[:dim])
+    reduction = shape[dim]
+    inner = math.prod(shape[dim + 1 :])
+    return outer, reduction, inner
+
+
+def _fill_config(n_elements, itemsize):
+    """Streaming tile for the zero fill, tuned per element size on GCU400.
+
+    A 2-byte stream needs the widest tile (131072 lanes) to keep the write
+    engines busy, while a 4-byte stream peaks at 32768 lanes with two warps.
+    """
+    if itemsize == 2:
+        if n_elements > (1 << 21):
+            return 131072, 4
+        return 16384, 4
+    if n_elements > (1 << 21):
+        return 32768, 2
+    return 16384, 4
+
+
+def max_backward(grad_output, self, result, indices, dim):
+    """Gradient of ``torch.max(self, dim, keepdim)`` with respect to ``self``.
+
+    ``grad_output`` holds the upstream gradient of the values output (already
+    squeezed when the forward used ``keepdim=True``) and ``indices`` the int64
+    argmax positions saved by the forward pass, so the result is exactly ATen's
+    ``zeros_like(self).scatter_(dim, indices, grad_output)``: ties follow the
+    single index the forward selected and a negative ``dim`` is normalized.
+    ``result`` belongs to the ATen signature but the backward math never needs it.
+
+    Inputs above the int32 offset range, and float64 inputs, keep the generic
+    implementation; those shapes are beyond what GCU400 runs anyway.
+    """
+    logger.debug("GEMS_ENFLAME MAX_BACKWARD")
+    outer, reduction, inner = _backward_geometry(self, dim)
+    if self.numel() == 0:
+        return torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    if self.numel() > _INDEX_SAFE_LIMIT or self.dtype == torch.float64:
+        from flag_gems.ops.max import max_backward as generic_max_backward
+
+        return generic_max_backward(grad_output, self, result, indices, dim)
+
+    grad = grad_output.contiguous()
+    # The argmax is int64, but GCU400 mis-narrows an int64 lane vector inside the
+    # kernel (measured: [0, 1, 5, 7] came back as [0, 5, <garbage>, <garbage>]),
+    # so the index is narrowed on the host instead. The index tensor holds
+    # outer * inner elements, far fewer than the slab the kernel writes.
+    index = indices.contiguous().to(torch.int32)
+    out = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    n_elements = out.numel()
+    with torch_device_fn.device(self.device):
+        block, num_warps = _fill_config(n_elements, out.element_size())
+        fill_grid = min(triton.cdiv(n_elements, block), _MAX_GRID)
+        max_backward_fill_kernel[(fill_grid,)](
+            out,
+            n_elements,
+            BLOCK=block,
+            ALIGNED=n_elements % block == 0,
+            num_warps=num_warps,
+        )
+        if inner == 1:
+            rows = outer
+            scatter_block = 1024
+            scatter_grid = min(triton.cdiv(rows, scatter_block), _MAX_GRID)
+            max_backward_scatter_lastdim_kernel[(scatter_grid,)](
+                grad,
+                index,
+                out,
+                reduction,
+                rows,
+                BLOCK=scatter_block,
+            )
+        else:
+            scatter_block = triton.next_power_of_2(inner)
+            if scatter_block > 1024:
+                scatter_block = 1024
+            scatter_grid = min(outer, _MAX_GRID)
+            max_backward_scatter_tile_kernel[(scatter_grid,)](
+                grad,
+                index,
+                out,
+                outer,
+                reduction,
+                inner,
+                BLOCK=scatter_block,
+            )
+    return out
+
+
+def evenly_distribute_backward(grad_output, self, result):
+    """Gradient of a full reduction such as ``torch.max(self)``.
+
+    Every position holding the maximum receives an equal share of the upstream
+    gradient; ties and (when the maximum is NaN) every NaN are matched with
+    ATen's ``(self == result) | (self.isnan() & result.isnan())`` predicate, so
+    the count is exactly the number of matched elements. The count is accumulated
+    with an atomic add, which keeps both launches on a capped grid.
+    """
+    logger.debug("GEMS_ENFLAME EVENLY_DISTRIBUTE_BACKWARD")
+    inp = self if self.is_contiguous() else self.contiguous()
+    n_elements = inp.numel()
+    out = torch.empty_like(inp)
+    if n_elements == 0:
+        return out
+    if n_elements > _INDEX_SAFE_LIMIT or inp.dtype == torch.float64:
+        from flag_gems.ops.max import evenly_distribute_backward as generic_evenly
+
+        return generic_evenly(grad_output, self, result)
+
+    grad = grad_output.contiguous().reshape(())
+    value = result.contiguous().reshape(())
+    count = torch.zeros((1,), dtype=torch.int32, device=inp.device)
+    grid = min(triton.cdiv(n_elements, _SHARE_BLOCK), _MAX_GRID)
+    with torch_device_fn.device(inp.device):
+        evenly_distribute_count_kernel[(grid,)](
+            inp, value, count, n_elements, BLOCK=_SHARE_BLOCK
+        )
+        evenly_distribute_fill_kernel[(grid,)](
+            inp, grad, value, count, out, n_elements, BLOCK=_SHARE_BLOCK
+        )
+    return out

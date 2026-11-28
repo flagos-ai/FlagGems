@@ -53,24 +53,95 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# ===== Tuning constants (2026-11-15 interleaved A/B calibration, min-of-3 rounds) =====
-# grid = min(rows, SPC * GRID_MULT, 65535): GRID_MULT=1 (48 programs) is optimal,
-# 2/4/8x give -2.7%/-5.8%/-11.9% respectively.
+# ===== Tuning constants (calibrated by interleaved A/B measurements on 2026-11-17, do_bench median w1000/r100) =====
+# grid = min(work count, SPC * GRID_MULT, MAX_GRID): GRID_MULT=1 (48 programs) is best,
+# 4x/16x are -0.4%/-3.6% respectively (large shapes); no gain for small shapes.
 GRID_MULT = 1
 SPC = 48
 MAX_GRID = 65535
-# Element budget of a single load: 8192 ties 16384/32768 (bounded by next_pow2(W)),
-# 1024/2048 give -31%/-11% respectively.
-ELEM_CAP = 8192
-# num_warps: 1 is optimal, 2 gives -26%.
+# 2D tile lanes budget: 8192 is best; 16384/32768 are -26%/-80% respectively (DSM/register pressure).
+# Also the upper bound of the masked tile safe range (nanmean precedent: non-EVEN masked load lanes<=8192).
+LANE_BUDGET = 8192
+# Upper bound on BLOCK_R rows; the actual value takes the largest power of 2 dividing H and <= H-1 (to avoid crossing
+# segments + at most
+# 2 edge rows per tile).
+MAX_BLOCK_R = 32
+# num_warps: 1 is best (-3% at 2); nw>=4 triggers silent wrong results of the P10 family, so it is disabled.
 WARPS = 1
-# ==============================================================
+# ============================================================================
 
 
 @triton.jit
-def replication_pad2d_backward_kernel(
+def _rp2d_bwd_row(
     grad_output_ptr,
     grad_input_ptr,
+    row,
+    H,
+    W,
+    OH,
+    PL: tl.constexpr,
+    PR: tl.constexpr,
+    PT: tl.constexpr,
+    GO_NC: tl.constexpr,
+    GO_ROW: tl.constexpr,
+    iw0,
+    pw,
+    BLOCK_W: tl.constexpr,
+    BLOCK_PH: tl.constexpr,
+    NCHUNK: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+):
+    """Generic per-row body (the 2026-11-15 logic): shared by edge rows, non-EVEN shapes and tails."""
+    nc = row // H
+    ih = row - nc * H
+    oh_lo = tl.where(ih == 0, 0, PT + ih)
+    oh_hi = tl.where(ih == H - 1, OH - 1, PT + ih)
+    go_nc = grad_output_ptr + nc * GO_NC
+    gi_row = grad_input_ptr + row * W
+    for chunk in tl.static_range(NCHUNK):
+        iw = chunk * BLOCK_W + iw0
+        iwv = iw < W
+        total = tl.zeros([BLOCK_W], dtype=tl.float32)
+        for p in tl.static_range(BLOCK_PH):
+            oh = oh_lo + p
+            if oh <= oh_hi:
+                total += tl.load(
+                    go_nc + oh * GO_ROW + (PL + iw), mask=iwv, other=0.0
+                ).to(tl.float32)
+        if PL > 0:
+            if chunk == 0:
+                left_sum = 0.0
+                for p in tl.static_range(BLOCK_PH):
+                    oh = oh_lo + p
+                    if oh <= oh_hi:
+                        left_sum += tl.sum(
+                            tl.load(
+                                go_nc + oh * GO_ROW + pw, mask=pw < PL, other=0.0
+                            ).to(tl.float32)
+                        )
+                total += tl.where(iw0 == 0, left_sum, 0.0)
+        if PR > 0:
+            if chunk == NCHUNK - 1:
+                right_sum = 0.0
+                for p in tl.static_range(BLOCK_PH):
+                    oh = oh_lo + p
+                    if oh <= oh_hi:
+                        right_sum += tl.sum(
+                            tl.load(
+                                go_nc + oh * GO_ROW + (PL + W + pw),
+                                mask=pw < PR,
+                                other=0.0,
+                            ).to(tl.float32)
+                        )
+                total += tl.where(iw == W - 1, right_sum, 0.0)
+        tl.store(gi_row + iw, total.to(OUT_DTYPE), mask=iwv)
+
+
+@triton.jit
+def replication_pad2d_backward_tile_kernel(
+    grad_output_ptr,
+    grad_input_ptr,
+    NTILES,
     ROWS,
     H,
     W,
@@ -80,71 +151,148 @@ def replication_pad2d_backward_kernel(
     PR: tl.constexpr,
     PT: tl.constexpr,
     PB: tl.constexpr,
-    GO_ROW: tl.constexpr,
     GO_NC: tl.constexpr,
-    GI_ROW: tl.constexpr,
-    GI_NC: tl.constexpr,
+    GO_ROW: tl.constexpr,
+    BLOCK_R: tl.constexpr,
     BLOCK_W: tl.constexpr,
-    BLOCK_PH: tl.constexpr,
     BLOCK_PAD: tl.constexpr,
+    BLOCK_PH: tl.constexpr,
     NCHUNK: tl.constexpr,
+    EVEN_W: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
 ):
     pid = tl.program_id(0)
     G = tl.num_programs(0)
     iw0 = tl.arange(0, BLOCK_W)
     pw = tl.arange(0, BLOCK_PAD)
+    rr = tl.arange(0, BLOCK_R)
 
-    for row in range(pid, ROWS, G):
-        nc = row // H
-        ih = row - nc * H
-        # Closed interval of output rows received by this input row (H == 1 merges both where branches to cover all OH)
-        oh_lo = tl.where(ih == 0, 0, PT + ih)
-        oh_hi = tl.where(ih == H - 1, OH - 1, PT + ih)
-        go_nc = grad_output_ptr + nc * GO_NC
-        gi_row = grad_input_ptr + row * GI_ROW
+    if EVEN_W:
+        # Loop A: fast path - unmasked 2D row tile (interior rows injective + pad column folding).
+        # Edge rows read placeholder values at clamped addresses here, which are later overwritten by loop B in the same
+        # program.
+        for tile in range(pid, NTILES, G):
+            row0 = tile * BLOCK_R
+            ih0 = row0 % H
+            ih_vec = ih0 + rr
+            ih_safe = tl.minimum(tl.maximum(ih_vec, 1), tl.maximum(H - 2, 0))
+            nc_vec = row0 // H
+            oh_vec = PT + ih_safe
+            go_row = grad_output_ptr + nc_vec * GO_NC + oh_vec * GO_ROW
 
-        for chunk in tl.static_range(NCHUNK):
-            iw = chunk * BLOCK_W + iw0
-            iwv = iw < W
-            total = tl.zeros([BLOCK_W], dtype=tl.float32)
-            # Sequential accumulation along ph (avoiding the 2D tile's cross-lane reduction)
-            for p in tl.static_range(BLOCK_PH):
-                oh = oh_lo + p
-                if oh <= oh_hi:
-                    total += tl.load(
-                        go_nc + oh * GO_ROW + (PL + iw), mask=iwv, other=0.0
-                    ).to(tl.float32)
-            # Left/right pad columns: only iw=0 / iw=W-1 of the whole row receive them
+            left_v = tl.zeros([BLOCK_R], dtype=tl.float32)
             if PL > 0:
-                if chunk == 0:
-                    left_sum = 0.0
-                    for p in tl.static_range(BLOCK_PH):
-                        oh = oh_lo + p
-                        if oh <= oh_hi:
-                            left_sum += tl.sum(
-                                tl.load(
-                                    go_nc + oh * GO_ROW + pw,
-                                    mask=pw < PL,
-                                    other=0.0,
-                                ).to(tl.float32)
-                            )
-                    total += tl.where(iw0 == 0, left_sum, 0.0)
+                for p in tl.static_range(BLOCK_PAD):
+                    col = tl.minimum(p, OW - 1)
+                    v = tl.load(go_row + col).to(tl.float32)
+                    left_v += tl.where(p < PL, v, 0.0)
+            right_v = tl.zeros([BLOCK_R], dtype=tl.float32)
             if PR > 0:
-                if chunk == NCHUNK - 1:
-                    right_sum = 0.0
-                    for p in tl.static_range(BLOCK_PH):
-                        oh = oh_lo + p
-                        if oh <= oh_hi:
-                            right_sum += tl.sum(
-                                tl.load(
-                                    go_nc + oh * GO_ROW + (PL + W + pw),
-                                    mask=pw < PR,
-                                    other=0.0,
-                                ).to(tl.float32)
-                            )
-                    total += tl.where(iw == W - 1, right_sum, 0.0)
-            tl.store(gi_row + iw, total.to(OUT_DTYPE), mask=iwv)
+                for p in tl.static_range(BLOCK_PAD):
+                    col = tl.minimum(PL + W + p, OW - 1)
+                    v = tl.load(go_row + col).to(tl.float32)
+                    right_v += tl.where(p < PR, v, 0.0)
+
+            inter = tl.load(go_row[:, None] + (PL + iw0)[None, :])
+            total = inter.to(tl.float32)
+            if PL > 0:
+                total += tl.where(iw0[None, :] == 0, left_v[:, None], 0.0)
+            if PR > 0:
+                total += tl.where(iw0[None, :] == W - 1, right_v[:, None], 0.0)
+            tl.store(
+                grad_input_ptr + (row0 + rr)[:, None] * W + iw0[None, :],
+                total.to(OUT_DTYPE),
+            )
+
+        # Loop B: recomputation of edge rows within this program's tile (separate from loop A:
+        # putting the helper in the same loop as the 2D tile body triggers an in-process SIGABRT, see module docstring).
+        for tile in range(pid, NTILES, G):
+            row0 = tile * BLOCK_R
+            ih0 = row0 % H
+            if ih0 == 0:
+                _rp2d_bwd_row(
+                    grad_output_ptr,
+                    grad_input_ptr,
+                    row0,
+                    H,
+                    W,
+                    OH,
+                    PL,
+                    PR,
+                    PT,
+                    GO_NC,
+                    GO_ROW,
+                    iw0,
+                    pw,
+                    BLOCK_W,
+                    BLOCK_PH,
+                    NCHUNK,
+                    OUT_DTYPE,
+                )
+            if (H - 1 - ih0) < BLOCK_R:
+                _rp2d_bwd_row(
+                    grad_output_ptr,
+                    grad_input_ptr,
+                    row0 + (H - 1 - ih0),
+                    H,
+                    W,
+                    OH,
+                    PL,
+                    PR,
+                    PT,
+                    GO_NC,
+                    GO_ROW,
+                    iw0,
+                    pw,
+                    BLOCK_W,
+                    BLOCK_PH,
+                    NCHUNK,
+                    OUT_DTYPE,
+                )
+
+        # Loop C: fallback for tail rows (when EVEN_W, BLOCK_R | H, rows are always divisible, so effectively empty).
+        for row in range(NTILES * BLOCK_R + pid, ROWS, G):
+            _rp2d_bwd_row(
+                grad_output_ptr,
+                grad_input_ptr,
+                row,
+                H,
+                W,
+                OH,
+                PL,
+                PR,
+                PT,
+                GO_NC,
+                GO_ROW,
+                iw0,
+                pw,
+                BLOCK_W,
+                BLOCK_PH,
+                NCHUNK,
+                OUT_DTYPE,
+            )
+    else:
+        # General path: the same row loop as the 2026-11-15 row-by-row implementation.
+        for row in range(pid, ROWS, G):
+            _rp2d_bwd_row(
+                grad_output_ptr,
+                grad_input_ptr,
+                row,
+                H,
+                W,
+                OH,
+                PL,
+                PR,
+                PT,
+                GO_NC,
+                GO_ROW,
+                iw0,
+                pw,
+                BLOCK_W,
+                BLOCK_PH,
+                NCHUNK,
+                OUT_DTYPE,
+            )
 
 
 def _dtype_constexpr(dtype):
@@ -236,16 +384,31 @@ def _replication_pad2d_backward_impl(
         target = torch.empty((N, C, H, W), device=self.device, dtype=self.dtype)
         write_back = out
 
-    block_ph = _next_pow2(1 + pad_top + pad_bottom)
-    block_w = min(_next_pow2(W), max(16, ELEM_CAP // block_ph))
+    block_w = min(_next_pow2(W), LANE_BUDGET)
+    lanes = LANE_BUDGET // block_w
+    # BLOCK_R must divide H: a tile must not cross (nc) segments; and <= H-1: at most 2 edge rows per tile
+    block_r = 1
+    while (block_r * 2 <= min(MAX_BLOCK_R, H - 1, lanes)) and (H % (block_r * 2) == 0):
+        block_r *= 2
     nchunk = triton.cdiv(W, block_w)
     block_pad = _next_pow2(max(pad_left, pad_right, 2))
+    block_ph = _next_pow2(1 + pad_top + pad_bottom)
+    # The fast path is limited to a single chunk, power-of-2 width, and the presence of interior rows (H >= 3); when H
+    # <= 2 all rows are
+    # edge rows, and the general path is optimal.
+    even_w = W == block_w and nchunk == 1 and H >= 3
+    if even_w:
+        ntiles = rows // block_r
+        grid = min(max(ntiles, 1), SPC * GRID_MULT, MAX_GRID)
+    else:
+        ntiles = 0
+        grid = min(rows, SPC * GRID_MULT, MAX_GRID)
 
-    grid_rows = min(rows, SPC * GRID_MULT, MAX_GRID)
     with torch_device_fn.device(self.device):
-        replication_pad2d_backward_kernel[(grid_rows,)](
+        replication_pad2d_backward_tile_kernel[(grid,)](
             grad_output_4d,
             target,
+            ntiles,
             rows,
             H,
             W,
@@ -255,14 +418,14 @@ def _replication_pad2d_backward_impl(
             pad_right,
             pad_top,
             pad_bottom,
-            OW,
             OH * OW,
-            W,
-            H * W,
+            OW,
+            BLOCK_R=block_r,
             BLOCK_W=block_w,
-            BLOCK_PH=block_ph,
             BLOCK_PAD=block_pad,
+            BLOCK_PH=block_ph,
             NCHUNK=nchunk,
+            EVEN_W=even_w,
             OUT_DTYPE=_dtype_constexpr(self.dtype),
             num_warps=WARPS,
         )
