@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
+
 import pytest
 import torch
 
@@ -104,6 +106,57 @@ def test_mm_out():
         input_fn=mm_out_input_fn,
         torch_op=torch.mm,
         dtypes=consts.FP16_BF16_DTYPES,
+    )
+
+    bench.run()
+
+
+class MmBackwardBenchmark(base.BlasBenchmark):
+    """Time only the mm backward, i.e. the two gradient GEMMs.
+
+    ``Benchmark.get_latency`` builds the forward once and then times
+    ``torch.autograd.grad`` with ``retain_graph=True``, so the forward matrix
+    product is outside the measured region.  ``get_tflops`` therefore counts
+    both gradient products (``grad_a`` and ``grad_b``), not the forward.
+    """
+
+    # Matrix storage scales with M*K + K*N + M*N. The B*M*N*K bound would
+    # discard the default GEMM cases before their inputs are allocated.
+    MAX_BACKWARD_ELEMENTS = None
+
+    def get_tflops(self, op, *args, **kwargs):
+        m, k = args[0].shape
+        n = args[1].shape[1]
+        return 4 * m * n * k
+
+
+@pytest.mark.mm_backward
+@pytest.mark.skipif(
+    torch.version.cuda is None
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability()[0] != 9
+    or not hasattr(importlib.import_module(flag_gems.mm.__module__), "mm_backward"),
+    reason="FlagGems mm backward requires an NVIDIA Hopper GPU",
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_mm_backward():
+    """Eager/CUDA-Graph latency of the FlagGems autograd backward for ``mm``.
+
+    The default M/N/K cases come from ``BlasBenchmark`` in core_shapes.yaml;
+    ``is_backward=True`` makes the harness time ``torch.autograd.grad`` of the
+    forward output.  ``gems_op`` pins the candidate to the public FlagGems
+    entry, so both gradient GEMMs run through FlagGems kernels while the
+    baseline stays native ``torch.mm``.
+    """
+    bench = MmBackwardBenchmark(
+        op_name="mm",
+        input_fn=mm_input_fn,
+        torch_op=torch.Tensor.mm,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+        gems_op=flag_gems.mm,
     )
 
     bench.run()
