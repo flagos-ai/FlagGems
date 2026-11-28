@@ -167,3 +167,19 @@ def test_div_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def div_scalar_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    yield inp, 3.14
+
+
+@pytest.mark.div_scalar
+def test_div_scalar():
+    bench = base.GenericBenchmark(
+        op_name="div_scalar",
+        input_fn=div_scalar_input_fn,
+        torch_op=torch.div,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
