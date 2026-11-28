@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.digamma_ import digamma
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
 logger = logging.getLogger(__name__)
@@ -30,8 +31,30 @@ def lgamma_func(x):
     return tl_extra_shim.lgamma(x.to(tl.float32))
 
 
+def lgamma_backward(grad_output, A):
+    """Backward of ``lgamma``: ``d/dx lgamma(x) = digamma(x)``."""
+    logger.debug("GEMS LGAMMA_BACKWARD")
+    return digamma(A) * grad_output
+
+
+class LgammaFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        ctx.save_for_backward(A)
+        return _lgamma_forward(A)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (A,) = ctx.saved_tensors
+        return lgamma_backward(grad_output, A)
+
+
 def lgamma(A):
     logger.debug("GEMS LGAMMA")
+    return LgammaFunction.apply(A)
+
+
+def _lgamma_forward(A):
     return lgamma_func(A)
 
 
