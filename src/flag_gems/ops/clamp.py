@@ -25,19 +25,23 @@ logger = logging.getLogger(__name__)
 @pointwise_dynamic(promotion_methods=[(0, 1, 2, "DEFAULT")])
 @triton.jit
 def clamp_func_tensor(x, mini, maxi):
-    return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))
+    return tl.minimum(
+        maxi,
+        tl.maximum(mini, x.to(tl.float32), propagate_nan=tl.PropagateNan.ALL),
+        propagate_nan=tl.PropagateNan.ALL,
+    )
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_min_tensor(x, mini):
-    return tl.maximum(mini, x.to(tl.float32))
+    return tl.maximum(mini, x.to(tl.float32), propagate_nan=tl.PropagateNan.ALL)
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_max_tensor(x, maxi):
-    return tl.minimum(maxi, x.to(tl.float32))
+    return tl.minimum(maxi, x.to(tl.float32), propagate_nan=tl.PropagateNan.ALL)
 
 
 def clamp_tensor(A, mini=None, maxi=None):
@@ -69,19 +73,23 @@ def clamp_tensor_(A, mini=None, maxi=None):
 )
 @triton.jit
 def clamp_func(x, mini, maxi):
-    return tl.minimum(maxi, tl.maximum(mini, x.to(tl.float32)))
+    return tl.minimum(
+        maxi,
+        tl.maximum(mini, x.to(tl.float32), propagate_nan=tl.PropagateNan.ALL),
+        propagate_nan=tl.PropagateNan.ALL,
+    )
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_min(x, mini):
-    return tl.maximum(mini, x.to(tl.float32))
+    return tl.maximum(mini, x.to(tl.float32), propagate_nan=tl.PropagateNan.ALL)
 
 
 @pointwise_dynamic(is_tensor=[True, False], promotion_methods=[(0, 1, "DEFAULT")])
 @triton.jit
 def clamp_func_max(x, maxi):
-    return tl.minimum(maxi, x.to(tl.float32))
+    return tl.minimum(maxi, x.to(tl.float32), propagate_nan=tl.PropagateNan.ALL)
 
 
 def clamp_min(A, mini):
