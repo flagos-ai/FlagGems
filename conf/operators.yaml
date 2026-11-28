@@ -8317,6 +8317,29 @@ ops:
   - Reduction
   stages:
   - alpha: '5.4'
+- id: foreach_maximum_backward
+  description: |
+    Backward pass of `_foreach_maximum.Scalar` / `_foreach_maximum.ScalarList`:
+    the gradient with respect to each tensor in the list is
+    `where(self == scalar, grad / 2, grad)` with positions below the scalar
+    masked to zero -- the tie position takes half the upstream gradient (the
+    max subgradient) and the mask also overwrites non-finite gradients there.
+    ATen evaluates this on the `ForeachMaximumBackward{0,1}` autograd nodes;
+    this Torch build has no standalone `aten::_foreach_maximum_backward`
+    schema, so the Triton kernel is exposed as an explicit entry point plus a
+    `torch.autograd.Function` bridge (same pattern as `deg2rad_backward`).
+    Only the `.Scalar` / `.ScalarList` overloads carry derivatives; the
+    `.List` overload takes a second tensor list that ATen does not
+    differentiate here.
+  for:
+  - foreach_maximum_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - PointWise
+  stages:
+  - alpha: '5.6'
 - id: foreach_maximum_list
   description: element-wise maximum for each tensor in a list, paired with a second
     tensor list.
