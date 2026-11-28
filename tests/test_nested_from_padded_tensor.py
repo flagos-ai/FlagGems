@@ -191,3 +191,142 @@ def test_nested_from_padded_tensor_ragged_idx(dtype):
     assert res_out.size() == ref_out.size()
     utils.gems_assert_close(res_out.values(), ref_out.values(), dtype)
     utils.gems_assert_equal(res_out.offsets(), ref_out.offsets())
+
+
+def _make_padded_grad_case(shape, lengths, ragged_idx, dtype, device):
+    """Build a padded tensor plus ``offsets`` for a backward test."""
+    padded = torch.randn(shape, dtype=dtype, device=device)
+    offsets = torch.tensor(
+        [0] + np.cumsum(lengths).tolist(), dtype=torch.int32, device=device
+    )
+    return padded, offsets
+
+
+@pytest.mark.nested_from_padded_tensor_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("B,T,D", [(2, 8, 4), (8, 32, 16), (3, 5, 4)])
+def test_nested_from_padded_tensor_backward_3d(dtype, B, T, D):
+    """The FlagGems forward must expose a Triton-backed autograd backward."""
+    lengths = [max(1, (i * 7) % T + 1) for i in range(B)]
+    padded, offsets = _make_padded_grad_case(
+        (B, T, D), lengths, 1, dtype, flag_gems.device
+    )
+    dummy = _nt_view_dummy()
+
+    ref_padded = utils.to_reference(padded.detach()).requires_grad_(True)
+    gems_padded = padded.detach().clone().requires_grad_(True)
+
+    ref_out = torch.ops.aten._nested_from_padded_tensor(
+        ref_padded, utils.to_reference(offsets), dummy, 1, None, None, None
+    )
+    res_out = flag_gems._nested_from_padded_tensor(
+        gems_padded, offsets, dummy, 1, None, None, None
+    )
+
+    assert res_out.is_nested
+    assert res_out.requires_grad
+    assert type(res_out.grad_fn).__name__ == "NestedFromPaddedTensorFunctionBackward"
+
+    torch.manual_seed(17)
+    out_grad = torch.randn_like(ref_out)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_padded, out_grad)
+    (res_grad,) = torch.autograd.grad(res_out, gems_padded, out_grad)
+
+    assert res_grad.shape == ref_grad.shape
+    assert res_grad.dtype == ref_grad.dtype
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+    # Padding positions must be exact zeros, matching ATen's zero fill.
+    for b, length in enumerate(lengths):
+        if length < T:
+            assert res_grad[b, length:].abs().sum().item() == 0
+
+
+@pytest.mark.nested_from_padded_tensor_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_nested_from_padded_tensor_backward_zero_length(dtype):
+    """A component with zero real rows still produces a fully zero gradient."""
+    B, T, D = 3, 5, 4
+    lengths = [0, 2, T]
+    padded, offsets = _make_padded_grad_case(
+        (B, T, D), lengths, 1, dtype, flag_gems.device
+    )
+    dummy = _nt_view_dummy()
+
+    ref_padded = utils.to_reference(padded.detach()).requires_grad_(True)
+    gems_padded = padded.detach().clone().requires_grad_(True)
+    ref_out = torch.ops.aten._nested_from_padded_tensor(
+        ref_padded, utils.to_reference(offsets), dummy, 1, None, None, None
+    )
+    res_out = flag_gems._nested_from_padded_tensor(
+        gems_padded, offsets, dummy, 1, None, None, None
+    )
+
+    torch.manual_seed(23)
+    out_grad = torch.randn_like(ref_out)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_padded, out_grad)
+    (res_grad,) = torch.autograd.grad(res_out, gems_padded, out_grad)
+
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+    assert res_grad[0].abs().sum().item() == 0
+
+
+@pytest.mark.nested_from_padded_tensor_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_nested_from_padded_tensor_backward_ragged_idx(dtype):
+    """ragged_idx=2 on a 4-D padded tensor keeps the interleaved layout."""
+    B, H, T, D = 2, 3, 4, 2
+    lengths = [1, T]
+    padded, offsets = _make_padded_grad_case(
+        (B, H, T, D), lengths, 2, dtype, flag_gems.device
+    )
+    dummy = _nt_view_dummy()
+
+    ref_padded = utils.to_reference(padded.detach()).requires_grad_(True)
+    gems_padded = padded.detach().clone().requires_grad_(True)
+    ref_out = torch.ops.aten._nested_from_padded_tensor(
+        ref_padded, utils.to_reference(offsets), dummy, 2, None, None, None
+    )
+    res_out = flag_gems._nested_from_padded_tensor(
+        gems_padded, offsets, dummy, 2, None, None, None
+    )
+
+    torch.manual_seed(29)
+    out_grad = torch.randn_like(ref_out)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_padded, out_grad)
+    (res_grad,) = torch.autograd.grad(res_out, gems_padded, out_grad)
+
+    assert res_grad.shape == ref_grad.shape
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+    for b, length in enumerate(lengths):
+        if length < T:
+            assert res_grad[b, :, length:].abs().sum().item() == 0
+
+
+@pytest.mark.nested_from_padded_tensor_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_nested_from_padded_tensor_backward_needs_input_grad(dtype):
+    """A padded tensor that does not require grad keeps the plain forward path."""
+    B, T, D = 2, 6, 3
+    lengths = [4, 6]
+    padded, offsets = _make_padded_grad_case(
+        (B, T, D), lengths, 1, dtype, flag_gems.device
+    )
+    dummy = _nt_view_dummy()
+
+    res_out = flag_gems._nested_from_padded_tensor(
+        padded, offsets, dummy, 1, None, None, None
+    )
+    assert not res_out.requires_grad
+    assert res_out.grad_fn is None
+
+    ref_out = torch.ops.aten._nested_from_padded_tensor(
+        utils.to_reference(padded),
+        utils.to_reference(offsets),
+        dummy,
+        1,
+        None,
+        None,
+        None,
+    )
+    utils.gems_assert_close(res_out.values(), ref_out.values(), dtype)
