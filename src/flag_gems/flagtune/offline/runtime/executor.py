@@ -1057,6 +1057,7 @@ class BenchmarkWorker:
         from flag_gems.utils.libentry import (
             LibTunerRunMode,
             clear_libentry_dispatch_cache,
+            revive_benchmark_arguments,
         )
 
         try:
@@ -1251,8 +1252,14 @@ class BenchmarkWorker:
             latency_source = "libtuner_selected_config_fresh"
             reported_latency_trials = latency_trials
         timed_config_count = len(timings) if isinstance(timings, Mapping) else None
-        captured_args = getattr(tuner, "_last_benchmark_args", ())
-        captured_meta = getattr(tuner, "_last_benchmark_meta", {})
+        # LibTuner holds tensor arguments weakly to avoid pinning caller storage
+        # (issue #9315); resolve them while this call still owns the tensors.
+        captured_args = revive_benchmark_arguments(
+            getattr(tuner, "_last_benchmark_args", ())
+        )
+        captured_meta = revive_benchmark_arguments(
+            getattr(tuner, "_last_benchmark_meta", {})
+        )
         if route_meta["stage"] == "partial":
             partial_value = None
             for name, value in zip(getattr(tuner, "arg_names", ()), captured_args):

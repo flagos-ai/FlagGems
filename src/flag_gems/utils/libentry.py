@@ -24,6 +24,7 @@ import os
 import sys
 import threading
 import time
+import weakref
 from abc import abstractmethod
 from collections import OrderedDict
 from contextlib import contextmanager
@@ -207,6 +208,87 @@ def _descriptor_cache_key(arg):
         tuple(arg.block_shape),
         getattr(arg, "padding", None),
     )
+
+
+_RELEASED_BENCHMARK_ARG = object()
+_TORCH_TENSOR_TYPE: Any = None
+
+
+def _torch_tensor_type():
+    """Resolve ``torch.Tensor`` once; ``None`` until torch is imported."""
+    global _TORCH_TENSOR_TYPE
+    if _TORCH_TENSOR_TYPE is None:
+        torch = sys.modules.get("torch")
+        if torch is None:
+            return None
+        _TORCH_TENSOR_TYPE = torch.Tensor
+    return _TORCH_TENSOR_TYPE
+
+
+def _hold_benchmark_value(value: Any) -> Any:
+    """Hold tensor kernel arguments weakly for a later ``benchmark_config`` call.
+
+    ``LibTuner.run`` records its low-level arguments so that
+    :meth:`LibTuner.benchmark_config` can reuse them. Storing tensors strongly
+    keeps their storage alive for as long as the tuner lives. Operators that
+    generate one tuner per input shape (the ``index`` linearized adjacent-index
+    path) would then pin one complete input tensor for every shape ever seen,
+    which accumulates until the device runs out of memory (issue #9315). Weak
+    references keep the reuse contract while the caller still owns the tensors
+    and release the storage as soon as the caller drops them.
+    """
+    tensor_type = _torch_tensor_type()
+    if tensor_type is not None and isinstance(value, tensor_type):
+        return weakref.ref(value)
+    if isinstance(value, tuple):
+        return tuple([_hold_benchmark_value(item) for item in value])
+    if isinstance(value, list):
+        return [_hold_benchmark_value(item) for item in value]
+    if isinstance(value, dict):
+        return {key: _hold_benchmark_value(item) for key, item in value.items()}
+    return value
+
+
+def _revive_benchmark_value(value: Any, released: Any = None) -> Any:
+    """Resolve weak tensor references captured by :meth:`LibTuner.run`.
+
+    ``released`` is substituted for tensors the caller has already dropped so
+    callers that only need metadata can tolerate them; validation paths pass a
+    sentinel instead and reject the captured context.
+    """
+    if isinstance(value, weakref.ReferenceType):
+        target = value()
+        return released if target is None else target
+    if isinstance(value, tuple):
+        return tuple(_revive_benchmark_value(item, released) for item in value)
+    if isinstance(value, list):
+        return [_revive_benchmark_value(item, released) for item in value]
+    if isinstance(value, dict):
+        return {
+            key: _revive_benchmark_value(item, released) for key, item in value.items()
+        }
+    return value
+
+
+def revive_benchmark_arguments(value: Any) -> Any:
+    """Resolve weak tensor references recorded by :meth:`LibTuner.run`.
+
+    Offline FlagTune inspects the captured launch context after ``run``
+    returns. Tensor entries that the caller already released resolve to
+    ``None`` because they can no longer be inspected.
+    """
+    return _revive_benchmark_value(value)
+
+
+def _contains_released_benchmark_value(value: Any) -> bool:
+    """Report whether ``value`` contains a released tensor sentinel."""
+    if value is _RELEASED_BENCHMARK_ARG:
+        return True
+    if isinstance(value, (tuple, list)):
+        return any(_contains_released_benchmark_value(item) for item in value)
+    if isinstance(value, dict):
+        return any(_contains_released_benchmark_value(item) for item in value.values())
+    return False
 
 
 class Cache(object):
@@ -904,7 +986,9 @@ class LibTuner(triton.runtime.Autotuner):
         Raises:
             ValueError: If durations or quantiles are invalid.
             RuntimeError: If no prior kernel context is available and explicit
-                ``args``/``meta`` were not provided.
+                ``args``/``meta`` were not provided, or when the captured
+                context contains tensor arguments that the caller has already
+                released.
 
         Implementation:
             The method temporarily installs an explicit Triton ``do_bench``
@@ -925,19 +1009,33 @@ class LibTuner(triton.runtime.Autotuner):
         if not quantiles or any(value < 0 or value > 1 for value in quantiles):
             raise ValueError("quantiles must contain values between 0 and 1")
         benchmark_quantiles = tuple(quantiles)
-        benchmark_args = (
-            tuple(args)
-            if args is not None
-            else getattr(self, "_last_benchmark_args", None)
+        # ``run`` holds tensors weakly (issue #9315); resolve them before
+        # handing the context back to Triton's benchmark path.
+        benchmark_args = _revive_benchmark_value(
+            (
+                tuple(args)
+                if args is not None
+                else getattr(self, "_last_benchmark_args", None)
+            ),
+            _RELEASED_BENCHMARK_ARG,
         )
-        benchmark_meta = (
-            dict(meta)
-            if meta is not None
-            else getattr(self, "_last_benchmark_meta", None)
+        benchmark_meta = _revive_benchmark_value(
+            (
+                dict(meta)
+                if meta is not None
+                else getattr(self, "_last_benchmark_meta", None)
+            ),
+            _RELEASED_BENCHMARK_ARG,
         )
-        if benchmark_args is None or benchmark_meta is None:
+        if (
+            benchmark_args is None
+            or benchmark_meta is None
+            or _contains_released_benchmark_value(benchmark_args)
+            or _contains_released_benchmark_value(benchmark_meta)
+        ):
             raise RuntimeError(
-                "benchmark_config requires explicit args/meta or a prior LibTuner.run"
+                "benchmark_config requires explicit args/meta or a prior "
+                "LibTuner.run whose tensor arguments are still alive"
             )
 
         original_nargs = getattr(self, "nargs", None)
@@ -1029,8 +1127,8 @@ class LibTuner(triton.runtime.Autotuner):
         exhaustive_collection = run_mode is LibTunerRunMode.EXHAUSTIVE_COLLECTION
         if hasattr(self, "seen_tuned_metas"):
             self.seen_tuned_metas = {}  # flagtree aabs: deduplicate tuned meta
-        self._last_benchmark_args = tuple(args)
-        self._last_benchmark_meta = dict(kwargs)
+        self._last_benchmark_args = _hold_benchmark_value(tuple(args))
+        self._last_benchmark_meta = _hold_benchmark_value(dict(kwargs))
         used_cached_result = True
         cost_model_mode = (
             getattr(self, "_flagtune_mode", runtime.TuningMode.DEFAULT)
