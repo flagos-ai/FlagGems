@@ -36,15 +36,36 @@ def _ctc_loss_reference(
     work_log_probs = log_probs
     if work_log_probs.dtype in (torch.float16, torch.bfloat16):
         work_log_probs = work_log_probs.float()
-    out = F.ctc_loss(
-        work_log_probs,
-        targets,
-        input_lengths,
-        target_lengths,
-        blank=blank,
-        reduction=reduction,
-        zero_infinity=zero_infinity,
-    )
+
+    if flag_gems.vendor_name == "kunlunxin":
+        # F.ctc_loss dispatches aten::_use_cudnn_ctc_loss, which is not built
+        # into this stack. The native device path is aten::_ctc_loss plus the
+        # host-side reduction, which matches F.ctc_loss semantics.
+        nll = torch.ops.aten._ctc_loss(
+            work_log_probs,
+            targets,
+            input_lengths,
+            target_lengths,
+            blank,
+            zero_infinity,
+        )[0]
+        if reduction == "none":
+            out = nll
+        elif reduction == "sum":
+            out = nll.sum()
+        else:
+            denom = target_lengths.clamp_min(1).to(nll.dtype)
+            out = (nll / denom).mean()
+    else:
+        out = F.ctc_loss(
+            work_log_probs,
+            targets,
+            input_lengths,
+            target_lengths,
+            blank=blank,
+            reduction=reduction,
+            zero_infinity=zero_infinity,
+        )
     return out.to(original_dtype) if out.dtype != original_dtype else out
 
 

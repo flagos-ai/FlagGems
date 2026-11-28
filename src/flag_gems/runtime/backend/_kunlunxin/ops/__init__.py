@@ -414,6 +414,7 @@ from .cos import cos, cos_
 from .cosh import cosh, cosh_, cosh_out  # noqa: F401
 from .count_nonzero import count_nonzero
 from .cov import cov
+from .ctc_loss import ctc_loss
 from .cudnn_batch_norm import cudnn_batch_norm  # noqa: F401
 from .cudnn_batch_norm_backward import cudnn_batch_norm_backward  # noqa: F401
 from .cudnn_convolution import cudnn_convolution  # noqa: F401
@@ -1485,6 +1486,7 @@ __all__ = [
     "cos_",
     "count_nonzero",
     "cov",
+    "ctc_loss",
     "cummax",
     "cummaxmin_backward",
     "cummin",
