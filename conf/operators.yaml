@@ -13819,7 +13819,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: masked_fill_scalar
   description: Fills elements of given tensor with `value` where `mask` is True.
   for:
