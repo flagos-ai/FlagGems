@@ -127,6 +127,14 @@ def test_nanquantile_out(dtype, q_shape):
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("interpolation", INTERPOLATIONS)
 def test_nanquantile_scalar_out(dtype, interpolation):
+    if (
+        flag_gems.vendor_name == "kunlunxin"
+        and dtype == torch.float64
+        and not flag_gems.runtime.device.support_fp64
+    ):
+        pytest.skip(
+            "Kunlunxin reports support_fp64=False; scalar_out FP64 is unsupported"
+        )
     inp = _input((11, 15), dtype)
     ref_inp = utils.to_reference(inp)
     ref_out = torch.empty(0, dtype=dtype, device=ref_inp.device)
@@ -279,3 +287,74 @@ def test_nanquantile_errors():
         )
     with pytest.raises(RuntimeError):
         flag_gems.nanquantile(torch.empty(0, device=inp.device), 0.5)
+
+
+@pytest.mark.nanquantile_scalar_out
+@pytest.mark.parametrize("size", [32767, 32768, 65537])
+def test_nanquantile_scalar_out_large_bucket(size):
+    # All values share the first radix bucket; crossing 2**15 must not carry
+    # into a packed neighbouring counter. Nonconstant values expose bad ranks.
+    cpu = torch.arange(size, dtype=torch.float32)
+    inp = cpu.to(flag_gems.device)
+    reference = torch.nanquantile(cpu, 0.73)
+    out = torch.empty((), device=inp.device)
+    result = flag_gems.nanquantile_scalar_out(inp, 0.73, out=out)
+    assert result is out
+    torch.testing.assert_close(result.cpu(), reference)
+
+
+@pytest.mark.nanquantile_scalar_out
+@pytest.mark.parametrize(
+    "size, q", [(4, 0.5), (6, 0.1), (6, 0.3), (6, 0.5), (6, 0.7), (6, 0.9)]
+)
+def test_nanquantile_scalar_out_nearest_even(size, q):
+    cpu = torch.arange(size, dtype=torch.float32)
+    inp = cpu.to(flag_gems.device)
+    out = torch.empty((), device=inp.device)
+    result = flag_gems.nanquantile_scalar_out(inp, q, interpolation="nearest", out=out)
+    torch.testing.assert_close(
+        result.cpu(),
+        torch.nanquantile(cpu, q, interpolation="nearest"),
+        rtol=0,
+        atol=0,
+    )
+
+
+@pytest.mark.nanquantile_scalar_out
+@pytest.mark.parametrize("size", [1, 9])
+def test_nanquantile_scalar_out_strided_out(size):
+    cpu = torch.arange(6 * size, dtype=torch.float32).reshape(2, 3, size)
+    inp = cpu.to(flag_gems.device)
+    storage = torch.full((3, 4), -123.0, device=inp.device)
+    out = storage[:, ::2].T
+    result = flag_gems.nanquantile_scalar_out(inp, 0.5, dim=2, out=out)
+    assert result is out
+    torch.testing.assert_close(result.cpu(), torch.nanquantile(cpu, 0.5, dim=2))
+    torch.testing.assert_close(storage[:, 1::2].cpu(), torch.full((3, 2), -123.0))
+
+
+@pytest.mark.nanquantile_scalar_out
+def test_nanquantile_scalar_out_argument_errors():
+    inp = torch.arange(6, dtype=torch.float32, device=flag_gems.device)
+    out = torch.empty((), device=inp.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.nanquantile_scalar_out(inp, 0.5, interpolation="bad", out=out)
+    with pytest.raises(RuntimeError):
+        flag_gems.nanquantile_scalar_out(inp, 0.5, out=out.to(torch.int32))
+    with pytest.raises(RuntimeError):
+        flag_gems.nanquantile_scalar_out(inp.to(torch.float16), 0.5, out=out)
+    with pytest.raises(IndexError):
+        flag_gems.nanquantile_scalar_out(inp, 0.5, dim=-2, out=out)
+    if inp.device.type != "cpu":
+        with pytest.raises(RuntimeError):
+            flag_gems.nanquantile_scalar_out(inp, 0.5, out=torch.empty(()))
+
+
+@pytest.mark.nanquantile_scalar_out
+def test_nanquantile_scalar_out_alias():
+    cpu = torch.arange(24, dtype=torch.float32).reshape(4, 6)
+    inp = cpu.to(flag_gems.device)
+    out = inp[:, 0]
+    result = flag_gems.nanquantile_scalar_out(inp, 0.5, dim=1, out=out)
+    assert result is out
+    torch.testing.assert_close(result.cpu(), torch.nanquantile(cpu, 0.5, dim=1))
