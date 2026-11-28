@@ -188,8 +188,22 @@ def _copysign_run(input, other, out):
     return out
 
 
+def _promote_integral(input, other):
+    # torch.copysign promotes integral inputs to float32 (the common type of the
+    # operands, then to float if integral). The fixed-CTA bit kernel indexes
+    # 1-byte int8/uint8 as a 2-byte view, so integral inputs must be promoted to
+    # fp32 before reaching it (mirrors the generic _copysign_common_dtype).
+    if not input.dtype.is_floating_point:
+        input = input.to(torch.float32)
+        if isinstance(other, torch.Tensor) and other.dtype != input.dtype:
+            other = other.to(input.dtype)
+        return input, other
+    return input, other
+
+
 def copysign(input, other, *, out=None):
     logger.debug("GEMS_KUNLUNXIN COPYSIGN")
+    input, other = _promote_integral(input, other)
     if out is None:
         if other.shape != input.shape:
             # other may broadcast (scalar or different shape): the fixed-CTA

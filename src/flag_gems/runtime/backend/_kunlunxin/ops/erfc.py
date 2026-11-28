@@ -193,13 +193,26 @@ def _launch(x, out):
 def erfc(x):
     logger.debug("GEMS_KUNLUNXIN ERFC")
     x = x.contiguous()
-    out = torch.empty_like(x)
+    # torch promotes integral erfc inputs to float32; empty_like would keep the
+    # integral dtype and truncate the 0..2 result to 0 (mirrors the generic
+    # INT_TO_FLOAT promotion).
+    out = (
+        torch.empty_like(x)
+        if x.dtype.is_floating_point
+        else torch.empty_like(x, dtype=torch.float32)
+    )
     _launch(x, out)
     return out
 
 
 def erfc_(A):
     logger.debug("GEMS_KUNLUNXIN ERFC_")
+    # In-place: integral inputs promote to float and cannot be written back
+    # (mirrors the generic implementation and native aten).
+    if not torch.is_floating_point(A):
+        raise RuntimeError(
+            f"result type Float can't be cast to the desired output type {A.dtype}"
+        )
     x = A.contiguous()
     _launch(x, x)
     if x.data_ptr() != A.data_ptr():

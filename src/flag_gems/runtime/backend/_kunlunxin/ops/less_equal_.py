@@ -18,6 +18,7 @@
 import logging
 import os
 
+import torch
 import triton
 import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
@@ -65,13 +66,42 @@ def less_equal_func(x, y):
     return 1.0 - tl.minimum(mag * 1e38, 1.0)
 
 
+# DEFAULT-promotion twin of less_equal_func for the in-place integral path:
+# ALWAYS_BOOL would store a bool into int8/uint8 (miscomputes on uint8), and
+# the int8 `y - x` cannot be selected by the XPU backend, so the integral path
+# runs this on fp32 and casts the 0/1 result back to the tensor dtype.
+@pointwise_dynamic(
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_,
+)
+@triton.jit
+def less_equal_func_default(x, y):
+    d = y - x
+    neg = tl.minimum(d, 0.0)
+    mag = tl.maximum(-neg, 0.0)
+    return 1.0 - tl.minimum(mag * 1e38, 1.0)
+
+
 def less_equal_(A, B):
     logger.debug("GEMS_KUNLUNXIN LESS_EQUAL_")
     os.environ["TRITONXPU_COMPARE_FUSION"] = "1"
     os.environ["TRITONXPU_FP16_FAST"] = "1"
-    less_equal_func(A, B, out0=A)
-    del os.environ["TRITONXPU_COMPARE_FUSION"]
-    del os.environ["TRITONXPU_FP16_FAST"]
+    try:
+        if not A.dtype.is_floating_point:
+            # torch keeps the tensor dtype for an in-place integral compare, so
+            # the 0/1 result must land back in int8/uint8. Run the arithmetic on
+            # fp32 (int8 `y - x` is not selectable on this backend) with the
+            # DEFAULT-promotion twin, then cast back.
+            orig_dtype = A.dtype
+            a32 = A.to(torch.float32)
+            b32 = B.to(torch.float32) if isinstance(B, torch.Tensor) else B
+            less_equal_func_default(a32, b32, out0=a32)
+            A.copy_(a32.to(orig_dtype))
+            return A
+        less_equal_func(A, B, out0=A)
+    finally:
+        del os.environ["TRITONXPU_COMPARE_FUSION"]
+        del os.environ["TRITONXPU_FP16_FAST"]
     return A
 
 

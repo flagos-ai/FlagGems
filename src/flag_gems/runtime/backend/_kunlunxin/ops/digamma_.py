@@ -106,6 +106,12 @@ def digamma_(*args, **kwargs):
     x = args[0]
     if not isinstance(x, torch.Tensor):
         raise TypeError("digamma_ expects a torch.Tensor as the first argument")
+    # In-place: integral inputs promote to float and cannot be written back
+    # (mirrors the generic implementation and native aten).
+    if not torch.is_floating_point(x):
+        raise RuntimeError(
+            f"result type Float can't be cast to the desired output type " f"{x.dtype}"
+        )
 
     # Handle non-contiguous tensors by operating on a contiguous copy and copying back
     if not x.is_contiguous():

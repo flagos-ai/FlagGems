@@ -226,9 +226,58 @@ def greater_equal_func_(x, y):
     return 1.0 - t
 
 
+# Scalar twin of greater_equal_func_ (is_tensor=[True, False]) for the
+# in-place integral path with a python-scalar `other`.
+@pointwise_dynamic(
+    is_tensor=[True, False],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=config_inplace_,
+)
+@triton.jit
+def greater_equal_func_scalar_(x, y):
+    t = (y - x) * 1.0e30
+    t = tl.maximum(0.0, t)
+    t = tl.minimum(1.0, t)
+    return 1.0 - t
+
+
 def greater_equal_(A, B):
     logger.debug("GEMS_KUNLUNXIN GREATER_EQUAL_")
-    if A.device != B.device:
+    # `other` may be a python scalar, which has no `.device`.
+    if isinstance(B, torch.Tensor) and A.device != B.device:
         B = B.to(A.device)
-    greater_equal_func_(A, B, out0=A)
+    # greater_equal_.Tensor and greater_equal_.Scalar both land here, so the
+    # kernel has to be picked from the actual `other` type: the tensor kernel
+    # declares is_tensor=[True, True] and rejects a scalar operand.
+    tensor_other = isinstance(B, torch.Tensor)
+    if not A.dtype.is_floating_point:
+        # torch keeps the tensor dtype for an in-place integral compare, so the
+        # 0/1 result must land back in int8/uint8. The kernel body computes
+        # `y - x`, which the XPU backend cannot select for int8 (`Cannot select
+        # v64i8 = sub`), and a bool result stored into uint8 miscomputes, so run
+        # the arithmetic on fp32 and cast the 0/1 result back.
+        orig_dtype = A.dtype
+        a32 = A.to(torch.float32)
+        if tensor_other:
+            greater_equal_func_(a32, B.to(torch.float32), out0=a32)
+        else:
+            greater_equal_func_scalar_(a32, B, out0=a32)
+        A.copy_(a32.to(orig_dtype))
+        return A
+    if tensor_other:
+        greater_equal_func_(A, B, out0=A)
+    else:
+        greater_equal_func_scalar_(A, B, out0=A)
     return A
+
+
+# _FULL_CONFIG binds greater_equal_.Tensor / .Scalar to the generic
+# greater_equal_tensor_ / greater_equal_scalar_ (introduced by #8966).
+# SpecOpRegistrar resolves the live override by looking up the *original*
+# function's __name__ on the flag_gems module, and kunlunxin only exported
+# greater_equal_ -- the names never matched, so the ATen dispatch silently
+# fell back to the generic ALWAYS_BOOL compare kernel (~0.34 Gelem/s on XPU,
+# ~600x slower than the saturating fp arithmetic above). These aliases let
+# the ATen dispatcher pick up this override.
+greater_equal_tensor_ = greater_equal_
+greater_equal_scalar_ = greater_equal_

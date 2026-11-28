@@ -124,5 +124,11 @@ def lgamma_func(x):
 
 def lgamma_(A):
     logger.debug("GEMS_KUNLUNXIN LGAMMA_")
+    # In-place: integral inputs promote to float and cannot be written back
+    # (mirrors the generic implementation and native aten).
+    if not torch.is_floating_point(A):
+        raise RuntimeError(
+            f"result type Float can't be cast to the desired output type {A.dtype}"
+        )
     lgamma_func(A, out0=A)
     return A
