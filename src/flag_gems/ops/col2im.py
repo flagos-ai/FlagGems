@@ -186,7 +186,7 @@ def _parse_col2im_params(output_size, kernel_size, dilation, padding, stride):
     )
 
 
-def col2im(
+def _col2im_impl(
     input: torch.Tensor,
     output_size: List[int],
     kernel_size: List[int],
@@ -302,3 +302,37 @@ def col2im(
     )
 
     return output
+
+
+class Col2ImFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, output_size, kernel_size, dilation, padding, stride):
+        ctx.save_for_backward(input)
+        ctx.bwd_args = (output_size, kernel_size, dilation, padding, stride)
+        return _col2im_impl(input, output_size, kernel_size, dilation, padding, stride)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # ``aten::col2im`` has no standalone backward operator, so the gradient
+        # runs a Triton kernel from ``flag_gems.ops.col2im_backward``.
+        (input,) = ctx.saved_tensors
+        from flag_gems.ops.col2im_backward import col2im_backward
+
+        return (col2im_backward(grad_output, input, *ctx.bwd_args),) + (None,) * 5
+
+
+def col2im(
+    input: torch.Tensor,
+    output_size: List[int],
+    kernel_size: List[int],
+    dilation: List[int],
+    padding: List[int],
+    stride: List[int],
+) -> torch.Tensor:
+    """Combines an array of sliding local blocks into a large containing tensor."""
+    logger.debug("GEMS COL2IM")
+    if torch.is_grad_enabled() and input.requires_grad:
+        return Col2ImFunction.apply(
+            input, output_size, kernel_size, dilation, padding, stride
+        )
+    return _col2im_impl(input, output_size, kernel_size, dilation, padding, stride)

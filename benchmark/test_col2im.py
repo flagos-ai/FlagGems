@@ -81,3 +81,62 @@ def test_col2im():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+# (col shape, output_size, kernel_size, dilation, padding, stride)
+_COL2IM_BACKWARD_CASES = [
+    ((2, 9, 4), (4, 4), (3, 3), (1, 1), (0, 0), (1, 1)),
+    ((4, 9, 1024), (32, 32), (3, 3), (1, 1), (1, 1), (1, 1)),
+    ((2, 16, 3844), (128, 128), (4, 4), (2, 2), (1, 1), (2, 2)),
+    ((1, 9, 225), (32, 32), (3, 3), (1, 1), (0, 0), (2, 2)),
+]
+
+
+def col2im_backward_case_fn(case, dtype):
+    yield base.BenchmarkCasePlan(
+        shape={"input": list(case[0])},
+        params={},
+        builder_args=(case,),
+    )
+
+
+def col2im_backward_build_inputs_fn(plan, dtype, device):
+    (case,) = plan.builder_args
+    shape, *args = case
+    # ``self`` is the column tensor; ``grad_output`` carries the forward
+    # output's shape, so derive it from the forward itself.
+    inp = torch.randn(shape, dtype=dtype, device=device).requires_grad_(True)
+    grad_output = torch.randn(
+        torch.ops.aten.col2im(inp.detach(), *args).shape, dtype=dtype, device=device
+    )
+    return grad_output, inp, *args
+
+
+def col2im_backward_torch_op(grad_output, inp, *args):
+    inp = inp.detach().requires_grad_(True)
+    (ref_in_grad,) = torch.autograd.grad(
+        torch.ops.aten.col2im(inp, *args), inp, grad_output
+    )
+    return ref_in_grad
+
+
+class Col2ImBackwardBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = _COL2IM_BACKWARD_CASES
+        self.shape_desc = "(col shape, out, kernel, dilation, pad, stride)"
+
+    def set_more_shapes(self):
+        return []
+
+
+@pytest.mark.col2im_backward
+def test_col2im_backward():
+    bench = Col2ImBackwardBenchmark(
+        case_fn=col2im_backward_case_fn,
+        build_inputs_fn=col2im_backward_build_inputs_fn,
+        op_name="col2im_backward",
+        torch_op=col2im_backward_torch_op,
+        gems_op=flag_gems.col2im_backward,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()

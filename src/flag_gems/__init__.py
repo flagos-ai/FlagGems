@@ -1305,7 +1305,15 @@ _FULL_CONFIG = (
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("coalesce", coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
-    ("col2im", col2im),
+    # Autograd fallthrough: the Col2ImFunction wrapper owns the differentiable
+    # path. Without it the device-key override drops ATen's autograd formula
+    # and torch.col2im() takes the native backward.
+    (
+        "col2im",
+        col2im,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("col_indices", col_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col_indices_copy", col_indices_copy, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col_indices_copy.out", col_indices_copy_out, None, (AUTOGRAD_DISPATCH_KEY,)),
