@@ -155,3 +155,62 @@ def test_native_batch_norm_legit_no_stats_out():
         _native_batch_norm_legit_no_stats_out,
         _no_stats_out_input_fn,
     )
+
+
+def _backward_input_fn(shape, dtype, device):
+    """Forward-operand tuple used by the backward benchmark.
+
+    Mirrors ``_default_input_fn`` (training with running statistics) but keeps
+    ``running_mean``/``running_var`` out of the differentiable set: they are
+    buffers that ATen rejects as ``requires_grad`` inputs.
+    """
+    inp, weight, bias = _make_common_inputs(shape, dtype, device)
+    channels = shape[1]
+    running_mean = torch.zeros(channels, dtype=dtype, device=device)
+    running_var = torch.ones(channels, dtype=dtype, device=device)
+    yield inp, weight, bias, running_mean, running_var, True, 0.1, 1e-5
+
+
+class _NativeBatchNormLegitBackwardBenchmark(NormBenchmark):
+    """Time ``torch.autograd.grad`` of ``_native_batch_norm_legit``.
+
+    The forward returns ``(output, save_mean, save_invstd)``, so the generic
+    ``Benchmark._benchmark_callable`` cannot derive the upstream gradient from
+    the raw return value; this class takes the normalized output instead and
+    keeps the graph alive across repetitions.
+    """
+
+    def _benchmark_callable(self, op, *args, **kwargs):
+        out = op(*args, **kwargs)[0]
+        dout = torch.randn_like(out)
+        xs = [a for a in args if torch.is_tensor(a) and a.requires_grad]
+        return (
+            lambda: torch.autograd.grad(
+                (out,), xs, grad_outputs=(dout,), retain_graph=True
+            ),
+            xs,
+        )
+
+    def unpack_to_args_kwargs(self, input_tuple):
+        args, kwargs = super().unpack_to_args_kwargs(input_tuple)
+        # ``is_backward=True`` marks every floating tensor differentiable, but
+        # ATen rejects ``running_mean``/``running_var`` (positions 3 and 4) as
+        # ``requires_grad`` inputs; the normalized input and the affine
+        # parameters keep their gradient so the timed graph matches a real one.
+        for index in (3, 4):
+            if index < len(args) and torch.is_tensor(args[index]):
+                args[index].requires_grad_(False)
+        return args, kwargs
+
+
+@pytest.mark.native_batch_norm_legit_backward
+def test_native_batch_norm_legit_backward():
+    bench = _NativeBatchNormLegitBackwardBenchmark(
+        op_name="native_batch_norm_legit",
+        input_fn=_backward_input_fn,
+        torch_op=torch.ops.aten._native_batch_norm_legit.default,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(_native_batch_norm_legit)
+    bench.run()

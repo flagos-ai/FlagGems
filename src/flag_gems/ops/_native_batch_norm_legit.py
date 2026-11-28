@@ -16,6 +16,8 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
 from torch import Tensor
 
 from flag_gems.ops.batch_norm import batch_norm
@@ -41,6 +43,29 @@ def _native_batch_norm_legit(
     standard deviation used for normalization (i.e. ``1 / sqrt(var + eps)``).
     """
     logger.debug("GEMS _NATIVE_BATCH_NORM_LEGIT")
+
+    if (
+        torch.is_grad_enabled()
+        and running_mean is not None
+        and running_var is not None
+        and (
+            input.requires_grad
+            or (weight is not None and weight.requires_grad)
+            or (bias is not None and bias.requires_grad)
+        )
+    ):
+        # Reuse the same forward kernel so the saved statistics and the
+        # in-place running-stat update stay identical to the inference path.
+        return _NativeBatchNormLegitBackward.apply(
+            input,
+            weight,
+            bias,
+            running_mean,
+            running_var,
+            training,
+            momentum,
+            eps,
+        )
 
     output, save_mean, save_invstd = batch_norm(
         input,
@@ -141,3 +166,487 @@ def _native_batch_norm_legit_no_stats_out(
         eps,
     )
     return _copy_outputs(result, out, save_mean, save_invstd)
+
+
+# A padded per-channel tile up to this many lanes is handled by one program.
+FUSED_LIMIT = 16384
+# Reduction tile of the split path (one program per (b, tile)).
+SPLIT_TS = 8192
+# Preferred row width of the two-level reduction (fp32 inside, fp64 across rows).
+ROW_PREF = 128
+
+# MODE bit layout.  NDX/NDY are *requirements*, not stores: grad_input in
+# training needs both sums even when grad_weight/grad_bias are masked off.
+_M_TRAIN = 1
+_M_USEVAR = 2
+_M_HASW = 4
+_M_GWM = 8  # store grad_weight
+_M_GBM = 16  # store grad_bias
+_M_GIM = 32  # store grad_input
+_M_NDX = 64  # need sum(grad_output * x_hat)
+_M_NDY = 128  # need sum(grad_output)
+_M_FGI = 256  # split reduce: emit grad_input here (inference fusion)
+_M_ACC64 = 512  # accumulate channel sums with fp64 precision
+
+
+@triton.jit
+def _bn_fused(
+    go_p,
+    x_p,
+    mu_p,
+    vm_p,
+    w_p,
+    gw_p,
+    gb_p,
+    gi_p,
+    eps,
+    S: tl.constexpr,
+    C: tl.constexpr,
+    NB: tl.constexpr,
+    BLK: tl.constexpr,
+    INVN: tl.constexpr,
+    MODE: tl.constexpr,
+    ROW: tl.constexpr,
+):
+    train = (MODE % 2) == 1
+    usevar = ((MODE // 2) % 2) == 1
+    hasw = ((MODE // 4) % 2) == 1
+    gwm = ((MODE // 8) % 2) == 1
+    gbm = ((MODE // 16) % 2) == 1
+    gim = ((MODE // 32) % 2) == 1
+    ndx = ((MODE // 64) % 2) == 1
+    ndy = ((MODE // 128) % 2) == 1
+    acc64 = ((MODE // 512) % 2) == 1
+
+    c = tl.program_id(0)
+    # One flat axis sized to the channel, viewed as rows of ROW lanes.  The old
+    # [BP, TS] form padded B and S independently, so an 11264-element channel
+    # (B=16, S=704) launched 16x1024 = 16384 lanes.  Building the 2-D shape from
+    # aranges avoids tl.reshape, which demands a power-of-two element count.
+    f = tl.arange(0, BLK // ROW)[:, None] * ROW + tl.arange(0, ROW)[None, :]
+    mk = f < NB
+    # b = f // S with S constexpr is strength-reduced, not a true integer divide.
+    off = c * S + f + (f // S) * (S * (C - 1))
+
+    mu = tl.load(mu_p + c).to(tl.float32)
+    vm = tl.load(vm_p + c).to(tl.float32)
+    if usevar:
+        istd = 1.0 / tl.sqrt(vm + eps)
+    else:
+        istd = vm
+    if hasw:
+        w = tl.load(w_p + c).to(tl.float32)
+    else:
+        w = 1.0
+
+    g = tl.load(go_p + off, mask=mk, other=0.0).to(tl.float32)
+    if ndx:
+        xv = tl.load(x_p + off, mask=mk, other=0.0).to(tl.float32)
+        xh = (xv - mu) * istd
+    else:
+        xh = g
+    # Declared unconditionally: a name bound only inside a constexpr-guarded
+    # branch is unbound once that branch is unrolled away.  ACC64 is only needed
+    # when the output dtype can resolve fp64 precision: a fp16/bf16 result
+    # rounds at ~1e-3 relative, so the plain fp32 tree is already exact enough
+    # and the fp64 converts/adds (a cut-down pipe on this target) are wasted.
+    if acc64:
+        sdx = tl.zeros((1,), dtype=tl.float64)
+        sdy = tl.zeros((1,), dtype=tl.float64)
+        if ndy:
+            sdy += tl.sum(tl.sum(g, 1).to(tl.float64), 0)
+        if ndx:
+            sdx += tl.sum(tl.sum(g * xh, 1).to(tl.float64), 0)
+        sdxf = tl.sum(sdx, 0).to(tl.float32)
+        sdyf = tl.sum(sdy, 0).to(tl.float32)
+    else:
+        sdxf = 0.0
+        sdyf = 0.0
+        if ndy:
+            sdyf = tl.sum(tl.sum(g, 1), 0)
+        if ndx:
+            sdxf = tl.sum(tl.sum(g * xh, 1), 0)
+    if gwm:
+        tl.store(gw_p + c, sdxf)
+    if gbm:
+        tl.store(gb_p + c, sdyf)
+
+    if gim:
+        if train:
+            r = (istd * w) * (g - (sdxf * xh + sdyf) * INVN)
+        else:
+            r = (istd * w) * g
+        tl.store(gi_p + off, r, mask=mk)
+
+
+@triton.jit
+def _bn_red(
+    go_p,
+    x_p,
+    mu_p,
+    vm_p,
+    w_p,
+    pdy_p,
+    pdx_p,
+    gi_p,
+    eps,
+    S: tl.constexpr,
+    C: tl.constexpr,
+    TS: tl.constexpr,
+    NS: tl.constexpr,
+    NT: tl.constexpr,
+    MODE: tl.constexpr,
+    ROW: tl.constexpr,
+):
+    usevar = ((MODE // 2) % 2) == 1
+    hasw = ((MODE // 4) % 2) == 1
+    ndx = ((MODE // 64) % 2) == 1
+    ndy = ((MODE // 128) % 2) == 1
+    fgi = ((MODE // 256) % 2) == 1
+    acc64 = ((MODE // 512) % 2) == 1
+
+    c = tl.program_id(0)
+    p = tl.program_id(1)
+    b = p // NS
+    t = p - b * NS
+    slot = c * NT + p
+    base = b * (C * S) + c * S + t * TS
+
+    r = tl.arange(0, TS // ROW)[:, None]
+    col = tl.arange(0, ROW)[None, :]
+    mk = t * TS + r * ROW + col < S
+    off = base + r * ROW + col
+
+    g = tl.load(go_p + off, mask=mk, other=0.0).to(tl.float32)
+    # Derived unconditionally: a value bound only inside a constexpr-guarded
+    # branch is not visible after the branch is unrolled away.
+    mu = tl.load(mu_p + c).to(tl.float32)
+    vm = tl.load(vm_p + c).to(tl.float32)
+    if usevar:
+        istd = 1.0 / tl.sqrt(vm + eps)
+    else:
+        istd = vm
+    if fgi:
+        if hasw:
+            w = tl.load(w_p + c).to(tl.float32)
+        else:
+            w = 1.0
+        tl.store(gi_p + off, g * (istd * w), mask=mk)
+    if ndy:
+        # The partial buffers are fp64, so only the in-tile tree width varies:
+        # a fp16/bf16 output cannot resolve fp64 precision, so it keeps fp32.
+        if acc64:
+            tl.store(pdy_p + slot, tl.sum(tl.sum(g, 1).to(tl.float64), 0))
+        else:
+            tl.store(pdy_p + slot, tl.sum(tl.sum(g, 1), 0).to(tl.float64))
+    if ndx:
+        xv = tl.load(x_p + off, mask=mk, other=0.0).to(tl.float32)
+        px = g * ((xv - mu) * istd)
+        if acc64:
+            tl.store(pdx_p + slot, tl.sum(tl.sum(px, 1).to(tl.float64), 0))
+        else:
+            tl.store(pdx_p + slot, tl.sum(tl.sum(px, 1), 0).to(tl.float64))
+
+
+@triton.jit
+def _bn_apply(
+    go_p,
+    x_p,
+    mu_p,
+    vm_p,
+    w_p,
+    pdy_p,
+    pdx_p,
+    gw_p,
+    gb_p,
+    gi_p,
+    S: tl.constexpr,
+    C: tl.constexpr,
+    TS: tl.constexpr,
+    NS: tl.constexpr,
+    NT: tl.constexpr,
+    PB: tl.constexpr,
+    INVN: tl.constexpr,
+    MODE: tl.constexpr,
+):
+    hasw = ((MODE // 4) % 2) == 1
+    gwm = ((MODE // 8) % 2) == 1
+    gbm = ((MODE // 16) % 2) == 1
+    gim = ((MODE // 32) % 2) == 1
+    ndx = ((MODE // 64) % 2) == 1
+    ndy = ((MODE // 128) % 2) == 1
+
+    c = tl.program_id(0)
+    p = tl.program_id(1)
+
+    sdx = 0.0
+    sdy = 0.0
+    if ndx or ndy:
+        slots = c * NT + tl.arange(0, PB)
+        pm = tl.arange(0, PB) < NT
+        if ndx:
+            sdx = tl.sum(tl.load(pdx_p + slots, mask=pm, other=0.0), 0).to(tl.float32)
+        if ndy:
+            sdy = tl.sum(tl.load(pdy_p + slots, mask=pm, other=0.0), 0).to(tl.float32)
+        if p == 0:
+            if gwm:
+                tl.store(gw_p + c, sdx)
+            if gbm:
+                tl.store(gb_p + c, sdy)
+
+    if gim:
+        b = p // NS
+        t = p - b * NS
+        mu = tl.load(mu_p + c).to(tl.float32)
+        istd = tl.load(vm_p + c).to(tl.float32)
+        if hasw:
+            w = tl.load(w_p + c).to(tl.float32)
+        else:
+            w = 1.0
+        off = b * (C * S) + c * S + t * TS + tl.arange(0, TS)
+        mk = t * TS + tl.arange(0, TS) < S
+        g = tl.load(go_p + off, mask=mk, other=0.0).to(tl.float32)
+        xv = tl.load(x_p + off, mask=mk, other=0.0).to(tl.float32)
+        res = (istd * w) * (g - (sdx * ((xv - mu) * istd) + sdy) * INVN)
+        tl.store(gi_p + off, res, mask=mk)
+
+
+@triton.jit
+def _bn_fin(
+    pdy_p,
+    pdx_p,
+    gw_p,
+    gb_p,
+    NT: tl.constexpr,
+    PB: tl.constexpr,
+    MODE: tl.constexpr,
+):
+    gwm = ((MODE // 8) % 2) == 1
+    gbm = ((MODE // 16) % 2) == 1
+    c = tl.program_id(0)
+    slots = c * NT + tl.arange(0, PB)
+    pm = tl.arange(0, PB) < NT
+    if gwm:
+        tl.store(
+            gw_p + c,
+            tl.sum(tl.load(pdx_p + slots, mask=pm, other=0.0), 0).to(tl.float32),
+        )
+    if gbm:
+        tl.store(
+            gb_p + c,
+            tl.sum(tl.load(pdy_p + slots, mask=pm, other=0.0), 0).to(tl.float32),
+        )
+
+
+def _make_plan(shape, dt, train, has_w, gw_mask, gb_mask, gi_mask):
+    """Resolve every value that depends only on the call geometry."""
+    b_dim = shape[0]
+    c_dim = shape[1]
+    s_dim = 1
+    for d in shape[2:]:
+        s_dim *= d
+    n = b_dim * s_dim
+    ndx = train or gw_mask
+    ndy = train or gb_mask
+    # Accumulation width is set by how many terms the undivided sums add, not by
+    # the output dtype: rounding error grows like sqrt(N), and N is what decides
+    # whether an fp32 tree can still resolve the reference.  R2 measured that a
+    # pure fp32 tree is sufficient for every narrow channel (N <= 16384) at fp32
+    # output precision, and insufficient only for the 1.3M element wide channel.
+    # fp16/bf16 outputs round at ~1e-3 relative, so they never need fp64.
+    acc64 = (dt == torch.float32) and (n > FUSED_LIMIT)
+    mode = (
+        (_M_TRAIN if train else 0)
+        | (0 if train else _M_USEVAR)
+        | (_M_HASW if has_w else 0)
+        | (_M_GWM if gw_mask else 0)
+        | (_M_GBM if gb_mask else 0)
+        | (_M_GIM if gi_mask else 0)
+        | (_M_NDX if ndx else 0)
+        | (_M_NDY if ndy else 0)
+        | (_M_ACC64 if acc64 else 0)
+    )
+    if n <= FUSED_LIMIT:
+        # One flat, exactly-sized tile per channel: only the channel extent is
+        # padded (<=2x), instead of padding B and S independently.
+        blk = max(ROW_PREF, 1 << (n - 1).bit_length())
+        row = min(ROW_PREF, blk)
+        nw = 4 if blk <= 2048 else (8 if blk <= 8192 else 16)
+        return (0, c_dim, c_dim, nw, (s_dim, c_dim, n, blk, 1.0 / n, mode, row), None)
+
+    # Bound the number of (batch, tile) programs. ``ts`` can only shrink the
+    # spatial tile count, so a large batch alone must also grow ``ts``; stop when
+    # the tile covers the whole spatial extent.
+    ts = SPLIT_TS
+    while b_dim * -(-s_dim // ts) > 1024 and ts < s_dim:
+        ts <<= 1
+    row = ROW_PREF if ts >= ROW_PREF else ts
+    ns = -(-s_dim // ts)
+    nt = b_dim * ns
+    pb = triton.next_power_of_2(nt)
+    rmode = mode
+    if (not train) and gi_mask:
+        rmode |= _M_FGI
+    rconsts = (s_dim, c_dim, ts, ns, nt, rmode, row)
+    if train and gi_mask:
+        aconsts = (s_dim, c_dim, ts, ns, nt, pb, 1.0 / n, mode)
+        return (1, c_dim, nt, 8, rconsts, aconsts)
+    if gw_mask or gb_mask:
+        return (2, c_dim, nt, 8, rconsts, (nt, pb, mode))
+    return (3, c_dim, nt, 8, rconsts, None)
+
+
+def _restore_layout(grad, like):
+    """Return ``grad`` as ATen would: the caller's dense memory format."""
+    if grad is None or like is None:
+        return grad
+    if like.ndim == 4 and like.is_contiguous(memory_format=torch.channels_last):
+        return grad.to(memory_format=torch.channels_last)
+    return grad
+
+
+_PLANS = {}
+
+
+def _bn_legit_bwd_run(
+    grad_output,
+    input,
+    weight,
+    running_mean,
+    running_var,
+    save_mean,
+    save_invstd,
+    training,
+    eps,
+    output_mask=None,
+):
+    if output_mask is None:
+        output_mask = (True, weight is not None, True)
+    has_w = weight is not None
+    train = bool(training)
+    gw_mask = bool(output_mask[1]) and has_w
+    gb_mask = bool(output_mask[2])
+    gi_mask = bool(output_mask[0])
+
+    # The kernels address row-major [B, C, S] planes, so a non-row-major caller
+    # layout is materialized once. ATen keeps the caller's dense memory format for
+    # the gradient, which is restored after the kernels have written it.
+    out_layout = input
+    if not input.is_contiguous(memory_format=torch.contiguous_format):
+        input = input.contiguous()
+    if not grad_output.is_contiguous():
+        grad_output = grad_output.contiguous()
+
+    shape = input.shape
+    key = (shape, input.dtype, train, has_w, gw_mask, gb_mask, gi_mask)
+    plan = _PLANS.get(key)
+    if plan is None:
+        plan = _make_plan(shape, input.dtype, train, has_w, gw_mask, gb_mask, gi_mask)
+        _PLANS[key] = plan
+    kind, g0, g1, nw, rconsts, aconsts = plan
+
+    dev = input.device
+    dt = input.dtype
+    c_dim = shape[1]
+    gw = torch.empty(c_dim, dtype=dt, device=dev) if gw_mask else None
+    gb = torch.empty(c_dim, dtype=dt, device=dev) if gb_mask else None
+    # ATen allocates the input gradient in the input's dense memory format, so a
+    # channels-last input keeps its channels-last gradient.
+    # The kernels address a contiguous [B, C, S] plane, so a non-row-major caller
+    # layout is computed in a contiguous buffer and copied into place below.
+    gi = torch.empty_like(input) if gi_mask else None
+
+    mu = save_mean if train else running_mean
+    vm = save_invstd if train else running_var
+    ph = mu  # harmless placeholder pointer for masked-off arguments
+    wp = weight if has_w else ph
+    gwp = gw if gw is not None else ph
+    gbp = gb if gb is not None else ph
+    gip = gi if gi is not None else ph
+
+    if kind == 0:
+        _bn_fused[(g0,)](
+            grad_output, input, mu, vm, wp, gwp, gbp, gip, eps, *rconsts, num_warps=nw
+        )
+        return _restore_layout(gi, out_layout), gw, gb
+
+    pdy = torch.empty(c_dim * g1, dtype=torch.float64, device=dev)
+    pdx = torch.empty(c_dim * g1, dtype=torch.float64, device=dev)
+    _bn_red[(g0, g1)](
+        grad_output, input, mu, vm, wp, pdy, pdx, gip, eps, *rconsts, num_warps=nw
+    )
+    if aconsts is not None:
+        if kind == 1:
+            _bn_apply[(g0, g1)](
+                grad_output,
+                input,
+                mu,
+                vm,
+                wp,
+                pdy,
+                pdx,
+                gwp,
+                gbp,
+                gip,
+                *aconsts,
+                num_warps=nw,
+            )
+        else:
+            _bn_fin[(g0,)](pdy, pdx, gwp, gbp, *aconsts, num_warps=4)
+    return _restore_layout(gi, out_layout), gw, gb
+
+
+class _NativeBatchNormLegitBackward(torch.autograd.Function):
+    """Autograd entry for ``_native_batch_norm_legit``."""
+
+    @staticmethod
+    def forward(
+        ctx,
+        input: Tensor,
+        weight,
+        bias,
+        running_mean: Tensor,
+        running_var: Tensor,
+        training: bool,
+        momentum: float,
+        eps: float,
+    ):
+        output, save_mean, save_invstd = batch_norm(
+            input,
+            weight=weight,
+            bias=bias,
+            running_mean=running_mean,
+            running_var=running_var,
+            training=training,
+            momentum=momentum,
+            eps=eps,
+        )
+        ctx.save_for_backward(
+            input,
+            weight,
+            save_mean if training else running_mean,
+            save_invstd if training else running_var,
+        )
+        ctx.training = training
+        ctx.eps = eps
+        ctx.mark_non_differentiable(save_mean, save_invstd)
+        return output, save_mean, save_invstd
+
+    @staticmethod
+    @torch.autograd.function.once_differentiable
+    def backward(ctx, grad_output, grad_save_mean, grad_save_invstd):
+        input, weight, mean, inv_std = ctx.saved_tensors
+        needs_input, needs_weight, needs_bias = ctx.needs_input_grad[:3]
+        input_grad, weight_grad, bias_grad = _bn_legit_bwd_run(
+            grad_output,
+            input,
+            weight,
+            mean if not ctx.training else None,
+            inv_std if not ctx.training else None,
+            mean if ctx.training else None,
+            inv_std if ctx.training else None,
+            ctx.training,
+            ctx.eps,
+            [needs_input, needs_weight, needs_bias],
+        )
+        return input_grad, weight_grad, bias_grad, None, None, None, None, None
