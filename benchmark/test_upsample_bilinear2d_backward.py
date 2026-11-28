@@ -42,8 +42,11 @@ DTYPES = [
     pytest.param(
         torch.float64,
         marks=pytest.mark.skipif(
-            flag_gems.vendor_name in ("ascend", "mthreads", "iluvatar"),
-            reason="FP64 arithmetic unavailable on Iluvatar; native backward rejects FP64 on Ascend/MUSA",
+            flag_gems.vendor_name in ("ascend", "mthreads", "iluvatar", "enflame"),
+            reason=(
+                "FP64 arithmetic unavailable on Iluvatar/enflame; native backward "
+                "rejects FP64 on Ascend/MUSA"
+            ),
         ),
     ),
     torch.float16,

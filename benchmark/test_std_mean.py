@@ -80,6 +80,19 @@ def _dtype_parameters(variant, *, named=False):
                     ),
                 )
             )
+            # The enflame GCU aten std_mean kernels reject complex outputs
+            # ("Complex output is not supported yet"), so the native baseline
+            # of this benchmark cannot be timed for any complex dtype. Skip the
+            # case instead of reporting a failure that no kernel change can fix.
+            parameter_marks.append(
+                pytest.mark.skipif(
+                    flag_gems.vendor_name == "enflame",
+                    reason=(
+                        "the enflame native std_mean baseline cannot produce "
+                        "complex output"
+                    ),
+                )
+            )
         if dtype == torch.float64:
             parameter_marks.append(
                 pytest.mark.skipif(

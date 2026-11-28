@@ -13,9 +13,38 @@ from flag_gems.utils import triton_lang_extension as ext
 logger = logging.getLogger(__name__)
 
 
+def _prune_addbmm_configs(configs, named_args, **kwargs):
+    """Trim the autotune space to the candidates that can win for this shape.
+
+    Two regions are trimmed:
+
+    * ``N == 1`` or tiny ``K``: only the 64-wide K tile lowers within the dsm
+      budget (a single output column needs 1.9 MB for a 128/256-wide K tile
+      against the 917504-byte limit), and a K tile far wider than K only adds
+      staging pressure to a loop that runs once.
+    * saturated shapes: a 64-row tile only pays off while it raises the program
+      count, so on big grids it just adds a candidate the tuner can mis-pick.
+    """
+    M = named_args.get("M", 0)
+    N = named_args.get("N", 0)
+    K = named_args.get("K", 0)
+    if N <= 1 or K < 128:
+        narrowed = [config for config in configs if config.kwargs["BLOCK_SIZE_K"] <= 64]
+        return narrowed or configs
+    if M >= 512 and N >= 512:
+        tall = [config for config in configs if config.kwargs["BLOCK_SIZE_M"] >= 128]
+        return tall or configs
+    return configs
+
+
 @libentry()
 @triton.autotune(
-    configs=runtime.get_tuned_config("addmm"),
+    # Dedicated "addbmm" space: the shared "addmm" list carries 9 candidates,
+    # two of which are unusable here (256x256x256 exceeds the dsm memory limit,
+    # 32x32x32 is up to 65x slower), so reusing it made the tuning pass the
+    # dominant cost of every benchmark case.
+    configs=runtime.get_tuned_config("addbmm"),
+    prune_configs_by={"early_config_prune": _prune_addbmm_configs},
     key=["M", "N", "K"],
 )
 @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -105,7 +134,7 @@ def addbmm_kernel(
 
 
 def addbmm(bias, batch1, batch2, beta=1.0, alpha=1.0):
-    logger.debug("GEMS_ENFLAME_GCU400 ADDBMM")
+    logger.debug("GEMS_ENFLAME ADDBMM")
 
     assert batch1.ndim == 3 and batch2.ndim == 3, "batch1 and batch2 must be 3D"
     assert bias.ndim == 2, "bias must be 2D"
@@ -156,7 +185,7 @@ def addbmm(bias, batch1, batch2, beta=1.0, alpha=1.0):
 
 
 def addbmm_(bias, batch1, batch2, beta=1.0, alpha=1.0):
-    logger.debug("GEMS_ENFLAME_GCU400 ADDBMM_")
+    logger.debug("GEMS_ENFLAME ADDBMM_")
 
     assert batch1.ndim == 3 and batch2.ndim == 3, "batch1 and batch2 must be 3D"
     assert bias.ndim == 2, "bias must be 2D"

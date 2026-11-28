@@ -30,7 +30,7 @@ def expand_copy(x: torch.Tensor, size) -> torch.Tensor:
     Wrapper for aten::expand_copy
     Creates and returns a copy of x with the given size, broadcasting as needed.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 EXPAND_COPY")
+    logger.debug("GEMS_ENFLAME EXPAND_COPY")
 
     # Convert size to tuple and handle -1 (meaning keep original size)
     size_tuple = tuple(-1 if s is None else s for s in size)

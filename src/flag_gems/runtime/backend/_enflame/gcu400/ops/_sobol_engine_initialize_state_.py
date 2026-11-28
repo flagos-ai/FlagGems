@@ -254,7 +254,7 @@ def _sobol_engine_initialize_state_(state: torch.Tensor, dimension: int):
     - For larger dimensions, falls back to CPU computation
     - Native PyTorch implementation supports up to 21111 dimensions
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _SOBOL_ENGINE_INITIALIZE_STATE_")
+    logger.debug("GEMS_ENFLAME _SOBOL_ENGINE_INITIALIZE_STATE_")
 
     assert state.dim() == 2, f"Expected 2D tensor, got {state.dim()}D"
     assert (

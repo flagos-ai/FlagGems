@@ -34,6 +34,13 @@ class _NansumBenchmark(base.UnaryReductionBenchmark):
                 yield x, 1
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::nansum has no usable GCU kernel; the native call SIGSEGVs, "
+        "so there is no native baseline to time"
+    ),
+)
 @pytest.mark.nansum
 def test_benchmark_nansum():
     bench = _NansumBenchmark(

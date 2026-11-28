@@ -21,7 +21,7 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -55,12 +55,15 @@ def batch_norm_gather_stats_kernel(
     mean_vals = tl.load(mean_ptr + seg_offsets * C + c, mask=mask, other=0.0).to(
         tl.float32
     )
-    invstd_vals = tl.load(invstd_ptr + seg_offsets * C + c, mask=mask, other=0.0).to(
+    # other=1.0 keeps masked (non-power-of-two) segment lanes finite; the tl.where
+    # below then drops their contribution, since this op has no per-segment count
+    # weight that would zero them out (unlike batch_norm_gather_stats_with_counts).
+    invstd_vals = tl.load(invstd_ptr + seg_offsets * C + c, mask=mask, other=1.0).to(
         tl.float32
     )
 
     # Compute per-segment variance: var_i = 1/(invstd_i^2) - eps
-    var_vals = 1.0 / (invstd_vals * invstd_vals) - eps
+    var_vals = tl.where(mask, 1.0 / (invstd_vals * invstd_vals) - eps, 0.0)
 
     # Global mean = mean of per-segment means
     inv_num_segments = 1.0 / num_segments
@@ -70,7 +73,8 @@ def batch_norm_gather_stats_kernel(
     # global_var = mean(var_i) + mean((mean_i - global_mean)^2)
     mean_var = tl.sum(var_vals, axis=0) * inv_num_segments
     diff = mean_vals - global_mean
-    mean_sq_diff = tl.sum(diff * diff, axis=0) * inv_num_segments
+    diff_sq = tl.where(mask, diff * diff, 0.0)
+    mean_sq_diff = tl.sum(diff_sq, axis=0) * inv_num_segments
     global_var = mean_var + mean_sq_diff
 
     # Global invstd
@@ -91,6 +95,67 @@ def batch_norm_gather_stats_kernel(
         tl.store(running_var_ptr + c, new_rv)
 
 
+@libentry()
+@triton.jit
+def batch_norm_gather_stats_tiled_kernel(
+    mean_ptr,
+    invstd_ptr,
+    running_mean_ptr,
+    running_var_ptr,
+    out_mean_ptr,
+    out_invstd_ptr,
+    num_segments: tl.constexpr,
+    C: tl.constexpr,
+    momentum,
+    eps,
+    has_running_mean: tl.constexpr,
+    BLOCK_SEGMENTS: tl.constexpr,
+    BLOCK_C: tl.constexpr,
+):
+    # Each program handles a BLOCK_C-wide slice of channels with channel-
+    # contiguous loads; used for large C where a one-channel-per-program grid
+    # would serialize across multiple waves.
+    pid = tl.program_id(0)
+    c_off = pid * BLOCK_C + tl.arange(0, BLOCK_C)
+    c_mask = c_off < C
+    seg_off = tl.arange(0, BLOCK_SEGMENTS)
+    seg_mask = seg_off < num_segments
+    tile_mask = seg_mask[:, None] & c_mask[None, :]
+
+    mean_t = tl.load(
+        mean_ptr + seg_off[:, None] * C + c_off[None, :], mask=tile_mask, other=0.0
+    ).to(tl.float32)
+    # other=1.0 keeps masked (non-power-of-two) segment lanes finite; the
+    # tl.where below then drops their contribution (no count weight here).
+    invstd_t = tl.load(
+        invstd_ptr + seg_off[:, None] * C + c_off[None, :], mask=tile_mask, other=1.0
+    ).to(tl.float32)
+
+    inv_num_segments = 1.0 / num_segments
+    var_t = tl.where(seg_mask[:, None], 1.0 / (invstd_t * invstd_t) - eps, 0.0)
+    global_mean = tl.sum(mean_t, axis=0) * inv_num_segments
+    mean_var = tl.sum(var_t, axis=0) * inv_num_segments
+    diff = mean_t - global_mean[None, :]
+    diff_sq = tl.where(seg_mask[:, None], diff * diff, 0.0)
+    mean_sq_diff = tl.sum(diff_sq, axis=0) * inv_num_segments
+    global_var = mean_var + mean_sq_diff
+    global_invstd = 1.0 / tl.sqrt(global_var + eps)
+
+    tl.store(out_mean_ptr + c_off, global_mean, mask=c_mask)
+    tl.store(out_invstd_ptr + c_off, global_invstd, mask=c_mask)
+
+    if has_running_mean:
+        old_rm = tl.load(running_mean_ptr + c_off, mask=c_mask, other=0.0).to(
+            tl.float32
+        )
+        new_rm = (1.0 - momentum) * old_rm + momentum * global_mean
+        tl.store(running_mean_ptr + c_off, new_rm, mask=c_mask)
+
+        old_rv = tl.load(running_var_ptr + c_off, mask=c_mask, other=0.0).to(tl.float32)
+        new_rv = (1.0 - momentum) * old_rv + momentum * global_var
+        tl.store(running_var_ptr + c_off, new_rv, mask=c_mask)
+
+
 def batch_norm_gather_stats(
     input: Tensor,
     mean: Tensor,
@@ -101,7 +166,7 @@ def batch_norm_gather_stats(
     eps: float,
     count: int,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 BATCH_NORM_GATHER_STATS")
+    logger.debug("GEMS_ENFLAME BATCH_NORM_GATHER_STATS")
 
     num_segments = mean.shape[0]
     C = mean.shape[1]
@@ -119,64 +184,50 @@ def batch_norm_gather_stats(
     running_mean_ptr = running_mean if has_running_mean else out_mean
     running_var_ptr = running_var if has_running_mean else out_invstd
 
-    grid = (C,)
-
-    with torch_device_fn.device(input.device):
-        batch_norm_gather_stats_kernel[grid](
-            mean,
-            invstd,
-            running_mean_ptr,
-            running_var_ptr,
-            out_mean,
-            out_invstd,
-            num_segments=num_segments,
-            C=C,
-            momentum=momentum,
-            eps=eps,
-            has_running_mean=has_running_mean,
-            BLOCK_SEGMENTS=BLOCK_SEGMENTS,
-        )
+    # GCU400/L600 runs up to 48 programs in one wave. Within a single wave the
+    # one-channel-per-program grid is fastest at num_warps=1; beyond it, the
+    # tiled kernel keeps the grid within one wave with coalesced channel loads.
+    if C <= 48:
+        grid = (C,)
+        with torch_device_fn.device(input.device):
+            batch_norm_gather_stats_kernel[grid](
+                mean,
+                invstd,
+                running_mean_ptr,
+                running_var_ptr,
+                out_mean,
+                out_invstd,
+                num_segments=num_segments,
+                C=C,
+                momentum=momentum,
+                eps=eps,
+                has_running_mean=has_running_mean,
+                BLOCK_SEGMENTS=BLOCK_SEGMENTS,
+                num_warps=1,
+            )
+    else:
+        BLOCK_C = 16
+        grid = (triton.cdiv(C, BLOCK_C),)
+        with torch_device_fn.device(input.device):
+            batch_norm_gather_stats_tiled_kernel[grid](
+                mean,
+                invstd,
+                running_mean_ptr,
+                running_var_ptr,
+                out_mean,
+                out_invstd,
+                num_segments=num_segments,
+                C=C,
+                momentum=momentum,
+                eps=eps,
+                has_running_mean=has_running_mean,
+                BLOCK_SEGMENTS=BLOCK_SEGMENTS,
+                BLOCK_C=BLOCK_C,
+                num_warps=1,
+            )
 
     return out_mean, out_invstd
 
 
-def _install_aten_kernels():
-    """Route bare aten::batch_norm_gather_stats calls on GCU onto this kernel.
-
-    torch_gcu ships no native kernel for aten::batch_norm_gather_stats: the
-    PrivateUse1 slot is the aten_cpu_fallback shim, and the op has no CPU
-    implementation either (it is CUDA-only in ATen), so a bare
-    ``torch.batch_norm_gather_stats(..., device="gcu")`` -- both legs of the
-    accuracy suite's test -- dies with ``NotImplementedError: Could not run
-    'aten::batch_norm_gather_stats' with arguments from the 'CPU' backend``.
-    Registering the op on the backend dispatch key here makes those calls land
-    on this kernel, which is exactly what production already sees inside
-    ``flag_gems.use_gems()``.
-
-    Idempotent: a later ``use_gems()``/``enable()`` cycle re-attempts the same
-    registration through the general registrar and is skipped with a warning.
-    """
-    try:
-        dispatch_key = runtime.device.dispatch_key
-        library = torch.library.Library("aten", "IMPL")
-        for op_name, kernel in (("batch_norm_gather_stats", batch_norm_gather_stats),):
-            try:
-                library.impl(op_name, kernel, dispatch_key)
-            except RuntimeError as error:
-                logger.warning(
-                    "batch_norm_gather_stats: aten registration %s@%s skipped: %s",
-                    op_name,
-                    dispatch_key,
-                    error,
-                )
-        return library
-    except Exception as error:
-        logger.warning(
-            "batch_norm_gather_stats: aten registration unavailable: %s", error
-        )
-        return None
-
-
 # Module-level handle keeps the Library (and its kernels) alive for the
 # process; the registration itself must never break the flag_gems import.
-_BATCH_NORM_GATHER_STATS_ATEN_LIBRARY = _install_aten_kernels()

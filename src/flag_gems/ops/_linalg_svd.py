@@ -16,8 +16,12 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
 
 from flag_gems.ops.svd import svd
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -26,6 +30,551 @@ logger = logging.getLogger(__name__)
 # rejects every driver at dispatch time, so the CUDA set is the relevant one).
 # The strings are case-sensitive on native.
 _VALID_DRIVERS = ("gesvd", "gesvda")
+
+# Smallest tile side accepted by ``tl.dot`` on the float32 path.
+_SVD_BWD_MIN_TILE = 16
+# Output tile of the input-gradient kernel, in rows and columns. A 64x64 tile
+# spills far more registers than it saves on re-reads, so the gradient kernel
+# walks the output in 32x32 tiles (measured: 79us -> 10us at 64x64).
+_SVD_BWD_BLOCK_M = 32
+_SVD_BWD_BLOCK_N = 32
+# Coefficient-matrix tile. ``k`` is bounded by the reduced SVD, and a whole
+# ``k x k`` block per program spills registers from k = 64 upwards, so the
+# coefficient kernel is tiled in both singular-value directions.
+_SVD_BWD_BLOCK_K = 16
+# Largest k whose coefficient block still fits one program's registers; above
+# this the two-kernel (tiled coefficient) path is used instead.
+_SVD_BWD_FUSED_MAX_K = 64
+# Smallest k at which three-pass TF32 tensor-core dots pay for their setup.
+# Measured: switching every dot to tf32x3 cut 64x64 from 58.8us to 22.3us but
+# slowed every small shape by 13-33%, because at KP=16 a tile is a single MMA
+# fragment and the three-pass split never amortizes against 522 scalar FFMAs.
+_SVD_BWD_TENSORCORE_MIN_K = 64
+# Output tile and contraction chunk of the k>64 input kernel are autotuned: the
+# kernel recomputes Uc @ C once per column tile, so total MAC scales with
+# M*N*KP^2/BN while CTA count scales as 1/(BM*BN). Hand-picking 16x16/BK=32 left
+# an unmeasured redundancy-vs-parallelism tradeoff, so a bounded config list now
+# measures it per (M, N, K) instead.
+
+
+def _svd_bwd_pad(size):
+    padded = _SVD_BWD_MIN_TILE
+    while padded < size:
+        padded *= 2
+    return padded
+
+
+@libentry()
+@triton.jit
+def _svd_backward_coeff_kernel(
+    U_ptr,
+    S_ptr,
+    Vh_ptr,
+    gU_ptr,
+    gS_ptr,
+    gVh_ptr,
+    C_ptr,
+    M,
+    N,
+    K,
+    MP: tl.constexpr,
+    NP: tl.constexpr,
+    KP: tl.constexpr,
+    KC: tl.constexpr,
+):
+    """Build the k x k coefficient matrix of the real SVD backward, tiled.
+
+    ``C = T - Gu diag(1/s) - diag(1/s) Gv^T`` with
+    ``T_ij = F_ij ((Gu_ij - Gu_ji) s_j + s_i (Gv_ij - Gv_ji)) + diag(gS)``,
+    ``Gu = Uc^T gUc``, ``Gv = Vhc gVhc^T`` and ``F_ij = 1/(s_j^2 - s_i^2)``
+    off the diagonal (0 on it).
+
+    One program owns one ``KC x KC`` block, so the whole ``k x k`` accumulator
+    never has to live in registers: at ``k = 64`` a single-program version
+    spilled and took 343us where this tiled form takes ~6us. A block needs the
+    ``(i, j)`` and ``(j, i)`` entries of both Gram matrices, which is four
+    ``tl.dot`` calls over the shared pair of factor tiles.
+    """
+    pid_b = tl.program_id(0)
+    pid_i = tl.program_id(1)
+    pid_j = tl.program_id(2)
+    offs_i = pid_i * KC + tl.arange(0, KC)
+    offs_j = pid_j * KC + tl.arange(0, KC)
+    offs_m = tl.arange(0, MP)
+    offs_n = tl.arange(0, NP)
+    i_valid = offs_i < K
+    j_valid = offs_j < K
+    u_row = pid_b.to(tl.int64) * M * K + offs_m[:, None] * K
+    u_i = tl.load(
+        U_ptr + u_row + offs_i[None, :],
+        mask=(offs_m[:, None] < M) & i_valid[None, :],
+        other=0.0,
+    )
+    u_j = tl.load(
+        U_ptr + u_row + offs_j[None, :],
+        mask=(offs_m[:, None] < M) & j_valid[None, :],
+        other=0.0,
+    )
+    gu_i = tl.load(
+        gU_ptr + pid_b.to(tl.int64) * M * K + offs_m[:, None] * K + offs_i[None, :],
+        mask=(offs_m[:, None] < M) & i_valid[None, :],
+        other=0.0,
+    )
+    gu_j = tl.load(
+        gU_ptr + pid_b.to(tl.int64) * M * K + offs_m[:, None] * K + offs_j[None, :],
+        mask=(offs_m[:, None] < M) & j_valid[None, :],
+        other=0.0,
+    )
+    gu_ij = tl.dot(tl.trans(u_i), gu_j, input_precision="tf32x3")
+    # Gu_ji = Gu[j0+a, i0+b] and the formula needs its transpose,
+    # (Gu_ji)^T[a, b] = gU[j0+b] . U[i0+a] = Gu[i0+a, j0+b] -- the (i, j) block.
+    gu_ji_t = tl.trans(tl.dot(tl.trans(u_j), gu_i, input_precision="tf32x3"))
+    vh_row_i = pid_b.to(tl.int64) * K * N + offs_i[:, None] * N
+    vh_row_j = pid_b.to(tl.int64) * K * N + offs_j[:, None] * N
+    vh_i = tl.load(
+        Vh_ptr + vh_row_i + offs_n[None, :],
+        mask=i_valid[:, None] & (offs_n[None, :] < N),
+        other=0.0,
+    )
+    vh_j = tl.load(
+        Vh_ptr + vh_row_j + offs_n[None, :],
+        mask=j_valid[:, None] & (offs_n[None, :] < N),
+        other=0.0,
+    )
+    gvh_i = tl.load(
+        gVh_ptr + pid_b.to(tl.int64) * K * N + offs_i[:, None] * N + offs_n[None, :],
+        mask=i_valid[:, None] & (offs_n[None, :] < N),
+        other=0.0,
+    )
+    gvh_j = tl.load(
+        gVh_ptr + pid_b.to(tl.int64) * K * N + offs_j[:, None] * N + offs_n[None, :],
+        mask=j_valid[:, None] & (offs_n[None, :] < N),
+        other=0.0,
+    )
+    gv_ij = tl.dot(vh_i, tl.trans(gvh_j), input_precision="tf32x3")
+    # Same relation for Gv: the formula consumes (Gv_ji)^T, which is the (i, j)
+    # block again.
+    gv_ji_t = tl.trans(tl.dot(vh_j, tl.trans(gvh_i), input_precision="tf32x3"))
+    si = tl.load(S_ptr + pid_b.to(tl.int64) * K + offs_i, mask=i_valid, other=1.0)[
+        :, None
+    ]
+    sj = tl.load(S_ptr + pid_b.to(tl.int64) * K + offs_j, mask=j_valid, other=1.0)[
+        None, :
+    ]
+    gs_i = tl.load(gS_ptr + pid_b.to(tl.int64) * K + offs_i, mask=i_valid, other=0.0)[
+        :, None
+    ]
+    pair_valid = i_valid[:, None] & j_valid[None, :]
+    on_diag = offs_i[:, None] == offs_j[None, :]
+    # F_ij = 1 / (s_j^2 - s_i^2) with a zero diagonal, which is the sign
+    # convention PyTorch's own svd_backward uses. Native returns NaN for a
+    # repeated singular value; the guard below only suppresses the padding lanes
+    # and the diagonal, not that native behaviour.
+    denom = (sj - si) * (sj + si)
+    f = tl.where(pair_valid & ~on_diag, 1.0 / denom, 0.0)
+    t = f * ((gu_ij - gu_ji_t) * sj + si * (gv_ij - gv_ji_t))
+    t = t + tl.where(pair_valid & on_diag, gs_i, 0.0)
+    sinv_i = tl.where(pair_valid, 1.0 / si, 0.0)
+    sinv_j = tl.where(pair_valid, 1.0 / sj, 0.0)
+    c = t - gu_ij * sinv_j - sinv_i * gv_ji_t
+    # The input kernel loads C in K x BK bands with the valid region masked and
+    # ``other=0.0``, but a zero must still be *stored* in the padding lanes: the
+    # workspace is allocated with torch.empty, and reading uninitialized memory
+    # as 0 * NaN would poison the output for any k that is not a power of two.
+    tl.store(
+        C_ptr + pid_b.to(tl.int64) * KP * KP + offs_i[:, None] * KP + offs_j[None, :],
+        tl.where(pair_valid, c, 0.0),
+        mask=(offs_i[:, None] < KP) & (offs_j[None, :] < KP),
+    )
+
+
+@libentry()
+@triton.jit
+def _svd_backward_fused_kernel(
+    U_ptr,
+    Vh_ptr,
+    gU_ptr,
+    gVh_ptr,
+    S_ptr,
+    gS_ptr,
+    gA_ptr,
+    M,
+    N,
+    K,
+    MP: tl.constexpr,
+    NP: tl.constexpr,
+    KP: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    PREC: tl.constexpr,
+):
+    """Single-launch SVD backward: rebuild the coefficients in every output tile.
+
+    The ``k x k`` Gram matrices and the coefficient matrix are cheap compared
+    with an extra kernel launch, so every CTA recomputes them from the factor
+    slices it needs and then writes one ``BM x BN`` tile of ``dA``. At the
+    repository's default shapes this halves the wall time of the two-kernel
+    path, which pays a full Triton launch for a ~10us coefficient kernel.
+    """
+    pid_b = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    pid_n = tl.program_id(2)
+    offs_k = tl.arange(0, KP)
+    k_valid = offs_k < K
+    s = tl.load(S_ptr + pid_b.to(tl.int64) * K + offs_k, mask=k_valid, other=1.0)
+    gs = tl.load(gS_ptr + pid_b.to(tl.int64) * K + offs_k, mask=k_valid, other=0.0)
+    si = tl.where(k_valid, s, 1.0)[:, None]
+    sj = tl.where(k_valid, s, 1.0)[None, :]
+    pair_valid = k_valid[:, None] & k_valid[None, :]
+    on_diag = offs_k[:, None] == offs_k[None, :]
+    # F_ij = 1 / (s_j^2 - s_i^2), zero on the diagonal and on padding lanes.
+    f = tl.where(pair_valid & ~on_diag, 1.0 / ((sj - si) * (sj + si)), 0.0)
+    offs_mp = tl.arange(0, MP)
+    offs_np = tl.arange(0, NP)
+    full_u_mask = (offs_mp[:, None] < M) & k_valid[None, :]
+    full_vh_mask = k_valid[:, None] & (offs_np[None, :] < N)
+    u_all = tl.load(
+        U_ptr + pid_b.to(tl.int64) * M * K + offs_mp[:, None] * K + offs_k[None, :],
+        mask=full_u_mask,
+        other=0.0,
+    )
+    gu_all = tl.load(
+        gU_ptr + pid_b.to(tl.int64) * M * K + offs_mp[:, None] * K + offs_k[None, :],
+        mask=full_u_mask,
+        other=0.0,
+    )
+    vh_all = tl.load(
+        Vh_ptr + pid_b.to(tl.int64) * K * N + offs_k[:, None] * N + offs_np[None, :],
+        mask=full_vh_mask,
+        other=0.0,
+    )
+    gvh_all = tl.load(
+        gVh_ptr + pid_b.to(tl.int64) * K * N + offs_k[:, None] * N + offs_np[None, :],
+        mask=full_vh_mask,
+        other=0.0,
+    )
+    gu = tl.dot(tl.trans(u_all), gu_all, input_precision=PREC)
+    gv = tl.dot(vh_all, tl.trans(gvh_all), input_precision=PREC)
+    t = f * ((gu - tl.trans(gu)) * sj + si * (gv - tl.trans(gv)))
+    t = t + tl.where(pair_valid & on_diag, gs[:, None], 0.0)
+    sinv_i = tl.where(pair_valid, 1.0 / si, 0.0)
+    sinv_j = tl.where(pair_valid, 1.0 / sj, 0.0)
+    coeff = t - gu * sinv_j - sinv_i * tl.trans(gv)
+    offs_m = pid_m * BM + tl.arange(0, BM)
+    offs_n = pid_n * BN + tl.arange(0, BN)
+    u_mask = (offs_m[:, None] < M) & k_valid[None, :]
+    u_tile = tl.load(
+        U_ptr + pid_b.to(tl.int64) * M * K + offs_m[:, None] * K + offs_k[None, :],
+        mask=u_mask,
+        other=0.0,
+    )
+    gu_tile = tl.load(
+        gU_ptr + pid_b.to(tl.int64) * M * K + offs_m[:, None] * K + offs_k[None, :],
+        mask=u_mask,
+        other=0.0,
+    )
+    vh_mask = k_valid[:, None] & (offs_n[None, :] < N)
+    vh_tile = tl.load(
+        Vh_ptr + pid_b.to(tl.int64) * K * N + offs_k[:, None] * N + offs_n[None, :],
+        mask=vh_mask,
+        other=0.0,
+    )
+    gvh_tile = tl.load(
+        gVh_ptr + pid_b.to(tl.int64) * K * N + offs_k[:, None] * N + offs_n[None, :],
+        mask=vh_mask,
+        other=0.0,
+    )
+    sinv = tl.where(k_valid, 1.0 / s, 0.0)[None, :]
+    acc = tl.dot(
+        tl.dot(u_tile, coeff, input_precision=PREC), vh_tile, input_precision=PREC
+    )
+    acc += tl.dot(gu_tile * sinv, vh_tile, input_precision=PREC)
+    acc += tl.dot(u_tile * sinv, gvh_tile, input_precision=PREC)
+    tl.store(
+        gA_ptr + pid_b.to(tl.int64) * M * N + offs_m[:, None] * N + offs_n[None, :],
+        acc.to(gA_ptr.dtype.element_ty),
+        mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
+    )
+
+
+@libentry()
+@triton.autotune(
+    configs=[
+        triton.Config({"BM": 16, "BN": 16, "BK": 32}, num_warps=4),
+        triton.Config({"BM": 16, "BN": 16, "BK": 64}, num_warps=4),
+        triton.Config({"BM": 16, "BN": 32, "BK": 32}, num_warps=4),
+        triton.Config({"BM": 32, "BN": 32, "BK": 32}, num_warps=4),
+        triton.Config({"BM": 32, "BN": 64, "BK": 32}, num_warps=8),
+        triton.Config({"BM": 64, "BN": 64, "BK": 32}, num_warps=8),
+        triton.Config({"BM": 16, "BN": 16, "BK": 32}, num_warps=8),
+        triton.Config({"BM": 32, "BN": 32, "BK": 64}, num_warps=8),
+    ],
+    key=["M", "N", "K"],
+)
+@triton.jit
+def _svd_backward_input_kernel(
+    U_ptr,
+    Vh_ptr,
+    gU_ptr,
+    gVh_ptr,
+    S_ptr,
+    C_ptr,
+    gA_ptr,
+    M,
+    N,
+    K,
+    MP: tl.constexpr,
+    NP: tl.constexpr,
+    KP: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+    PREC: tl.constexpr,
+):
+    """Assemble ``dA = Uc C Vhc + (gUc diag(1/s)) Vhc + Uc (diag(1/s) gVhc)``.
+
+    The ``k`` contraction is streamed in ``BK``-sized column bands of the
+    coefficient matrix and of ``Vh``, with one running ``BM x BN`` accumulator.
+    Materialising the whole ``KP x KP`` coefficient tile instead gave this
+    kernel a ~13.3 KB/thread local frame and 14983 LDL/STL, because the full
+    coefficient tile stayed live alongside the operand tiles.
+
+    Per band ``J = kc:kc+BK``, using ``Uc C`` column ``j`` = ``sum_i Uc[:, i] C[i, j]``
+    and ``(gUc diag(1/s)) Vhc`` row ``j`` = ``sinv_j gUc[:, j] Vhc[j, :]``::
+
+        inner_J = Uc @ C[:, J] + gUc[:, J] * sinv_J      # BM x BK
+        acc    += inner_J @ Vhc[J, :]                    # BM x BN
+        acc    += (Uc[:, J] * sinv_J) @ gVhc[J, :]       # BM x BN
+    """
+    pid_b = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    pid_n = tl.program_id(2)
+    offs_m = pid_m * BM + tl.arange(0, BM)
+    offs_n = pid_n * BN + tl.arange(0, BN)
+    offs_i = tl.arange(0, KP)
+    i_valid = offs_i < K
+    # ``Uc`` (BM x KP) is the only full-width tile kept live.
+    u_full = tl.load(
+        U_ptr + pid_b.to(tl.int64) * M * K + offs_m[:, None] * K + offs_i[None, :],
+        mask=(offs_m[:, None] < M) & i_valid[None, :],
+        other=0.0,
+    )
+    acc = tl.zeros((BM, BN), dtype=tl.float32)
+    for kc in range(0, K, BK):
+        offs_j = kc + tl.arange(0, BK)
+        j_valid = offs_j < K
+        u_band = tl.load(
+            U_ptr + pid_b.to(tl.int64) * M * K + offs_m[:, None] * K + offs_j[None, :],
+            mask=(offs_m[:, None] < M) & j_valid[None, :],
+            other=0.0,
+        )
+        gu_band = tl.load(
+            gU_ptr + pid_b.to(tl.int64) * M * K + offs_m[:, None] * K + offs_j[None, :],
+            mask=(offs_m[:, None] < M) & j_valid[None, :],
+            other=0.0,
+        )
+        # C[:, J] is a KP x BK column band; padding rows/cols are stored as 0.
+        c_band = tl.load(
+            C_ptr
+            + pid_b.to(tl.int64) * KP * KP
+            + offs_i[:, None] * KP
+            + offs_j[None, :],
+            mask=i_valid[:, None] & j_valid[None, :],
+            other=0.0,
+        )
+        vh_band = tl.load(
+            Vh_ptr + pid_b.to(tl.int64) * K * N + offs_j[:, None] * N + offs_n[None, :],
+            mask=j_valid[:, None] & (offs_n[None, :] < N),
+            other=0.0,
+        )
+        gvh_band = tl.load(
+            gVh_ptr
+            + pid_b.to(tl.int64) * K * N
+            + offs_j[:, None] * N
+            + offs_n[None, :],
+            mask=j_valid[:, None] & (offs_n[None, :] < N),
+            other=0.0,
+        )
+        s = tl.load(S_ptr + pid_b.to(tl.int64) * K + offs_j, mask=j_valid, other=1.0)
+        sinv_band = tl.where(j_valid, 1.0 / s, 0.0)[None, :]
+        inner = tl.dot(u_full, c_band, input_precision=PREC)
+        inner += gu_band * sinv_band
+        acc += tl.dot(inner, vh_band, input_precision=PREC)
+        acc += tl.dot(u_band * sinv_band, gvh_band, input_precision=PREC)
+    tl.store(
+        gA_ptr + pid_b.to(tl.int64) * M * N + offs_m[:, None] * N + offs_n[None, :],
+        acc.to(gA_ptr.dtype.element_ty),
+        mask=(offs_m[:, None] < M) & (offs_n[None, :] < N),
+    )
+
+
+def _svd_backward(grad_U, grad_S, grad_Vh, U, S, Vh):
+    """Triton first-order gradient of the real reduced/full SVD.
+
+    ``U`` and ``Vh`` may be the full factors; only their leading ``k = min(M, N)``
+    columns/rows participate, which is what native autograd differentiates.
+    """
+    k = S.shape[-1]
+    m, n = U.shape[-2], Vh.shape[-1]
+    batch_shape = S.shape[:-1]
+    grad_A = torch.empty(batch_shape + (m, n), dtype=S.dtype, device=S.device)
+    if k == 0 or m == 0 or n == 0:
+        return grad_A.zero_()
+    # The kernels index with float32 pointers, so a non-float32 factor would be
+    # read with the wrong element size. The public entry already rejects those
+    # dtypes; this guard keeps the helper safe when called directly.
+    if S.dtype != torch.float32:
+        raise TypeError(f"_svd_backward only supports float32, got {S.dtype}")
+    if grad_U is None:
+        grad_U = torch.zeros_like(U)
+    if grad_Vh is None:
+        grad_Vh = torch.zeros_like(Vh)
+    if grad_S is None:
+        grad_S = torch.zeros_like(S)
+    # Leading-k slices. On the square/reduced shapes the slice is a no-op, so
+    # reuse the tensor directly instead of paying six aten::slice dispatches and
+    # six .contiguous() round trips per call: these shapes are dispatch-bound
+    # (their kernel body is ~522 FFMA), so Python-side work is the real cost.
+    u_c = U if (k == U.shape[-1] and U.is_contiguous()) else U[..., :, :k].contiguous()
+    gu_c = (
+        grad_U
+        if (k == grad_U.shape[-1] and grad_U.is_contiguous())
+        else grad_U[..., :, :k].contiguous()
+    )
+    vh_c = (
+        Vh
+        if (k == Vh.shape[-2] and Vh.is_contiguous())
+        else Vh[..., :k, :].contiguous()
+    )
+    gvh_c = (
+        grad_Vh
+        if (k == grad_Vh.shape[-2] and grad_Vh.is_contiguous())
+        else grad_Vh[..., :k, :].contiguous()
+    )
+    s_c = S if S.is_contiguous() else S.contiguous()
+    gs_c = grad_S if grad_S.is_contiguous() else grad_S.contiguous()
+    kp = _svd_bwd_pad(k)
+    mp = _svd_bwd_pad(m)
+    np = _svd_bwd_pad(n)
+    # Tensor cores only where the per-k dot volume amortizes MMA setup.
+    prec = "tf32x3" if k >= _SVD_BWD_TENSORCORE_MIN_K else "ieee"
+    n_batch = 1
+    for size in batch_shape:
+        n_batch *= size
+    if n_batch == 0:
+        # An empty batch has no gradient to compute; launching a kernel with a
+        # zero-sized grid would be an error, and zero_() already matches the
+        # native result for every element of an empty tensor.
+        return grad_A.zero_()
+    with torch_device_fn.device(S.device):
+        if k <= _SVD_BWD_FUSED_MAX_K:
+            # Rebuilding the coefficients costs less than the second launch.
+            _svd_backward_fused_kernel[
+                (
+                    n_batch,
+                    triton.cdiv(m, _SVD_BWD_BLOCK_M),
+                    triton.cdiv(n, _SVD_BWD_BLOCK_N),
+                )
+            ](
+                u_c,
+                vh_c,
+                gu_c,
+                gvh_c,
+                s_c,
+                gs_c,
+                grad_A,
+                m,
+                n,
+                k,
+                MP=mp,
+                NP=np,
+                KP=kp,
+                BM=_SVD_BWD_BLOCK_M,
+                BN=_SVD_BWD_BLOCK_N,
+                PREC=prec,
+                num_warps=8,
+            )
+            return grad_A
+        coeff = torch.empty(
+            batch_shape + (kp, kp), dtype=torch.float32, device=S.device
+        )
+        _svd_backward_coeff_kernel[
+            (
+                n_batch,
+                triton.cdiv(k, _SVD_BWD_BLOCK_K),
+                triton.cdiv(k, _SVD_BWD_BLOCK_K),
+            )
+        ](
+            u_c,
+            s_c,
+            vh_c,
+            gu_c,
+            gs_c,
+            gvh_c,
+            coeff,
+            m,
+            n,
+            k,
+            MP=mp,
+            NP=np,
+            KP=kp,
+            KC=_SVD_BWD_BLOCK_K,
+        )
+        _svd_backward_input_kernel[
+            lambda meta: (
+                n_batch,
+                triton.cdiv(m, meta["BM"]),
+                triton.cdiv(n, meta["BN"]),
+            )
+        ](
+            u_c,
+            vh_c,
+            gu_c,
+            gvh_c,
+            s_c,
+            coeff,
+            grad_A,
+            m,
+            n,
+            k,
+            MP=mp,
+            NP=np,
+            KP=kp,
+            PREC=prec,
+        )
+    return grad_A
+
+
+class _LinalgSvdBackward(torch.autograd.Function):
+    """First-order autograd entry for ``aten::_linalg_svd``.
+
+    ``aten::_linalg_svd`` has no registered backward kernel: native PyTorch
+    differentiates it with the engine-generated ``LinalgSvdBackward0`` node,
+    which re-derives the gradient of the factors from the same formula this
+    Triton kernel evaluates. The forward keeps the existing Triton SVD path, and
+    the gradient w.r.t. ``A`` is produced by ``_svd_backward``.
+    """
+
+    @staticmethod
+    def forward(ctx, A, full_matrices, compute_uv, driver):
+        # Autograd runs forward with grad mode disabled, so re-entering
+        # ``_linalg_svd`` here cannot recurse into ``apply``.
+        U, S, Vh = _linalg_svd(A, full_matrices, True, driver=driver)
+        ctx.save_for_backward(U, S, Vh)
+        ctx.compute_uv = compute_uv
+        if not compute_uv:
+            empty = A.new_empty(0)
+            return empty, S, empty
+        return U, S, Vh
+
+    @staticmethod
+    def backward(ctx, grad_U, grad_S, grad_Vh):
+        U, S, Vh = ctx.saved_tensors
+        if ctx.compute_uv:
+            grad_A = _svd_backward(grad_U, grad_S, grad_Vh, U, S, Vh)
+        else:
+            grad_A = _svd_backward(None, grad_S, None, U, S, Vh)
+        return grad_A, None, None, None
 
 
 def _linalg_svd(A, full_matrices=False, compute_uv=True, *, driver=None):
@@ -63,6 +612,8 @@ def _linalg_svd(A, full_matrices=False, compute_uv=True, *, driver=None):
     # matrices (e.g. float16/bfloat16) are not supported by the backend.
     if A.dtype != torch.float32:
         raise TypeError(f"_linalg_svd only supports float32 input, got {A.dtype}")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return _LinalgSvdBackward.apply(A, full_matrices, compute_uv, driver)
     U, S, V = svd(A, some=not full_matrices, compute_uv=compute_uv)
     if not compute_uv:
         # aten::_linalg_svd leaves U/Vh empty when compute_uv is False.
@@ -70,3 +621,15 @@ def _linalg_svd(A, full_matrices=False, compute_uv=True, *, driver=None):
         return empty, S, empty
     Vh = V.mH
     return U, S, Vh
+
+
+def linalg_svd_backward(grad_U, grad_S, grad_Vh, U, S, Vh):
+    """Return the first-order input gradient from real float32 SVD factors."""
+    if any(
+        t is not None and t.dtype != torch.float32
+        for t in (grad_U, grad_S, grad_Vh, U, S, Vh)
+    ):
+        raise TypeError(
+            "linalg_svd_backward only supports float32 factors and gradients"
+        )
+    return _svd_backward(grad_U, grad_S, grad_Vh, U, S, Vh)

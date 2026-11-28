@@ -21,7 +21,15 @@ import flag_gems
 
 from .conftest import QUICK_MODE
 
-_SUPPORTED_VENDORS = {"ascend", "hygon", "iluvatar", "metax", "mthreads", "nvidia"}
+_SUPPORTED_VENDORS = {
+    "ascend",
+    "enflame",
+    "hygon",
+    "iluvatar",
+    "metax",
+    "mthreads",
+    "nvidia",
+}
 
 pytestmark = pytest.mark.skipif(
     flag_gems.vendor_name not in _SUPPORTED_VENDORS,

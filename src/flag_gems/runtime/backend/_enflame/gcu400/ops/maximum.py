@@ -29,6 +29,7 @@ _FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _PERSIST_MIN_N = 2**16
 _PERSIST_MAX_N_F32 = 2**28
 _BLOCK = 65536
+_BLOCK_F32 = 32768
 _GRID_CAP = 48
 _INT32_SAFE_LIMIT = 0x7FFFFFFF
 
@@ -65,6 +66,14 @@ def maximum_kernel(X, Y):
 
 def maximum(X, Y):
     logger.debug("GEMS_ENFLAME MAXIMUM")
+    if X.device != Y.device:
+        # ATen treats a 0-d CPU operand as a wrapped scalar (result dtype from
+        # the device operand) and rejects a non-scalar CPU operand.  The
+        # generic op implements both; this backend's kernels cannot take a
+        # CPU pointer.
+        from flag_gems.ops.maximum import maximum as _generic_maximum
+
+        return _generic_maximum(X, Y)
     assert X.device.type == device and Y.device.type == device
     # Fast path: same-shape contiguous float inputs. fp32 n >= 2**28 stays on
     # the generated wrapper (measured even-or-better there, interleaved A/B),
@@ -82,14 +91,15 @@ def maximum(X, Y):
             and n <= _INT32_SAFE_LIMIT - _BLOCK
             and not (X.dtype == torch.float32 and n >= _PERSIST_MAX_N_F32)
         ):
+            block = _BLOCK_F32 if X.dtype == torch.float32 else _BLOCK
             out = torch.empty_like(X)
-            grid = (min(_GRID_CAP, triton.cdiv(n, _BLOCK)),)
+            grid = (min(_GRID_CAP, triton.cdiv(n, block)),)
             _maximum_persist_kernel[grid](
                 X,
                 Y,
                 out,
                 n,
-                BLOCK=_BLOCK,
+                BLOCK=block,
                 UPCAST=X.dtype == torch.bfloat16,
                 num_warps=2,
             )

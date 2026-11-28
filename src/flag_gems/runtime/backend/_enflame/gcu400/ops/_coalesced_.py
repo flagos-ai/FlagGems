@@ -18,7 +18,15 @@ import torch
 
 _SPARSE_COO_LAYOUT = torch.sparse_coo
 _NATIVE_COALESCED = torch.ops.aten._coalesced_.default
-_DISPATCH_BELOW_AUTOGRAD = torch._C._AutoDispatchBelowAutograd
+# One-hop redispatch onto the native SparseCPU kernel: the keyset pins the
+# dispatch to exactly that key, skipping the Autograd/ADInplaceOrView layers
+# (and therefore this override) without any per-call TLS guard object. This is
+# the same landing point the previous ``_AutoDispatchBelowAutograd`` re-entry
+# used for every COO tensor reachable on this platform: FlagGems/GCU sparse COO
+# tensors are CPU-impl tensors (components may live on GCU), so their native
+# kernel is SparseCPU.
+_NATIVE_REDISPATCH = _NATIVE_COALESCED.redispatch
+_SPARSE_CPU_KEYSET = torch._C.DispatchKeySet(torch._C.DispatchKey.SparseCPU)
 _ERROR_MESSAGE = (
     "_coalesced_ only supports sparse coordinate (coo) tensors, "
     "but got unsupported layout"
@@ -28,13 +36,8 @@ logger = logging.getLogger(__name__)
 
 
 def _coalesced_(self: torch.Tensor, coalesced: bool) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 _COALESCED_")
+    logger.debug("GEMS_ENFLAME _COALESCED_")
     if self.layout != _SPARSE_COO_LAYOUT:
         raise RuntimeError(_ERROR_MESSAGE)
-    # Construct the guard per call: ``_AutoDispatchBelowAutograd`` activates the
-    # Autograd-key exclusion in __init__ (RAII), so a module-level instance
-    # would disable autograd process-wide from import onward and break every
-    # backward test (regression of 890f0b7cd, re-fixed).
-    with _DISPATCH_BELOW_AUTOGRAD():
-        _NATIVE_COALESCED(self, coalesced)
+    _NATIVE_REDISPATCH(_SPARSE_CPU_KEYSET, self, coalesced)
     return self

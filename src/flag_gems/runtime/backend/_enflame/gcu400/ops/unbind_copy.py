@@ -198,7 +198,7 @@ def unbind_copy(input: torch.Tensor, dim: int = 0) -> List[torch.Tensor]:
     Returns:
         A list of tensors
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNBIND_COPY")
+    logger.debug("GEMS_ENFLAME UNBIND_COPY")
 
     if dim < 0:
         dim = dim + input.ndim

@@ -27,10 +27,12 @@ The row of entry ``p`` inside a batch block is
 ``searchsorted_right(crow_block, p) - 1`` (row pointers ascending), evaluated
 by an exact fixed-trip bisection, one lane per stored entry. Entries beyond
 the block's last pointer clamp to the last row, matching the native decoder.
-Batch bases come from the declared strides, so non-contiguous inputs are read
-correctly with no data movement; the two operands may even use different
-dtypes. The per-dim leading extents and strides are passed as small int64
-device tensors, so any batch rank is handled by the same kernel.
+Both operands are folded to ``(n_batch, ·)`` row-major tables on the host
+(``reshape``: a free view for contiguous operands, a copy only for exotic
+batch layouts), so the per-block base is a single multiply in the kernel; the
+two operands may still use different dtypes. The per-dim leading extents and
+row-major divisors are passed as small int64 device tensors, so any batch rank
+is handled by the same kernel.
 """
 
 import functools
@@ -61,19 +63,16 @@ def _csr_to_coo_kernel(
     col_ptr,
     out_ptr,
     ext_ptr,
-    crow_stride_ptr,
-    col_stride_ptr,
     bdiv_ptr,
     nnz,
     n_rows,
     total,
     nd,
-    crow_ls,
-    col_ls,
     steps,
     BLOCK: tl.constexpr,
     OUT_INT32: tl.constexpr,
     TRANSPOSE: tl.constexpr,
+    NARROW_COL: tl.constexpr,
 ):
     # Two-dimensional launch: grid.x alone caps at 65535, i.e. ~134M stored
     # entries at BLOCK = 2048, which user tables can exceed.  Flattening the
@@ -88,29 +87,30 @@ def _csr_to_coo_kernel(
     m = e < total
 
     b = e // nnz
-    p = (e % nnz).to(tl.int64)
+    p = e % nnz
 
-    # Per-entry batch base offsets and batch-coordinate planes. ``bdiv[k]``
-    # is prod(lead[k+1:]), so the row-major coordinate of dim k is
-    # (b // bdiv[k]) % lead[k].  The row-base and column-base sums are kept
-    # in separate loops on purpose: gcu-compiler miscompiles two
-    # simultaneously live int64 accumulators inside one runtime-trip loop,
-    # making the first one end up holding the second one's value
-    # element-for-element (seen with int32 and int64 accumulators alike).
-    cb = tl.zeros((BLOCK,), dtype=tl.int64)
+    # Both operands are flattened on the host into (n_batch, ·) row-major 2D tables, so for batch block
+    # b, the row-pointer base is b * (n_rows + 1) and the column-index base is b * nnz. Compute the bases with a single
+    # multiplication
+    # instead of accumulating int64 dimension by dimension in the runtime loop: measurements show gcu-compiler, when nd
+    # >= 2
+    # and indices are int64, miscompiles such loops with multiple int64 accumulators (the batch-coordinate row is
+    # correct,
+    # while the x/y rows are shifted as a whole); a single multiplication completely avoids that code-generation path.
+    cb = b * (n_rows + 1)
+    vb = b * nnz
+
+    # The output plane for each batch dimension. ``bdiv[k]`` is prod(lead[k+1:]), so the row-major coordinate of
+    # dimension k
+    # is (b // bdiv[k]) % lead[k].
     total64 = tl.full((), total, tl.int64)
     for k in range(nd):
         coord = (b // tl.load(bdiv_ptr + k)) % tl.load(ext_ptr + k)
-        cb += coord * tl.load(crow_stride_ptr + k)
         tl.store(
             out_ptr + k * total64 + e,
             coord.to(out_ptr.dtype.element_ty),
             mask=m,
         )
-    vb = tl.zeros((BLOCK,), dtype=tl.int64)
-    for k in range(nd):
-        coord = (b // tl.load(bdiv_ptr + k)) % tl.load(ext_ptr + k)
-        vb += coord * tl.load(col_stride_ptr + k)
 
     # Exact residual bisection: row = searchsorted_right(crow_block, p) - 1.
     # The last row pointer is the block's sentinel, so the bracket is
@@ -120,13 +120,19 @@ def _csr_to_coo_kernel(
     for _ in range(steps):
         mid = (lo + hi) >> 1
         valid = m & (mid < n_rows)
-        mv = tl.load(crow_ptr + cb + mid.to(tl.int64) * crow_ls, mask=valid, other=0)
+        mv = tl.load(crow_ptr + cb + mid.to(tl.int64), mask=valid, other=0)
         c = valid & (mv.to(tl.int32) <= p)
         lo = tl.where(c, mid + 1, lo)
         hi = tl.where(c, hi, mid)
 
     row = (lo - 1).to(tl.int64)
-    colv = tl.load(col_ptr + vb + p * col_ls, mask=m, other=0).to(tl.int64)
+    colv = tl.load(col_ptr + vb + p, mask=m, other=0)
+    # Widen narrow integer indices in two steps (narrow -> int32 -> int64): a single-step narrow -> int64 vectorized
+    # conversion references the `tops_cvt_v2_si64_to_v8_si64` helper that gcu400 cannot link,
+    # while the two-step path uses the int32 helper and generates code correctly.
+    if NARROW_COL:
+        colv = colv.to(tl.int32)
+    colv = colv.to(tl.int64)
 
     if TRANSPOSE:
         x = colv
@@ -147,16 +153,14 @@ def _csr_to_coo_kernel(
 
 
 @functools.lru_cache(maxsize=128)
-def _metadata_arrays(nd, extents, crow_strides, col_strides, device):
-    """Build the small int64 metadata tensors once per (shape, stride) pair.
+def _metadata_arrays(nd, extents, device):
+    """Build the small int64 metadata tensors once per leading-extent tuple.
 
-    Allocating four device tensors per call dominates the launch cost of this
+    Allocating device tensors per call dominates the launch cost of this
     memory-light operator, so the arrays are shared across calls with the same
-    geometry; the values depend only on shape, stride and device.
+    geometry; the values depend only on the leading extents and the device.
     """
     extents = list(extents)
-    crow_strides = list(crow_strides)
-    col_strides = list(col_strides)
     # bdiv[k] = prod(extents[k + 1:]) -- 1 for the innermost dim.
     divisors = [1] * nd
     for k in range(nd - 2, -1, -1):
@@ -165,33 +169,22 @@ def _metadata_arrays(nd, extents, crow_strides, col_strides, device):
     def to_dev(values):
         return torch.tensor(values, dtype=torch.int64, device=device)
 
-    return (
-        to_dev(extents),
-        to_dev(crow_strides),
-        to_dev(col_strides),
-        to_dev(divisors),
-    )
+    return to_dev(extents), to_dev(divisors)
 
 
-def _batch_metadata(crow, col, nd):
-    """Per-dim leading extents / strides and row-major batch divisors."""
+def _batch_metadata(crow, nd):
+    """Per-dim leading extents and row-major batch divisors."""
     device = crow.device
     extents = tuple(int(crow.shape[k]) for k in range(nd))
-    crow_strides = tuple(int(crow.stride(k)) for k in range(nd))
-    col_strides = tuple(int(col.stride(k)) for k in range(nd))
-    return _metadata_arrays(nd, extents, crow_strides, col_strides, device)
+    return _metadata_arrays(nd, extents, device)
 
 
 def _launch(crow, col, out_int32, transpose, out):
-    # The GCU400 gcu-compiler triggers a `relocation R_DTU_ADDR16_LO_ICALL ... tops_cvt_v2_si64_to_v8_si64`
-    # link error when vectorizing si64 conversions for int8/uint8/int16 indices. Here the host promotes
-    # narrow integer indices uniformly to int32 before the Triton kernel: the value range is constrained by
-    # aten semantics, so promotion does not change values and avoids this compiler defect.
+    # 8/16-bit indices are no longer promoted wholesale to int32 on the host: that would add a device-side
+    # conversion kernel to every call (more expensive than the computation itself on small tables); instead, widen in
+    # two steps inside the kernel (see NARROW_COL).
     _narrow_index_dtypes = (torch.int8, torch.uint8, torch.int16)
-    if crow.dtype in _narrow_index_dtypes:
-        crow = crow.to(torch.int32)
-    if col.dtype in _narrow_index_dtypes:
-        col = col.to(torch.int32)
+    narrow_col = col.dtype in _narrow_index_dtypes
     nd = crow.dim() - 1
     crow_shape = crow.shape
     for k in range(nd):
@@ -221,7 +214,12 @@ def _launch(crow, col, out_int32, transpose, out):
     if total == 0:
         return out
 
-    ext, crow_strides, col_strides, divisors = _batch_metadata(crow, col, nd)
+    # Flatten the batch dimensions: on contiguous operands this is a zero-copy view; for non-standard batch layouts
+    # (such as transposed views)
+    # reshape automatically copies to row-major, so the block base degrades to b * row width.
+    crow2d = crow.reshape(n_batch, r + 1)
+    col2d = col.reshape(n_batch, nnz)
+    ext, divisors = _batch_metadata(crow, nd)
     # Cap each grid dimension at the hardware limit (grid.x 65535, grid.y 255)
     # and let grid.y carry the overflow so one CTA still owns exactly one
     # tile.  65535 * 255 tiles cover ~3.4e10 entries, far beyond any
@@ -231,23 +229,20 @@ def _launch(crow, col, out_int32, transpose, out):
     grid_y = triton.cdiv(num_tiles, grid_x)
     grid = (grid_x, grid_y)
     _csr_to_coo_kernel[grid](
-        crow,
-        col,
+        crow2d,
+        col2d,
         out,
         ext,
-        crow_strides,
-        col_strides,
         divisors,
         nnz,
         r,
         total,
         nd,
-        crow.stride(-1),
-        col.stride(-1),
         max(r.bit_length(), 1),
         BLOCK=_BLOCK,
         OUT_INT32=bool(out_int32),
         TRANSPOSE=bool(transpose),
+        NARROW_COL=narrow_col,
         num_warps=_NUM_WARPS,
     )
     return out
@@ -263,7 +258,7 @@ def _convert_indices_from_csr_to_coo(
     -> Tensor``. The result has shape ``(nd + 2, N * nnz)`` and is int64
     unless ``out_int32=True``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _CONVERT_INDICES_FROM_CSR_TO_COO")
+    logger.debug("GEMS_ENFLAME _CONVERT_INDICES_FROM_CSR_TO_COO")
     if not isinstance(out_int32, bool):
         raise TypeError(f"out_int32 must be a bool, got {type(out_int32).__name__}")
     if not isinstance(transpose, bool):
@@ -289,16 +284,6 @@ def _convert_indices_from_csr_to_coo(
             "dimensionality, but got %d and %d dimensional tensors, "
             "respectively." % (crow.dim(), col.dim())
         )
-    # gcu400 cannot link the 8-bit -> int64 conversion helper used by the
-    # masked gather (ld.lld: relocation R_DTU_ADDR16_LO_ICALL against
-    # tops_cvt_v2_si64_to_v8_si64__4).  Widening the two index tensors on the
-    # host keeps every value exact and avoids that codegen path entirely.
-    if crow.dtype in (torch.int8, torch.uint8) or col.dtype in (
-        torch.int8,
-        torch.uint8,
-    ):
-        crow = crow.to(torch.int32)
-        col = col.to(torch.int32)
     return _launch(crow, col, out_int32, transpose, out)
 
 
@@ -306,7 +291,7 @@ def _convert_indices_from_csr_to_coo_out(
     crow_indices, col_indices, *, out_int32=False, transpose=False, out
 ):
     """``aten::_convert_indices_from_csr_to_coo.out``: write into ``out``."""
-    logger.debug("GEMS_ENFLAME_GCU400 _CONVERT_INDICES_FROM_CSR_TO_COO_OUT")
+    logger.debug("GEMS_ENFLAME _CONVERT_INDICES_FROM_CSR_TO_COO_OUT")
     if not isinstance(out, torch.Tensor):
         raise TypeError(
             "_convert_indices_from_csr_to_coo.out: out must be a Tensor, got "

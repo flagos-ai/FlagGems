@@ -254,3 +254,11 @@ def test_nextafter_scalar_inf_y(dtype):
     imp_x = x.clone()
     flag_gems.nextafter_(imp_x, scalar_y)
     utils.gems_assert_close(imp_x, ref_x, dtype)
+
+
+@pytest.mark.nextafter_
+def test_nextafter_rejects_expanding_self_():
+    inp = torch.ones((1, 7), device=flag_gems.device)
+    other = torch.ones((3, 7), device=inp.device)
+    with pytest.raises(RuntimeError):
+        flag_gems.nextafter_(inp, other)

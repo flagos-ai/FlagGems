@@ -21,6 +21,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -31,47 +32,148 @@ class Reduction(Enum):
     SUM = 2
 
 
-@triton.jit
+# GCU400 has 48 compute units; the grid is pinned to the cap, and the tile is amortized by an in-kernel strided loop,
+# so grid.x never approaches the 65535 hardware limit.
+MAX_GRID = 48
+
+# Per-tile element budget on the reduction path: kl_div reads two inputs per tile (inp + target),
+# so take half the per-program DSM budget from the sum precedent.
+REDUCE_TILE_4B = 32768
+REDUCE_TILE_2B = 65536
+
+# Vector-accumulator dispatch (measured with probes on 2026-11-17): for 2-byte types, removing the per-tile cross-warp
+# tree reduction (a persistent acc vector with a single reduction after the loop) is 12~22% faster for strided
+# multi-tile cases;
+# with one tile per program (num_tile <= 48) it is ~18% slower instead, and 4-byte types are slower throughout by
+# 17% (the acc vector raises peak DSM) — enable it only for 2-byte types with strided multi-tile cases.
+REDUCE_VECACC_2B = True
+REDUCE_VECACC_4B = False
+
+# Element cap for direct single-launch output (when less than one tile, a single program computes it all at once).
+# fp32 measurements: a 65536 single launch (8.96us) is worse than the 32768 two-stage version (8.57us).
+SINGLE_TILE_4B = 32768
+SINGLE_TILE_2B = 65536
+
+# Per-tile element budget on the elementwise path: two reads + one write.
+ELEMENTWISE_TILE_4B = 16384
+ELEMENTWISE_TILE_2B = 32768
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elem"])
 def _kl_div_kernel(
     inp,
     target,
     out,
-    n_elements,
+    n_elem,
     log_target: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
+    WIDE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    step = tl.num_programs(axis=0)
+    num_tile = (n_elem + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(pid, num_tile, step):
+        if WIDE:
+            offsets = tile_id.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        else:
+            offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elem
 
-    inp_val = tl.load(inp + offsets, mask=mask, other=0.0).to(tl.float32)
-    target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
+        inp_val = tl.load(inp + offsets, mask=mask, other=0.0).to(tl.float32)
+        target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
 
-    if log_target:
-        loss = tl.exp(target_val) * (target_val - inp_val)
-    else:
-        # Matches ATen: result = xlogy(target, target) - target * input,
-        # with xlogy(0, y) = 0 for any y.
-        log_target_val = tl.log(target_val)
-        xlogy = tl.where(target_val == 0.0, 0.0, target_val * log_target_val)
-        loss = xlogy - target_val * inp_val
+        if log_target:
+            loss = tl.exp(target_val) * (target_val - inp_val)
+        else:
+            # Matches ATen: result = xlogy(target, target) - target * input,
+            # with xlogy(0, y) = 0 for any y.
+            log_target_val = tl.log(target_val)
+            xlogy = tl.where(target_val == 0.0, 0.0, target_val * log_target_val)
+            loss = xlogy - target_val * inp_val
 
-    tl.store(out + offsets, loss, mask=mask)
+        tl.store(out + offsets, loss.to(out.dtype.element_ty), mask=mask)
 
 
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["n_elem"])
 def _kl_div_partial_sum_kernel(
     inp,
     target,
     mid,
-    n_elements,
-    reduction: tl.constexpr,
+    n_elem,
+    log_target: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+    WIDE: tl.constexpr,
+    VECACC: tl.constexpr,
+):
+    # Lanes outside the mask load 0 for both inputs; xlogy(0, ·) and exp(0)*(0-0)
+    # both contribute 0, so no additional masking of loss to zero is needed.
+    pid = tl.program_id(axis=0)
+    step = tl.num_programs(axis=0)
+    num_tile = (n_elem + BLOCK_SIZE - 1) // BLOCK_SIZE
+    if VECACC:
+        # Vector accumulator: loss accumulates directly into a persistent vector, followed by one tree reduction after
+        # the loop,
+        # eliminating the per-tile cross-warp reduction (measured 12~22% faster for 2-byte types).
+        acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+        for tile_id in tl.range(pid, num_tile, step):
+            if WIDE:
+                offsets = tile_id.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+            else:
+                offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < n_elem
+
+            inp_val = tl.load(inp + offsets, mask=mask, other=0.0).to(tl.float32)
+            target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
+
+            if log_target:
+                loss = tl.exp(target_val) * (target_val - inp_val)
+            else:
+                log_target_val = tl.log(target_val)
+                xlogy = tl.where(target_val == 0.0, 0.0, target_val * log_target_val)
+                loss = xlogy - target_val * inp_val
+
+            acc += loss
+        partial = tl.sum(acc, axis=0)
+    else:
+        acc = tl.zeros([], dtype=tl.float32)
+        for tile_id in tl.range(pid, num_tile, step):
+            if WIDE:
+                offsets = tile_id.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+            else:
+                offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < n_elem
+
+            inp_val = tl.load(inp + offsets, mask=mask, other=0.0).to(tl.float32)
+            target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
+
+            if log_target:
+                loss = tl.exp(target_val) * (target_val - inp_val)
+            else:
+                log_target_val = tl.log(target_val)
+                xlogy = tl.where(target_val == 0.0, 0.0, target_val * log_target_val)
+                loss = xlogy - target_val * inp_val
+
+            acc += tl.sum(loss, axis=0)
+        partial = acc
+    tl.store(mid + pid, partial)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elem"])
+def _kl_div_sum_single_kernel(
+    inp,
+    target,
+    out,
+    n_elem,
+    mean_flag: tl.constexpr,
     log_target: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    # Small inputs: when less than one tile, a single program computes it all at once, saving the second launch.
+    offsets = tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elem
 
     inp_val = tl.load(inp + offsets, mask=mask, other=0.0).to(tl.float32)
     target_val = tl.load(target + offsets, mask=mask, other=0.0).to(tl.float32)
@@ -83,20 +185,29 @@ def _kl_div_partial_sum_kernel(
         xlogy = tl.where(target_val == 0.0, 0.0, target_val * log_target_val)
         loss = xlogy - target_val * inp_val
 
-    loss = tl.where(mask, loss, 0.0)
     acc = tl.sum(loss, axis=0)
-    if reduction == 1:
-        acc = acc / n_elements
-    tl.store(mid + pid, acc)
+    if mean_flag:
+        acc = acc / n_elem
+    tl.store(out, acc.to(out.dtype.element_ty))
 
 
-@triton.jit
-def _kl_div_sum_kernel(mid, out, mid_size, BLOCK_MID: tl.constexpr):
+@libentry()
+@triton.jit(do_not_specialize=["mid_size", "n_elem"])
+def _kl_div_sum_final_kernel(
+    mid,
+    out,
+    mid_size,
+    n_elem,
+    mean_flag: tl.constexpr,
+    BLOCK_MID: tl.constexpr,
+):
     offsets = tl.arange(0, BLOCK_MID)
     mask = offsets < mid_size
-    vals = tl.load(mid + offsets, mask=mask, other=0.0).to(tl.float32)
+    vals = tl.load(mid + offsets, mask=mask, other=0.0)
     acc = tl.sum(vals, axis=0)
-    tl.store(out, acc)
+    if mean_flag:
+        acc = acc / n_elem
+    tl.store(out, acc.to(out.dtype.element_ty))
 
 
 def _check_tensors(input: torch.Tensor, target: torch.Tensor):
@@ -117,7 +228,7 @@ def kl_div(
     *,
     log_target=False,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 KL_DIV")
+    logger.debug("GEMS_ENFLAME KL_DIV")
     input, target = _check_tensors(input, target)
     n_elements = input.numel()
     log_target = bool(log_target)
@@ -125,17 +236,22 @@ def kl_div(
     if reduction == Reduction.NONE.value:
         out = torch.empty_like(input)
         if n_elements > 0:
-            grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+            if input.element_size() >= 4:
+                block_size = ELEMENTWISE_TILE_4B
+            else:
+                block_size = ELEMENTWISE_TILE_2B
+            num_tile = triton.cdiv(n_elements, block_size)
+            grid = min(MAX_GRID, num_tile)
             with torch_device_fn.device(input.device):
-                _kl_div_kernel[grid](
+                _kl_div_kernel[(grid,)](
                     input,
                     target,
                     out,
                     n_elements,
                     log_target=log_target,
-                    # 1D elementwise-then-reduce kernel; 1024 gives a full warp-
-                    # aligned block that saturates memory bandwidth on the GPU.
-                    BLOCK_SIZE=1024,
+                    BLOCK_SIZE=block_size,
+                    WIDE=n_elements > 2**31 - block_size,
+                    num_warps=4 if block_size >= 16384 else 2,
                 )
         return out
 
@@ -145,21 +261,52 @@ def kl_div(
             return torch.zeros((), device=input.device, dtype=input.dtype)
         return torch.full((), float("nan"), device=input.device, dtype=input.dtype)
 
-    block_size = 1024
-    mid_size = triton.cdiv(n_elements, block_size)
-    block_mid = triton.next_power_of_2(mid_size)
-    mid = torch.empty((mid_size,), device=input.device, dtype=torch.float32)
+    if input.element_size() >= 4:
+        block_size = REDUCE_TILE_4B
+        vecacc = REDUCE_VECACC_4B
+        single_max = SINGLE_TILE_4B
+    else:
+        block_size = REDUCE_TILE_2B
+        vecacc = REDUCE_VECACC_2B
+        single_max = SINGLE_TILE_2B
     out = torch.empty((), device=input.device, dtype=input.dtype)
+    mean_flag = reduction == Reduction.MEAN.value
 
     with torch_device_fn.device(input.device):
-        _kl_div_partial_sum_kernel[(mid_size,)](
+        if n_elements <= single_max:
+            _kl_div_sum_single_kernel[(1,)](
+                input,
+                target,
+                out,
+                n_elements,
+                mean_flag=mean_flag,
+                log_target=log_target,
+                BLOCK_SIZE=triton.next_power_of_2(n_elements),
+                num_warps=4,
+            )
+            return out
+
+        num_tile = triton.cdiv(n_elements, block_size)
+        grid = min(MAX_GRID, num_tile)
+        mid = torch.empty((grid,), device=input.device, dtype=torch.float32)
+        _kl_div_partial_sum_kernel[(grid,)](
             input,
             target,
             mid,
             n_elements,
-            reduction=reduction,
             log_target=log_target,
             BLOCK_SIZE=block_size,
+            WIDE=n_elements > 2**31 - block_size,
+            VECACC=vecacc and num_tile > MAX_GRID,
+            num_warps=4,
         )
-        _kl_div_sum_kernel[(1,)](mid, out, mid_size, BLOCK_MID=block_mid)
+        _kl_div_sum_final_kernel[(1,)](
+            mid,
+            out,
+            grid,
+            n_elements,
+            mean_flag=mean_flag,
+            BLOCK_MID=triton.next_power_of_2(grid),
+            num_warps=1,
+        )
     return out

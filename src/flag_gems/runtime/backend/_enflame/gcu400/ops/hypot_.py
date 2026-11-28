@@ -79,7 +79,7 @@ def _launch_config(n_elements):
 
 
 def hypot_(self: torch.Tensor, other):
-    logger.debug("GEMS_ENFLAME_GCU400 HYPOT_")
+    logger.debug("GEMS_ENFLAME HYPOT_")
 
     # In-place operators keep self's dtype; scalar or tensor other is dtype-aligned first, then broadcast to a
     # contiguous view.

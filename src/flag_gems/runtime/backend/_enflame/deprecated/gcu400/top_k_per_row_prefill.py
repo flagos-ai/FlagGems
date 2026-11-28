@@ -20,6 +20,7 @@ https://github.com/flagos-ai/FlagTree.git, align with vLLM implementation.
 """
 
 import logging
+import sys
 
 import torch
 import triton
@@ -1116,6 +1117,317 @@ def tle_top_k_per_row_prefill(
     )
 
 
+# Tile width of the monotone-key bisection-phase kernel (number of columns covered by one scan).
+BISECT_BLOCK_SIZE = 2048
+
+
+@triton.jit
+def _to_order_key(x):
+    """float32 -> monotone uint32 order key: larger values yield larger keys (including
+    negatives and +/-0).
+
+    key = bits ^ 0x80000000 (non-negative) / ~bits (negative), so integer comparison is
+    equivalent to floating-point comparison and the subsequent bisection only needs an
+    integer count(key >= mid).
+    """
+    bits = x.to(tl.uint32, bitcast=True)
+    negative = (bits >> 31) == 1
+    return tl.where(negative, ~bits, bits | 0x80000000)
+
+
+@triton.jit
+def _bisect_row_into(
+    row_ptr,
+    out_ptr,
+    row_len,
+    stride1,
+    TOPK: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """Apply "32 rounds of counting bisection to find the topk-th largest key + two passes
+    to write the output" to a single row.
+
+    Factored into a device function so the candidate-set kernel can fall back to this
+    definitely-correct slow path in place when the candidate count is abnormal (too few
+    collected or overflow), without an extra kernel launch or host-side synchronization.
+
+    Cost: 34 scans per row, taken only when that row's candidate set is unavailable.
+    """
+    lane = tl.arange(0, BLOCK_SIZE)
+    k = tl.minimum(row_len, TOPK)
+
+    # First fill the tail of the output with -1 (placeholder after valid entries when row_len < topk)
+    for fill_start in tl.range(0, TOPK, BLOCK_SIZE):
+        fill_idx = fill_start + lane
+        tl.store(
+            out_ptr + fill_idx,
+            tl.full([BLOCK_SIZE], -1, tl.int32),
+            mask=fill_idx < TOPK,
+        )
+
+    # 32 rounds of counting bisection: lo ends up as the k-th largest key.
+    # Use a dynamic range instead of static_range: this function is inlined as a fallback branch in the candidate-set
+    # kernel,
+    # and unrolling all 32 rounds would blow up both kernels' code size and register pressure (measured 3x slower).
+    lo = tl.zeros((), dtype=tl.uint32)
+    hi = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+    for bisect_round in tl.range(0, 32):
+        span = hi - lo
+        mid = lo + (span >> 1) + (span & 1)
+        count = tl.zeros((), dtype=tl.int32)
+        for off in tl.range(0, row_len, BLOCK_SIZE):
+            idx = off + lane
+            in_range = idx < row_len
+            x = tl.load(row_ptr + idx * stride1, mask=in_range, other=float("-inf"))
+            key = _to_order_key(x)
+            count += tl.sum((key >= mid).to(tl.int32))
+        upper_half = count >= k
+        lo = tl.where(upper_half, mid, lo)
+        hi = tl.where(upper_half, hi, mid - 1)
+
+    thr = lo
+    written = tl.zeros((), dtype=tl.int32)
+
+    # First pass: write out all elements strictly greater than the threshold (their count must be < topk)
+    for off in tl.range(0, row_len, BLOCK_SIZE):
+        idx = off + lane
+        in_range = idx < row_len
+        x = tl.load(row_ptr + idx * stride1, mask=in_range, other=float("-inf"))
+        take = in_range & (_to_order_key(x) > thr)
+        take_i32 = take.to(tl.int32)
+        exclusive = tl.cumsum(take_i32, axis=0) - take_i32
+        tl.store(out_ptr + written + exclusive, idx, mask=take)
+        written += tl.sum(take_i32)
+
+    # Second pass: fill remaining slots in scan order with elements equal to the threshold (any of the tied elements may
+    # be chosen)
+    remaining = k - written
+    filled = tl.zeros((), dtype=tl.int32)
+    for off in tl.range(0, row_len, BLOCK_SIZE):
+        idx = off + lane
+        in_range = idx < row_len
+        x = tl.load(row_ptr + idx * stride1, mask=in_range, other=float("-inf"))
+        take = in_range & (_to_order_key(x) == thr)
+        take_i32 = take.to(tl.int32)
+        exclusive = tl.cumsum(take_i32, axis=0) - take_i32
+        slot = filled + exclusive
+        tl.store(out_ptr + written + slot, idx, mask=take & (slot < remaining))
+        filled += tl.sum(take_i32)
+
+
+# Upper vocab limit for keeping a whole row resident in registers (above this, use the candidate-set approach).
+ROW_TILE_MAX = 4096
+
+
+@triton.jit
+def _gcu_rowwise_top_k_per_row(
+    logits_ptr,
+    out_indices_ptr,
+    row_starts,
+    row_ends,
+    stride0,
+    stride1,
+    TOPK: tl.constexpr,
+    TILE: tl.constexpr,
+    PAD_TILE: tl.constexpr,
+):
+    """Each program handles one row: the whole row of logits is loaded into registers at
+    once, and the 32 bisection rounds and output placement all happen in registers, with
+    only 1 read + 1 write (of output indices).
+
+    Much faster than ``_bisect_row_into``, which rescans the whole row on every round
+    (34 passes).
+
+    GCU measurements that determined this implementation:
+      * ``tl.histogram`` / global ``tl.atomic_add`` reach only 1.4 / 1.7 GB/s, so
+        histogram-based algorithms are impractical on this device;
+      * each ``tl.sum`` reduction costs about 50ns, and unrolled ``static_range`` blows up
+        register pressure (58ms for 32 rounds vs 25ms with dynamic ``range``), so
+        ``tl.range`` is used;
+      * cross-warp reduction synchronization dominates, so the minimum number of warps is
+        chosen with "no more than 128 lanes per thread" (1 warp degrades to intra-warp
+        shuffle and is measured 2x faster than 8 warps).
+    """
+    row_id = tl.program_id(0)
+    row_start = tl.load(row_starts + row_id)
+    row_len = tl.load(row_ends + row_id) - row_start
+    row_ptr = logits_ptr + row_id * stride0 + row_start * stride1
+    out_ptr = out_indices_ptr + row_id * TOPK
+
+    lane = tl.arange(0, TILE)
+    in_range = lane < row_len
+    x = tl.load(row_ptr + lane * stride1, mask=in_range, other=float("-inf"))
+    key = _to_order_key(x)
+    k = tl.minimum(row_len, TOPK)
+
+    # 32 rounds of counting bisection: lo converges to the k-th largest key (lanes outside in_range do not participate
+    # in counting)
+    lo = tl.zeros((), dtype=tl.uint32)
+    hi = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+    for bisect_round in tl.range(0, 32):
+        span = hi - lo
+        mid = lo + (span >> 1) + (span & 1)
+        count = tl.sum((in_range & (key >= mid)).to(tl.int32))
+        upper_half = count >= k
+        lo = tl.where(upper_half, mid, lo)
+        hi = tl.where(upper_half, hi, mid - 1)
+    thr = lo
+
+    # Fill slots after valid entries with -1 (tail placeholder when row_len < TOPK)
+    pad = tl.arange(0, PAD_TILE)
+    tl.store(out_ptr + pad, tl.full([PAD_TILE], -1, tl.int32), mask=pad >= k)
+
+    # First pass: elements with key > thr are placed directly in scan order (their count must be < k)
+    take_hi = in_range & (key > thr)
+    take_hi_i32 = take_hi.to(tl.int32)
+    rank_hi = tl.cumsum(take_hi_i32, axis=0) - take_hi_i32
+    tl.store(out_ptr + rank_hi, lane, mask=take_hi)
+    written = tl.sum(take_hi_i32)
+
+    # Second pass: elements with key == thr fill remaining slots in scan order (any of the tied elements may be chosen)
+    take_eq = in_range & (key == thr)
+    take_eq_i32 = take_eq.to(tl.int32)
+    rank_eq = tl.cumsum(take_eq_i32, axis=0) - take_eq_i32
+    slot = written + rank_eq
+    tl.store(out_ptr + slot, lane, mask=take_eq & (slot < k))
+
+
+# ---------------------------------------------------------------------------
+# Parameters of the candidate-set approach
+#
+# Pure bisection needs one reduction per lane per round, while on GCU reduction cost is nearly independent of the lane
+# count and dominated by
+# synchronization depth, so for a large vocab (a row does not fit in registers) first compress the candidates down to
+# [CAP]:
+#   1) Estimate a lower-bound threshold thr_lo by block sampling (16 bisection rounds on the sample, costing about 1/16
+# of a full row);
+#   2) Do one full scan to collect elements with key >= thr_lo into the [CAP] candidate buffer;
+#   3) If the candidate count falls in [top_k, CAP], run 32 rounds of exact bisection on the candidate set and place the
+# output,
+#      otherwise fall back in place to _bisect_row_into with 34 scan passes (a single row has only vocab elements,
+#      so the absolute cost of a single-row fallback is small).
+# ---------------------------------------------------------------------------
+CANDIDATE_SAMPLE_SMALL = 256  # Number of sampled elements for a small vocab
+# Number of sampled elements for a large vocab (small top_k/vocab requires more samples to reduce estimator variance)
+CANDIDATE_SAMPLE_LARGE = 2048
+CANDIDATE_SAMPLE_CHUNKS = 8  # Number of sampling blocks (each block is 128B contiguous, exactly one cache line)
+# Number of bisection rounds on the sample: only a coarse threshold is needed, no need to resolve down to the lowest bit
+CANDIDATE_SAMPLE_ROUNDS = 16
+
+
+@triton.jit
+def _gcu_candidate_top_k_per_row(
+    logits_ptr,
+    out_indices_ptr,
+    cand_key_ptr,
+    cand_idx_ptr,
+    row_starts,
+    row_ends,
+    stride0,
+    stride1,
+    TOPK: tl.constexpr,
+    CAP: tl.constexpr,
+    PAD_TILE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    SAMPLE: tl.constexpr,
+    CHUNKS: tl.constexpr,
+    SAMPLE_ROUNDS: tl.constexpr,
+):
+    """Each program handles one row: sample to set a lower bound, one full scan to collect
+    candidates, then exact bisection and placement on the candidate set."""
+    row_id = tl.program_id(0)
+    row_start = tl.load(row_starts + row_id)
+    row_end = tl.load(row_ends + row_id)
+    row_len = row_end - row_start
+    row_ptr = logits_ptr + row_id * stride0 + row_start * stride1
+    out_ptr = out_indices_ptr + row_id * TOPK
+    k = tl.minimum(row_len, TOPK)
+
+    # ---- 1) Block sampling, bisect on the sample to obtain the candidate-collection lower bound thr_lo ----
+    chunk_len: tl.constexpr = SAMPLE // CHUNKS
+    s_lane = tl.arange(0, SAMPLE)
+    s_off = (s_lane // chunk_len) * (row_len // CHUNKS) + (s_lane % chunk_len)
+    s_in = s_off < row_len
+    s_x = tl.load(row_ptr + s_off * stride1, mask=s_in, other=float("-inf"))
+    zero_u32 = tl.zeros([SAMPLE], dtype=tl.uint32)
+    s_key = tl.where(s_in, _to_order_key(s_x), zero_u32)
+
+    # The r-th largest key in the sample ≈ the 1.5*top_k-th largest key in the population: this both ensures the
+    # candidate count >= top_k
+    # and leaves enough headroom for CAP (sampling noise is far smaller than this 2x safety factor).
+    s_count = tl.sum(s_in.to(tl.int32))
+    r = (3 * k * s_count + 2 * row_len - 1) // (2 * row_len)
+    r = tl.minimum(tl.maximum(r, 1), s_count)
+    lo = tl.zeros((), dtype=tl.uint32)
+    hi = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+    for sample_round in tl.static_range(0, SAMPLE_ROUNDS):
+        span = hi - lo
+        mid = lo + (span >> 1) + (span & 1)
+        count = tl.sum((s_key >= mid).to(tl.int32))
+        upper_half = count >= r
+        lo = tl.where(upper_half, mid, lo)
+        hi = tl.where(upper_half, hi, mid - 1)
+    thr_lo = lo
+
+    # ---- 2) One full scan: collect elements with key >= thr_lo into the candidate buffer in scan order ----
+    lane = tl.arange(0, BLOCK)
+    cand_key_row = cand_key_ptr + row_id * CAP
+    cand_idx_row = cand_idx_ptr + row_id * CAP
+    written = tl.zeros((), dtype=tl.int32)
+    for off in tl.range(0, row_len, BLOCK):
+        idx = off + lane
+        in_range = idx < row_len
+        x = tl.load(row_ptr + idx * stride1, mask=in_range, other=float("-inf"))
+        key = _to_order_key(x)
+        take = in_range & (key >= thr_lo)
+        take_i32 = take.to(tl.int32)
+        rank = written + tl.cumsum(take_i32, axis=0) - take_i32
+        keep = take & (rank < CAP)
+        tl.store(cand_key_row + rank, key, mask=keep)
+        tl.store(cand_idx_row + rank, idx, mask=keep)
+        written += tl.sum(take_i32)
+
+    # ---- 3) If the candidate set is unusable (fewer than top_k or truncated by CAP), fall back in place for that row
+    # ----
+    if (written < k) | (written > CAP):
+        _bisect_row_into(
+            row_ptr, out_ptr, row_len, stride1, TOPK=TOPK, BLOCK_SIZE=BLOCK
+        )
+    else:
+        # ---- 4) 32 rounds of exact bisection on the candidate set, then place the output in scan order ----
+        c_lane = tl.arange(0, CAP)
+        c_in = c_lane < written
+        c_key = tl.load(cand_key_row + c_lane, mask=c_in, other=0)
+        lo2 = tl.zeros((), dtype=tl.uint32)
+        hi2 = tl.full((), 0xFFFFFFFF, dtype=tl.uint32)
+        for select_round in tl.range(0, 32):
+            span = hi2 - lo2
+            mid = lo2 + (span >> 1) + (span & 1)
+            count = tl.sum((c_in & (c_key >= mid)).to(tl.int32))
+            upper_half = count >= k
+            lo2 = tl.where(upper_half, mid, lo2)
+            hi2 = tl.where(upper_half, hi2, mid - 1)
+        thr = lo2
+
+        # Fill slots after valid entries with -1 (tail placeholder when row_len < TOPK)
+        pad = tl.arange(0, PAD_TILE)
+        tl.store(out_ptr + pad, tl.full([PAD_TILE], -1, tl.int32), mask=pad >= k)
+
+        c_pos = tl.load(cand_idx_row + c_lane, mask=c_in, other=0)
+        take_hi = c_in & (c_key > thr)
+        take_hi_i32 = take_hi.to(tl.int32)
+        rank_hi = tl.cumsum(take_hi_i32, axis=0) - take_hi_i32
+        tl.store(out_ptr + rank_hi, c_pos, mask=take_hi)
+        n_hi = tl.sum(take_hi_i32)
+
+        # Tied elements fill remaining slots in scan order (any of the tied elements may be chosen)
+        take_eq = c_in & (c_key == thr)
+        take_eq_i32 = take_eq.to(tl.int32)
+        rank_eq = tl.cumsum(take_eq_i32, axis=0) - take_eq_i32
+        slot = n_hi + rank_eq
+        tl.store(out_ptr + slot, c_pos, mask=take_eq & (slot < k))
+
+
 @triton.jit
 def non_tle_top_k_per_row_prefill(
     logits_ptr,
@@ -1210,39 +1522,87 @@ def top_k_per_row_prefill(
     the same reason. Do the same here and always launch the non-TLE kernel,
     which uses per-row global scratch buffers instead of ``tle.gpu.alloc``
     shared memory and passes every accuracy shape on this device.
-    """
-    logger.debug("GEMS_ENFLAME_GCU400 TOP_K_PER_ROW_PREFILL")
 
-    vocab_size = logits.shape[1]
+    The upstream non-TLE kernel (histogram + ``tl.atomic_add`` threshold
+    search) aborts the enflame compiler, and both ``tl.histogram`` and global
+    atomics run at ~1.5 GB/s on GCU, so the gcu400 copy replaces it with a
+    candidate-set scheme: sample a lower-bound threshold, collect candidates
+    in one full sweep, then run the exact bisect on that small candidate set.
+    Rows whose candidate set is unusable fall back to the 34-sweep bisect.
+    """
+    logger.debug("GEMS_ENFLAME TOP_K_PER_ROW_PREFILL")
+
     assert num_rows == logits.shape[0]
-    # based on tle version
+    vocab_size = logits.shape[1]
+    if vocab_size <= ROW_TILE_MAX:
+        # A row fits in registers: all 32 bisection rounds and placement happen in registers, with only 1 memory pass.
+        row_tile = triton.next_power_of_2(vocab_size)
+        _gcu_rowwise_top_k_per_row[(num_rows,)](
+            logits,
+            indices,
+            row_starts,
+            row_ends,
+            stride0,
+            stride1,
+            TOPK=top_k,
+            TILE=row_tile,
+            PAD_TILE=triton.next_power_of_2(top_k),
+            num_warps=1,
+        )
+        return
+
+    # Candidate buffer capacity: 4x top_k (the sampling lower bound is scaled to 1.5*top_k, leaving half the margin on
+    # each side),
+    # no need to exceed the full row length when the vocab itself is smaller.
+    cap = min(triton.next_power_of_2(4 * top_k), triton.next_power_of_2(vocab_size))
+    sample = CANDIDATE_SAMPLE_LARGE if vocab_size >= 65536 else CANDIDATE_SAMPLE_SMALL
     device = logits.device
-    s_histogram_ptr = torch.empty(
-        (num_rows, NUM_BINS), device=device, dtype=torch.int32
-    )
-    s_final_logits_ptr = torch.empty(
-        (num_rows, NUM_FILNAL_ITEMS), device=device, dtype=torch.float32
-    )
-    s_final_cnt_ptr = torch.empty((num_rows,), device=device, dtype=torch.int32)
-    s_threshold_bin_idx_ptr = torch.empty((num_rows,), device=device, dtype=torch.int32)
-    s_final_bin_size_ptr = torch.empty((num_rows,), device=device, dtype=torch.int32)
-    s_found_topk_values_ptr = torch.empty((num_rows,), device=device, dtype=torch.int32)
-    non_tle_top_k_per_row_prefill[(num_rows,)](
+    cand_key = torch.empty(num_rows * cap, device=device, dtype=torch.int32)
+    cand_idx = torch.empty(num_rows * cap, device=device, dtype=torch.int32)
+    _gcu_candidate_top_k_per_row[(num_rows,)](
         logits,
         indices,
+        cand_key,
+        cand_idx,
         row_starts,
         row_ends,
         stride0,
         stride1,
-        vocab_size,
-        s_histogram_ptr,
-        s_final_logits_ptr,
-        s_final_cnt_ptr,
-        s_threshold_bin_idx_ptr,
-        s_final_bin_size_ptr,
-        s_found_topk_values_ptr,
         TOPK=top_k,
-        BLOCK_SIZE=NUM_THREADS_PER_BLOCK,
-        ROW_OFFSET=0,
-        num_warps=NUM_THREADS_PER_BLOCK // 32,
+        CAP=cap,
+        PAD_TILE=triton.next_power_of_2(top_k),
+        BLOCK=BISECT_BLOCK_SIZE,
+        SAMPLE=sample,
+        CHUNKS=CANDIDATE_SAMPLE_CHUNKS,
+        SAMPLE_ROUNDS=CANDIDATE_SAMPLE_ROUNDS,
+        # At most 64 lanes per thread: too few warps would spill the two large candidate/sampling tiles out of
+        # registers,
+        # measurements show that at 64 rows x 129280 this drops from 5.6ms to sub-millisecond.
+        num_warps=max(1, cap // 2048),
     )
+
+
+# ---------------------------------------------------------------------------
+# Generic-module rebinding (test / bench / direct-import routing)
+#
+# SpecOpRegistrar only replaces the top-level ``flag_gems`` entry.
+# ``from flag_gems.fused import top_k_per_row_prefill`` (used by the accuracy
+# test and the benchmark) and ``import flag_gems.deprecated.top_k_per_row_prefill``
+# keep resolving to the generic implementation, whose histogram+atomic kernel
+# aborts the enflame compiler (``llvm::cast<DenseElementsAttr>`` assertion in
+# make_gcuir). Rebind the generic module's public entry to this copy, the same
+# way ``_install_gcu400_bin_topk`` routes ``DSA.bin_topk``. The generic module
+# is always loaded first (``flag_gems/__init__`` imports it before registering
+# the backend), so the lookups below find it; when absent the rebinding is a
+# no-op. The vendor module can execute twice under two module names, and the
+# identity guard only prevents pathological self-rebinding.
+# ---------------------------------------------------------------------------
+_generic_topk_module = sys.modules.get("flag_gems.deprecated.top_k_per_row_prefill")
+if _generic_topk_module is not None and _generic_topk_module is not sys.modules.get(
+    __name__
+):
+    _generic_topk_module.top_k_per_row_prefill = top_k_per_row_prefill
+
+_generic_deprecated_package = sys.modules.get("flag_gems.deprecated")
+if _generic_deprecated_package is not None:
+    _generic_deprecated_package.top_k_per_row_prefill = top_k_per_row_prefill

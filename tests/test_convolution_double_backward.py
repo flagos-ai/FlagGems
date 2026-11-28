@@ -144,6 +144,15 @@ def test_convolution_double_backward(
     if not has_bias and has_ggb:
         pytest.skip("ggb requires a forward bias")
 
+    if flag_gems.vendor_name == "enflame" and any(output_padding):
+        # The GCU aten backend rejects a transposed convolution with a non-zero
+        # output_padding ("output_padding must be zero now" in topsop
+        # op_aten_conv_libra_common.h) and aborts the process instead of
+        # raising, so the plain forward used here to build the inputs cannot
+        # run.  The operator under test (_convolution_double_backward) is
+        # still covered by the zero-output_padding cases.
+        pytest.skip("conv_transpose with output_padding != 0 unsupported by GCU aten")
+
     torch.manual_seed(42)
     x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     w = torch.randn(weight_shape, dtype=dtype, device=flag_gems.device)

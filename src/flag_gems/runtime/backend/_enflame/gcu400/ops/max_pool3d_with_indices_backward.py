@@ -136,7 +136,7 @@ def max_pool3d_with_indices_backward(
             int[3] stride, int[3] padding, int[3] dilation,
             bool ceil_mode, Tensor indices) -> Tensor
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MAX_POOL3D_WITH_INDICES_BACKWARD")
+    logger.debug("GEMS_ENFLAME MAX_POOL3D_WITH_INDICES_BACKWARD")
     out_dtype = grad_output.dtype
     grad_output = grad_output.contiguous().to(torch.float32)
     indices = indices.contiguous()

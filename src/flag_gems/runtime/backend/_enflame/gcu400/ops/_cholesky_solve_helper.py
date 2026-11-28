@@ -38,6 +38,9 @@ _COMPILE_RETRY_DELAY_S = 1.0
 # unrolled software pipeline is a few percent faster and the code-size cost is
 # bounded.  Larger systems fall back to a dynamic loop with the same body.
 _STATIC_LOOP_MAX_N = 128
+# When there is no broadcast and the operands are already contiguous, take the fast path without reshape/expand (see
+# in-function comments)
+_USE_FAST_PATH = True
 
 
 def _launch_retry(launch):
@@ -308,7 +311,7 @@ def _cholesky_solve_helper(
     self: torch.Tensor, A: torch.Tensor, upper: bool
 ) -> torch.Tensor:
     """Solve a positive-definite system from its Cholesky factor."""
-    logger.debug("GEMS_ENFLAME_GCU400 _CHOLESKY_SOLVE_HELPER")
+    logger.debug("GEMS_ENFLAME _CHOLESKY_SOLVE_HELPER")
     if self.dtype not in (torch.float32, torch.float64):
         raise RuntimeError(
             "_cholesky_solve_helper currently supports float32 and float64 only"
@@ -320,9 +323,59 @@ def _cholesky_solve_helper(
     if self.shape[-2] != A.shape[-1]:
         raise RuntimeError("self and A have incompatible matrix dimensions")
 
-    batch_shape = torch.broadcast_shapes(self.shape[:-2], A.shape[:-2])
     n = A.shape[-1]
     nrhs = self.shape[-1]
+    # Broadcast shape without paying a torch op when both batch shapes already
+    # agree (the common case, and the one the benchmark uses).
+    self_batch = self.shape[:-2]
+    a_batch = A.shape[:-2]
+    if self_batch == a_batch:
+        batch_shape = self_batch
+    else:
+        batch_shape = torch.broadcast_shapes(self_batch, a_batch)
+    batch_size = math.prod(batch_shape) if batch_shape else 1
+
+    kernel = _cholesky_solve_upper_kernel if upper else _cholesky_solve_lower_kernel
+    # BLOCK_N is the width of the register solution vector and of the per-row
+    # dot-product reduction.  Over-provisioning it to at least 128 pays off on
+    # GCU400 because the cross-lane reduction only reaches its tree form from
+    # 128 lanes up; with BLOCK_N == n the reduction degenerates into a serial
+    # per-lane chain.  Measured (kernel only, harness shapes, robust across
+    # runs): n=4 6.36->4.73us, n=8 9.87->7.30us, n=16 18.61->12.47us,
+    # n=32 38.64->25.02us, n=64 76.73->46.11us.  n > 128 keeps next_pow2(n).
+    block_n = triton.next_power_of_2(max(n, 128))
+    use_static = n <= _STATIC_LOOP_MAX_N
+
+    # Fast path: matching batch shapes + already contiguous operands.  Passing
+    # the operands straight through is layout-identical to the
+    # reshape(batch_size, n, nrhs) form below, and it removes six Python-level
+    # dispatches (two expand, two is_contiguous/contiguous, two reshape) from the
+    # per-call path.  Those dispatches dominate these microsecond kernels:
+    # wrapper 53.3 us vs direct launch 6.4 us for (4, 4) / nrhs=1.
+    if (
+        _USE_FAST_PATH
+        and self_batch == batch_shape
+        and a_batch == batch_shape
+        and self.is_contiguous()
+        and A.is_contiguous()
+    ):
+        out = torch.empty_like(self)
+        with torch_device_fn.device(self.device):
+            _launch_retry(
+                lambda: kernel[(batch_size, nrhs)](
+                    self,
+                    A,
+                    out,
+                    batch_size,
+                    n,
+                    nrhs,
+                    block_n,
+                    use_static,
+                    num_warps=1,
+                )
+            )
+        return out
+
     # Materialise the broadcast batch dims; skip the copy when the operand
     # is already contiguous (on GCU .contiguous() always copies, and the
     # copy kernel launch is visible next to these microsecond kernels).
@@ -332,14 +385,10 @@ def _cholesky_solve_helper(
     factor = A.expand(*batch_shape, n, n)
     if not factor.is_contiguous():
         factor = factor.contiguous()
-    batch_size = math.prod(batch_shape) if batch_shape else 1
     b_3d = b.reshape(batch_size, n, nrhs)
     factor_3d = factor.reshape(batch_size, n, n)
     out_3d = torch.empty_like(b_3d)
 
-    kernel = _cholesky_solve_upper_kernel if upper else _cholesky_solve_lower_kernel
-    block_n = triton.next_power_of_2(max(n, 1))
-    use_static = n <= _STATIC_LOOP_MAX_N
     with torch_device_fn.device(self.device):
         _launch_retry(
             lambda: kernel[(batch_size, nrhs)](
