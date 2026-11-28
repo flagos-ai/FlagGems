@@ -63,7 +63,7 @@ def geglu_kernel(
     x_a = tl.load(input_a_ptr, mask=mask, other=0.0).to(tl.float32)
     x_b = tl.load(input_b_ptr, mask=mask, other=0.0).to(tl.float32)
 
-    gelu_out = 0.5 * x_a * (1 + tanh(0.79788456 * x_a * (1 + 0.044715 * pow(x_a, 2))))
+    gelu_out = 0.5 * x_a * (1 + tanh(0.79788456 * x_a * (1 + 0.044715 * x_a * x_a)))
     out = gelu_out * x_b
 
     tl.store(output_ptr, out.to(tl.float32), mask=mask)
@@ -119,13 +119,13 @@ def dgeglu_kernel(
     x_a = tl.load(input_a_ptr, mask=mask, other=0.0).to(tl.float32)
     x_b = tl.load(input_b_ptr, mask=mask, other=0.0).to(tl.float32)
 
-    tanh_out = tanh(0.79788456 * x_a * (1 + 0.044715 * pow(x_a, 2)))
+    tanh_out = tanh(0.79788456 * x_a * (1 + 0.044715 * x_a * x_a))
     gelu_out = 0.5 * x_a * (1 + tanh_out)
 
     # dgelu/dx
-    sech2 = 1 - pow(tanh_out, 2)
+    sech2 = 1 - tanh_out * tanh_out
     dgelu = 0.5 * (1 + tanh_out) + 0.5 * x_a * sech2 * 0.79788456 * (
-        1 + 3 * 0.044715 * pow(x_a, 2)
+        1 + 3 * 0.044715 * x_a * x_a
     )
 
     grad_a = grad_out * x_b * dgelu

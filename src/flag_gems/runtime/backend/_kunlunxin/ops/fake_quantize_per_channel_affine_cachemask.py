@@ -15,7 +15,12 @@
 """Kunlunxin (XPU) optimized implementation of
 ``fake_quantize_per_channel_affine_cachemask`` / ``..._out``.
 
-Design notes (vs. the generic 1D implementation, ~0.8 ms/kernel + ~236 ms/call
+The non-out entry below retains the part1 implementation. The out entry uses
+an independent pure Triton quantization kernel selected by tile size (see the
+out-variant notes at the end of this file); it does not call vendor computation,
+copy, or conversion operators.
+
+Original non-out design notes (vs. the generic 1D implementation, ~0.8 ms/kernel + ~236 ms/call
 host recompile due to a ``grid = lambda``):
 * The tensor is viewed as a 3-D structure ``(outer, n_channels, inner)`` where
   ``outer = prod(shape[:axis])`` and ``inner = prod(shape[axis + 1:])``.
@@ -343,20 +348,35 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
     output=None,
     cachemask=None,
 ):
+    orig_dtype = input.dtype
     input = input.contiguous()
     scale = scale.contiguous()
     zero_point = zero_point.contiguous()
 
-    if output is None:
+    # fp16 in-kernel load + cast is miscompiled (KERNEL_OPT_EXPERIENCE case 11);
+    # pre-convert to fp32 only for large n_channels (small n_channels are
+    # launch-bound, where the conversion overhead outweighs the benefit).
+    n_channels = input.shape[axis]
+    compute_in_fp32 = (input.dtype == torch.float16) and (n_channels >= 64)
+    if compute_in_fp32:
+        input = input.to(torch.float32)
+
+    output_preallocated = output
+    if output is None or compute_in_fp32:
         output = torch.empty_like(input)
     if cachemask is None:
         cachemask = torch.empty_like(input, dtype=torch.bool)
 
     n_elements = input.numel()
     if n_elements == 0:
+        if compute_in_fp32:
+            if output_preallocated is None:
+                output = output.to(orig_dtype)
+            else:
+                output_preallocated.copy_(output)
+                output = output_preallocated
         return output, cachemask
 
-    n_channels = input.shape[axis]
     inner = 1
     for size in input.shape[axis + 1 :]:
         inner *= size
@@ -379,7 +399,7 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
                 )
             else:
                 mask_fp32 = torch.empty(
-                    n_elements, dtype=torch.float32, device=input.device
+                    input.shape, dtype=torch.float32, device=input.device
                 )
                 _launch_rows(
                     input,
@@ -413,7 +433,7 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
                 )
             else:
                 mask_fp32 = torch.empty(
-                    n_elements, dtype=torch.float32, device=input.device
+                    input.shape, dtype=torch.float32, device=input.device
                 )
                 _launch_cols(
                     input,
@@ -428,6 +448,12 @@ def _fake_quantize_per_channel_affine_cachemask_impl(
                     mask_fp32=mask_fp32,
                 )
                 torch.ops.aten._copy_from(mask_fp32, cachemask, False)
+    if compute_in_fp32:
+        if output_preallocated is None:
+            output = output.to(orig_dtype)
+        else:
+            output_preallocated.copy_(output)
+            output = output_preallocated
     return output, cachemask
 
 
@@ -440,17 +466,308 @@ def fake_quantize_per_channel_affine_cachemask(
     )
 
 
+# --- Out variant (integrated passed22 candidate) -----------------------------
+# Semantics reproduced from the ATen reference (verified on this target):
+#   q   = nearbyint_(half-to-even)(x / scale) + zero_point   # fp32 opmath
+#   m   = (q >= quant_min) & (q <= quant_max)                # inclusive
+#   out = (clamp(q, quant_min, quant_max) - zero_point) * scale
+# The quotient must match the ATen CPU reference: measured tie cases show it
+# uses a correctly rounded reciprocal multiply ``x * (1 / scale)`` (the master
+# CPU reference and the old kunlunxin path agree on all 48 diagnostic cases),
+# so the kernel uses the same form. Ties round half-to-even (no native rint on
+# this backend) via an explicit floor/fraction RNE that also defeats FMA
+# contraction of the product into the rounding add.
+# Both destinations (out0, out1) are written in place and returned.
+
+_OUT_NDIM_MAX = 8
+
+
+@triton.jit
+def _out_round_half_to_even(x):
+    """round-to-nearest, ties-to-even (matches std::nearbyint in fp32).
+
+    The clamp is required, not decorative: without it the compiler contracts
+    ``x * inv + 12582912`` into an FMA, skipping the rounding of the product,
+    and exact half-way quotients drift one step from the ATen reference.
+    Materialising the product first keeps results aligned while retaining the
+    two-op magic-constant RNE (``tl.floor`` is disproportionately slow here).
+    Quantised quotients stay far below 2**22, where the trick is exact; larger
+    quotients still clamp to quant_max.
+    """
+    big = 2147483648.0
+    x = tl.minimum(tl.maximum(x, -big), big)
+    return (x + 12582912.0) - 12582912.0
+
+
+@triton.jit
+def _fq_cachemask_kernel(
+    x_ptr,
+    s_ptr,
+    z_ptr,
+    o_ptr,
+    m_ptr,
+    n_elements,
+    qmin,
+    qmax,
+    INNER: tl.constexpr,
+    C: tl.constexpr,
+    BLOCK: tl.constexpr,
+    FULL: tl.constexpr,
+    MB: tl.constexpr,
+):
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    if INNER == 1:
+        ch = off % C
+    else:
+        ch = (off // INNER) % C
+
+    if FULL:
+        # n_elements is an exact multiple of BLOCK: no lane is ever out of
+        # bounds, so neither the loads nor the stores need predication.
+        s = tl.load(s_ptr + ch).to(tl.float32)
+        z = tl.load(z_ptr + ch).to(tl.float32)
+        x = tl.load(x_ptr + off).to(tl.float32)
+        inv = tl.div_rn(1.0, s)
+        q = _out_round_half_to_even(x * inv) + z
+        qc = tl.minimum(tl.maximum(q, qmin), qmax)
+        # in-range == clamp did not change the value (identical to the inclusive
+        # qmin/qmax test, and False for NaN), so reuse the clamp result.
+        if MB:
+            tl.store(m_ptr + off, q == qc)
+        else:
+            tl.store(m_ptr + off, (q == qc).to(tl.uint8))
+        tl.store(o_ptr + off, ((qc - z) * s).to(o_ptr.dtype.element_ty))
+    else:
+        ok = off < n_elements
+        s = tl.load(s_ptr + ch, mask=ok, other=1.0).to(tl.float32)
+        z = tl.load(z_ptr + ch, mask=ok, other=0.0).to(tl.float32)
+        x = tl.load(x_ptr + off, mask=ok, other=0.0).to(tl.float32)
+        inv = tl.div_rn(1.0, s)
+        q = _out_round_half_to_even(x * inv) + z
+        qc = tl.minimum(tl.maximum(q, qmin), qmax)
+        if MB:
+            tl.store(m_ptr + off, q == qc, mask=ok)
+        else:
+            tl.store(m_ptr + off, (q == qc).to(tl.uint8), mask=ok)
+        tl.store(o_ptr + off, ((qc - z) * s).to(o_ptr.dtype.element_ty), mask=ok)
+
+
+@triton.jit
+def _fq_cachemask_strided_kernel(
+    x_ptr,
+    s_ptr,
+    z_ptr,
+    o_ptr,
+    m_ptr,
+    n_elements,
+    inner,
+    C,
+    qmin,
+    qmax,
+    d0,
+    d1,
+    d2,
+    d3,
+    d4,
+    d5,
+    d6,
+    d7,
+    xs0,
+    xs1,
+    xs2,
+    xs3,
+    xs4,
+    xs5,
+    xs6,
+    xs7,
+    os0,
+    os1,
+    os2,
+    os3,
+    os4,
+    os5,
+    os6,
+    os7,
+    ms0,
+    ms1,
+    ms2,
+    ms3,
+    ms4,
+    ms5,
+    ms6,
+    ms7,
+    NDIM: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+    ok = off < n_elements
+    ch = (off // inner) % C
+    s = tl.load(s_ptr + ch, mask=ok, other=1.0).to(tl.float32)
+    z = tl.load(z_ptr + ch, mask=ok, other=0.0).to(tl.float32)
+    inv = tl.div_rn(1.0, s)
+
+    xo = tl.zeros([BLOCK], dtype=tl.int64)
+    oo = tl.zeros([BLOCK], dtype=tl.int64)
+    mo = tl.zeros([BLOCK], dtype=tl.int64)
+    rem = off
+    if NDIM > 7:
+        i7 = rem % d7
+        rem = rem // d7
+        xo += i7 * xs7
+        oo += i7 * os7
+        mo += i7 * ms7
+    if NDIM > 6:
+        i6 = rem % d6
+        rem = rem // d6
+        xo += i6 * xs6
+        oo += i6 * os6
+        mo += i6 * ms6
+    if NDIM > 5:
+        i5 = rem % d5
+        rem = rem // d5
+        xo += i5 * xs5
+        oo += i5 * os5
+        mo += i5 * ms5
+    if NDIM > 4:
+        i4 = rem % d4
+        rem = rem // d4
+        xo += i4 * xs4
+        oo += i4 * os4
+        mo += i4 * ms4
+    if NDIM > 3:
+        i3 = rem % d3
+        rem = rem // d3
+        xo += i3 * xs3
+        oo += i3 * os3
+        mo += i3 * ms3
+    if NDIM > 2:
+        i2 = rem % d2
+        rem = rem // d2
+        xo += i2 * xs2
+        oo += i2 * os2
+        mo += i2 * ms2
+    if NDIM > 1:
+        i1 = rem % d1
+        rem = rem // d1
+        xo += i1 * xs1
+        oo += i1 * os1
+        mo += i1 * ms1
+    i0 = rem % d0
+    xo += i0 * xs0
+    oo += i0 * os0
+    mo += i0 * ms0
+
+    x = tl.load(x_ptr + xo, mask=ok, other=0.0).to(tl.float32)
+    q = _out_round_half_to_even(x * inv) + z
+    qc = tl.minimum(tl.maximum(q, qmin), qmax)
+    tl.store(m_ptr + mo, (q == qc).to(tl.uint8), mask=ok)
+    tl.store(o_ptr + oo, ((qc - z) * s).to(o_ptr.dtype.element_ty), mask=ok)
+
+
+def _out_run(
+    input,
+    scale,
+    zero_point,
+    axis,
+    quant_min,
+    quant_max,
+    *,
+    out0,
+    out1,
+):
+    n_elements = input.numel()
+    if n_elements == 0:
+        return out0, out1
+
+    nd = input.dim()
+    a = axis + nd if axis < 0 else axis
+    shape = input.shape
+    C = shape[a]
+    inner = 1
+    for d in shape[a + 1 :]:
+        inner *= d
+
+    if out1.dtype == torch.bool:
+        mask_bool = True
+        mask_arg = out1
+    else:
+        mask_bool = False
+        mask_arg = out1.view(torch.uint8)
+
+    qmin = float(quant_min)
+    qmax = float(quant_max)
+
+    if input.is_contiguous() and out0.is_contiguous() and mask_arg.is_contiguous():
+        # Cost on this target tracks CTAs and tile bytes: the measured optimum
+        # elements-per-CTA grows with the problem size (98304 -> 4096 elements,
+        # >=524288 -> 8192), while launch-bound tiny inputs keep the smallest
+        # tile.
+        if n_elements <= 8192:
+            BLOCK = 1024
+            nw = 4
+        elif n_elements <= 131072:
+            BLOCK = 4096
+            nw = 4
+        else:
+            BLOCK = 8192
+            nw = 4
+        with torch_device_fn.device(input.device):
+            _fq_cachemask_kernel[(triton.cdiv(n_elements, BLOCK),)](
+                input,
+                scale,
+                zero_point,
+                out0,
+                mask_arg,
+                n_elements,
+                qmin,
+                qmax,
+                INNER=inner,
+                C=C,
+                BLOCK=BLOCK,
+                FULL=(n_elements % BLOCK == 0),
+                MB=mask_bool,
+                num_warps=nw,
+            )
+        return out0, out1
+
+    # general strided fallback (no layout conversion on the data path)
+    def _pad(seq):
+        seq = list(seq) + [1] * (_OUT_NDIM_MAX - len(seq))
+        return seq
+
+    ds = _pad(shape)
+    xs = _pad(input.stride())
+    os_ = _pad([s // out0.element_size() for s in out0.stride()])
+    mask_view = out1.view(torch.uint8) if mask_bool else out1
+    ms = _pad(mask_view.stride())
+    BLOCK = 1024
+    with torch_device_fn.device(input.device):
+        _fq_cachemask_strided_kernel[(triton.cdiv(n_elements, BLOCK),)](
+            input,
+            scale,
+            zero_point,
+            out0,
+            mask_view,
+            n_elements,
+            inner,
+            C,
+            qmin,
+            qmax,
+            *ds,
+            *xs,
+            *os_,
+            *ms,
+            NDIM=nd,
+            BLOCK=BLOCK,
+            num_warps=4,
+        )
+    return out0, out1
+
+
 def fake_quantize_per_channel_affine_cachemask_out(
     input, scale, zero_point, axis, quant_min, quant_max, *, out0, out1
 ):
     logger.debug("GEMS_KUNLUNXIN FAKE_QUANTIZE_PER_CHANNEL_AFFINE_CACHEMASK_OUT")
-    return _fake_quantize_per_channel_affine_cachemask_impl(
-        input,
-        scale,
-        zero_point,
-        axis,
-        quant_min,
-        quant_max,
-        output=out0,
-        cachemask=out1,
+    return _out_run(
+        input, scale, zero_point, axis, quant_min, quant_max, out0=out0, out1=out1
     )

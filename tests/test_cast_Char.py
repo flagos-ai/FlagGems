@@ -1,0 +1,207 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import pytest
+import torch
+
+import flag_gems
+
+from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
+
+DTYPES = [
+    torch.bool,
+    torch.uint8,
+    torch.int8,
+    torch.int16,
+    torch.int32,
+    torch.int64,
+    torch.float16,
+    torch.bfloat16,
+    torch.float32,
+    pytest.param(torch.float64, marks=_SKIP_FP64),
+]
+
+
+def make_input(shape, dtype):
+    return torch.randint(-512, 512, shape, device=flag_gems.device).to(dtype)
+
+
+def device_reference(x, non_blocking=False):
+    """Device-side ATen ``_cast_Char`` (aborts the process on complex input)."""
+    return torch.ops.aten._cast_Char(x, non_blocking)
+
+
+def assert_cast(x, non_blocking=False, reference_on_device=False):
+    """Compare ``flag_gems.cast_Char`` against the ATen reference.
+
+    Under ``--ref=cpu`` the reference leg runs on CPU by default (GCU's aten
+    aborts the whole process on complex input). Out-of-range float -> integer
+    conversion is implementation defined, so CPU and GCU aten differ (CPU yields
+    0, GCU saturates to int32 then takes the low byte); such cases keep the
+    device-side reference via ``reference_on_device=True`` so both sides are
+    compared under the same semantics.
+    """
+    actual = flag_gems.cast_Char(x, non_blocking)
+    if utils.TO_CPU and not reference_on_device:
+        expected = torch.ops.aten._cast_Char(x.cpu(), non_blocking)
+        torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+        # The CPU reference copies same-dtype (int8) input into a contiguous
+        # layout while the device implementation returns self per ATen semantics,
+        # so the two layouts are not equivalent; layout assertions still use the
+        # device-side ATen as the source of truth.
+        if not x.is_complex():
+            assert actual.stride() == device_reference(x, non_blocking).stride()
+    else:
+        expected = device_reference(x, non_blocking)
+        torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+        assert actual.stride() == expected.stride()
+    return actual, expected
+
+
+@pytest.mark.cast_Char
+@pytest.mark.parametrize(
+    "shape", [(), (0,), (2, 0, 3), (1,), (1023,), (1025,), (129, 257)]
+)
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize("non_blocking", [False, True])
+def test_cast_Char(shape, dtype, non_blocking):
+    x = make_input(shape, dtype)
+    expected = torch.ops.aten._cast_Char(x, non_blocking)
+    actual = flag_gems.cast_Char(x, non_blocking)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    assert actual.stride() == expected.stride()
+    assert not actual.requires_grad
+    if dtype == torch.int8:
+        assert actual is x
+    elif x.numel():
+        assert actual.data_ptr() != x.data_ptr()
+
+
+@pytest.mark.cast_Char
+@pytest.mark.parametrize("dtype", DTYPES)
+@pytest.mark.parametrize(
+    "layout", ["transpose", "slice", "expand", "channels_last", "permuted_slice"]
+)
+def test_cast_Char_strided(dtype, layout):
+    x = make_input((4, 5, 6, 7), dtype)
+    if layout == "transpose":
+        x = x.transpose(0, 3)
+    elif layout == "slice":
+        x = x[1:, :, ::2, 1::2]
+    elif layout == "expand":
+        x = x[:1].expand(9, -1, -1, -1)
+    elif layout == "permuted_slice":
+        x = x.transpose(0, 3)[::2, :, 1::2, :]
+    else:
+        x = x.contiguous(memory_format=torch.channels_last)
+    expected = torch.ops.aten._cast_Char(x)
+    actual = flag_gems.cast_Char(x)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    assert actual.stride() == expected.stride()
+
+
+@pytest.mark.cast_Char
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float16,
+        torch.bfloat16,
+        torch.float32,
+        pytest.param(torch.float64, marks=_SKIP_FP64),
+    ],
+)
+def test_cast_Char_fractional(dtype):
+    x = torch.tensor(
+        [
+            -257.75,
+            -256.5,
+            -129.5,
+            -128.75,
+            -1.9,
+            -0.5,
+            0,
+            0.5,
+            1.9,
+            127.5,
+            128.5,
+            255.5,
+            256.5,
+            257.75,
+            2**31,
+            2**32 + 256,
+            1e20,
+            -1e20,
+            float("inf"),
+            -float("inf"),
+            float("nan"),
+        ],
+        device=flag_gems.device,
+        dtype=dtype,
+    )
+    torch.testing.assert_close(
+        flag_gems.cast_Char(x), torch.ops.aten._cast_Char(x), rtol=0, atol=0
+    )
+
+
+@pytest.mark.cast_Char
+@pytest.mark.parametrize("requires_grad", [False, True])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame aten reference leg aborts the process (gcu_utils.cpp Check failed)",
+)
+def test_cast_Char_requires_grad(requires_grad):
+    x = torch.randn(1025, device=flag_gems.device, requires_grad=requires_grad)
+    expected = torch.ops.aten._cast_Char(x, True)
+    actual = flag_gems.cast_Char(x, True)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+    assert not actual.requires_grad
+
+
+@pytest.mark.cast_Char
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "aten defect: aten::_cast_Char on ComplexFloat has no GCU kernel; the "
+        "native composite falls through to topsatenCopy which returns "
+        "TOPSATEN_STATUS_NOT_SUPPORT and the csrc check aborts the process, so "
+        "the reference leg has no result"
+    ),
+)
+def test_cast_Char_complex(dtype):
+    x = torch.randn(17, device=flag_gems.device, dtype=dtype).conj()
+    expected = torch.ops.aten._cast_Char(x)
+    actual = flag_gems.cast_Char(x)
+    torch.testing.assert_close(actual, expected, rtol=0, atol=0)
+
+
+@pytest.mark.cast_Char
+def test_cast_Char_integer_limits():
+    x = torch.tensor(
+        [-(2**63), -(2**31) - 1, 2**31, 2**63 - 1], device=flag_gems.device
+    )
+    torch.testing.assert_close(
+        flag_gems.cast_Char(x), torch.ops.aten._cast_Char(x), rtol=0, atol=0
+    )
+
+
+@pytest.mark.cast_Char
+def test_cast_Char_negative_view():
+    x = torch._neg_view(torch.arange(17, device=flag_gems.device, dtype=torch.float32))
+    torch.testing.assert_close(
+        flag_gems.cast_Char(x), torch.ops.aten._cast_Char(x), rtol=0, atol=0
+    )

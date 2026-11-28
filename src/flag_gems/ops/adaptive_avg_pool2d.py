@@ -75,16 +75,21 @@ def _adaptive_pool_windows(X, Y, SPEC: tl.constexpr):
     tl.store(Y + out, value, out < TOTAL)
 
 
-def adaptive_avg_pool2d(input: torch.Tensor, output_size):
-    logger.debug("GEMS ADAPTIVE_AVG_POOL2D")
-    input = input.contiguous()
+def _normalize_output_size_2d(output_size):
     if isinstance(output_size, int):
-        output_size = (output_size, output_size)
+        return output_size, output_size
     oh, ow = output_size
-    n, c, ih, iw = input.shape
-    output = torch.empty((n, c, oh, ow), device=input.device, dtype=input.dtype)
-    if output.numel() == 0 or ih == 0 or iw == 0:
-        return output
+    return oh, ow
+
+
+def _launch_adaptive_pool_windows(input: torch.Tensor, output: torch.Tensor):
+    """Launch the pooling kernel for a contiguous ``input``/``output`` pair.
+
+    ``output`` must be contiguous: the kernel addresses it with the flat index
+    ``Y + out``, so a strided buffer would be written at the wrong offsets.
+    """
+    ih, iw = input.shape[-2:]
+    oh, ow = output.shape[-2:]
     kh = triton.cdiv(ih, oh) + (ih % oh != 0)
     kw = triton.cdiv(iw, ow) + (iw % ow != 0)
     br = min(triton.next_power_of_2(kh * kw), 1024)
@@ -96,4 +101,46 @@ def adaptive_avg_pool2d(input: torch.Tensor, output_size):
             (output.numel(), ih, iw, oh, ow, kh, kw, bo, br),
             num_warps=4,
         )
+
+
+def adaptive_avg_pool2d(input: torch.Tensor, output_size):
+    logger.debug("GEMS ADAPTIVE_AVG_POOL2D")
+    input = input.contiguous()
+    oh, ow = _normalize_output_size_2d(output_size)
+    n, c, ih, iw = input.shape
+    output = torch.empty((n, c, oh, ow), device=input.device, dtype=input.dtype)
+    if output.numel() == 0 or ih == 0 or iw == 0:
+        return output
+    _launch_adaptive_pool_windows(input, output)
     return output
+
+
+def _adaptive_avg_pool2d_out(input: torch.Tensor, output_size, *, out: torch.Tensor):
+    logger.debug("GEMS _ADAPTIVE_AVG_POOL2D_OUT")
+    if out.dtype != input.dtype:
+        raise RuntimeError(
+            f"Expected out tensor to have dtype {input.dtype}, "
+            f"but got {out.dtype} instead"
+        )
+    input = input.contiguous()
+    oh, ow = _normalize_output_size_2d(output_size)
+    n, c, ih, iw = input.shape
+    expected_shape = (n, c, oh, ow)
+    # ATen resizes a mismatched out tensor instead of raising, so mirror that.
+    if tuple(out.shape) != expected_shape:
+        out.resize_(expected_shape)
+    if out.numel() == 0 or ih == 0 or iw == 0:
+        return out
+    # The kernel writes through a flat index, so a strided out tensor has to be
+    # filled via a contiguous staging buffer.
+    # ``empty_like`` would preserve a channels_last layout, which is still not
+    # contiguous, so request the contiguous format explicitly.
+    buffer = (
+        out
+        if out.is_contiguous()
+        else torch.empty_like(out, memory_format=torch.contiguous_format)
+    )
+    _launch_adaptive_pool_windows(input, buffer)
+    if buffer is not out:
+        out.copy_(buffer)
+    return out

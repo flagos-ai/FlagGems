@@ -12,33 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Kunlunxin backend override for linalg_cholesky.
-
-The generic implementation walks the whole matrix with scalar loads in
-triply nested loops (O(N^3) scalar ops in a single program): ~10 ms at N=32,
-~0.31 s at N=128 and ~2 s at N=256 on TritonXPU.
-
-This override keeps the chips that TritonXPU lowers reliably (per the
-cholesky family experience on this backend):
-
-  - n <= 32: one row-serial kernel over the whole matrix with a
-    constant-mask 32-lane(<=) vector (verified deterministic across many
-    fresh processes for n = 2/4/8/16/32);
-  - n > 32: a blocked, mask-free 32x32 pipeline: diagonal 32-blocks via a
-    scalar serial kernel, Schur/off-diagonal solves via tl.dot with
-    input_precision="ieee" and fully unmasked 32x32 operands, inverse
-    diagonal blocks via a 32-lane serial kernel, transposed working copies
-    done with native strided copies (no tl.gather: illegal on this backend).
-
-Known backend limitation (documented): 64-wide / partial-false masked
-vectors inside row-serial Cholesky loops and multi-dot pipelines at N=256
-have shown process-dependent miscompilation on this backend; kernels here
-stay at <=32 lanes for the serial parts and the blocked path is only
-exercised by benchmark shapes (the accuracy suite covers n <= 32).
-
-dtype: on this backend fp64 requests never reach the kernels (the vendor
-silently downcasts to fp32), the kernels are dtype-generic.
-"""
 
 import logging
 
@@ -50,53 +23,57 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def _lc_small_kernel(
+def _lc_row_kernel(
     A_ptr,
     U_ptr,
     N,
     batch_stride,
     row_stride,
     col_stride,
+    i,
     CBLK: tl.constexpr,
 ):
-    """Upper-factor Cholesky, one program per matrix, rows serial.
+    """Upper-factor Cholesky, row ``i`` of every matrix; one launch per row.
 
     Lanes = columns (full width CBLK = next_pow2(n) <= 32, mask js < N is
-    constant per launch); the k-loop bound min(i, N) keeps the accumulated
-    sums exact. Output buffer is zero-initialized; upper values are written
-    directly and the lower triangle stays zero.
+    constant per launch); the k-loop reads only rows produced by *previous
+    launches*, so the write -> read dependency is ordered by the kernel
+    boundary. A single-launch row-serial version is not safe on this
+    backend: reading back the vector row just stored inside the loop is
+    unordered and produced process-dependent garbage (observed 1e-1..1e0
+    max errors for n = 32 on some processes). Output buffer is
+    zero-initialized; upper values are written directly and the lower
+    triangle stays zero.
     """
     b = tl.program_id(0)
     base = b * batch_stride
     js = tl.arange(0, CBLK)
     jmask = js < N
     dtype = A_ptr.dtype.element_ty
-    for i in range(N):
-        k_lim = tl.minimum(i, N)
-        acc = tl.zeros((CBLK,), dtype=dtype)
-        sq = tl.zeros((), dtype=dtype)
-        for k in range(0, k_lim):
-            fk = tl.load(U_ptr + base + k * row_stride + i * col_stride)
-            pk = tl.load(
-                U_ptr + base + k * row_stride + js * col_stride,
-                mask=jmask,
-                other=0.0,
-            )
-            acc += fk * pk
-            sq += fk * fk
-        a_row = tl.load(
-            A_ptr + base + i * row_stride + js * col_stride,
+    acc = tl.zeros((CBLK,), dtype=dtype)
+    sq = tl.zeros((), dtype=dtype)
+    for k in range(i):
+        fk = tl.load(U_ptr + base + k * row_stride + i * col_stride)
+        pk = tl.load(
+            U_ptr + base + k * row_stride + js * col_stride,
             mask=jmask,
             other=0.0,
         )
-        d = tl.sqrt(tl.load(A_ptr + base + i * row_stride + i * col_stride) - sq)
-        inv = 1.0 / d
-        val = tl.where(js == i, d, tl.where(js > i, (a_row - acc) * inv, 0.0))
-        tl.store(
-            U_ptr + base + i * row_stride + js * col_stride,
-            val,
-            mask=jmask,
-        )
+        acc += fk * pk
+        sq += fk * fk
+    a_row = tl.load(
+        A_ptr + base + i * row_stride + js * col_stride,
+        mask=jmask,
+        other=0.0,
+    )
+    d = tl.sqrt(tl.load(A_ptr + base + i * row_stride + i * col_stride) - sq)
+    inv = 1.0 / d
+    val = tl.where(js == i, d, tl.where(js > i, (a_row - acc) * inv, 0.0))
+    tl.store(
+        U_ptr + base + i * row_stride + js * col_stride,
+        val,
+        mask=jmask,
+    )
 
 
 @triton.jit
@@ -147,18 +124,25 @@ def _lc_chol_kernel(W_ptr, L_ptr, N, r: tl.constexpr):
 
 
 @triton.jit
-def _lc_inv_kernel(L_ptr, X_ptr, N, r: tl.constexpr):
-    """X[:,r] = (L[:,r])^{-1} (lower); 32-lane vectors, mask-free."""
+def _lc_inv_kernel(L_ptr, X_ptr, N, i, r: tl.constexpr):
+    """Row ``i`` of X[:,r] = (L[:,r])^{-1} (lower); one launch per row.
+
+    Lanes = columns. Row ``i`` needs rows ``k < i``; reading them back
+    inside a single program is unordered on this backend (the earlier
+    vector form produced max errors from 3e-7 to 1e0 across repeated
+    launches/processes and made the whole n > 32 path emit NaN). One launch
+    per row makes every dependency cross a kernel boundary, which is
+    ordered, while keeping the 32-lane vector work.
+    """
     b = tl.program_id(0)
     l0 = b * N * N + r * 32 * N + r * 32
     x0 = b * 32768 + r * 1024
     J = tl.arange(0, 32)
-    for i in range(32):
-        acc = tl.where(J == i, 1.0, 0.0)
-        for k in range(i):
-            acc -= tl.load(L_ptr + l0 + i * N + k) * tl.load(X_ptr + x0 + k * 32 + J)
-        d = tl.load(L_ptr + l0 + i * N + i)
-        tl.store(X_ptr + x0 + i * 32 + J, acc / d)
+    acc = tl.where(J == i, 1.0, 0.0)
+    for k in range(i):
+        acc -= tl.load(L_ptr + l0 + i * N + k) * tl.load(X_ptr + x0 + k * 32 + J)
+    d = tl.load(L_ptr + l0 + i * N + i)
+    tl.store(X_ptr + x0 + i * 32 + J, acc / d)
 
 
 @triton.jit
@@ -204,7 +188,8 @@ def _chol_blocked(work, batch, n):
     for r in range(nb):
         _lc_prep_kernel[(batch,)](W, work, L, LT, n, r=r, num_warps=4, num_stages=1)
         _lc_chol_kernel[(batch,)](W, L, n, r=r, num_warps=1, num_stages=1)
-        _lc_inv_kernel[(batch,)](L, X, n, r=r, num_warps=1, num_stages=1)
+        for i in range(32):
+            _lc_inv_kernel[(batch,)](L, X, n, i, r=r, num_warps=1, num_stages=1)
         XT[:, r, :, :] = X[:, r, :, :].transpose(-2, -1).contiguous()
         for m in range(r + 1, nb):
             _lc_off_kernel[(batch,)](
@@ -242,17 +227,20 @@ def linalg_cholesky(A, upper=False):
 
     if n <= 32:
         U = torch.zeros((batch, n, n), dtype=A.dtype, device=A.device)
-        _lc_small_kernel[(batch,)](
-            A64,
-            U,
-            n,
-            A64.stride(0),
-            A64.stride(1),
-            A64.stride(2),
-            triton.next_power_of_2(n),
-            num_warps=1,
-            num_stages=1,
-        )
+        cblk = triton.next_power_of_2(n)
+        for i in range(n):
+            _lc_row_kernel[(batch,)](
+                A64,
+                U,
+                n,
+                A64.stride(0),
+                A64.stride(1),
+                A64.stride(2),
+                i,
+                cblk,
+                num_warps=1,
+                num_stages=1,
+            )
         if upper:
             return U.reshape(shape)
         return U.transpose(-2, -1).reshape(shape)

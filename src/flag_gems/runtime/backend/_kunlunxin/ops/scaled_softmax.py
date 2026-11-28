@@ -25,36 +25,36 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def scaled_softmax_forward_rows_kernel(
+def scaled_softmax_forward_multirow_kernel(
     output_ptr,
     input_ptr,
     scale_factor,
-    KK: tl.constexpr,
-    ROWS: tl.constexpr,
+    N: tl.constexpr,
+    TILE_M: tl.constexpr,
 ):
-    """Whole-row softmax tile: ROWS complete (query, key) rows per program.
+    # Single-pass contiguous [M, N] path: TILE_M full rows stay resident in the
+    # kernel, so the row max / sum-of-exp are 2D axis-1 reductions and the input
+    # is read exactly once (same structure as the tuned `softmax_kernel_multirow`
+    # in _kunlunxin/ops/softmax.py, with the scale fused into the load).
+    pid = tl.program_id(0)
+    mo = pid * TILE_M + tl.arange(0, TILE_M)
+    no = tl.arange(0, N)
+    off = mo[:, None] * N + no[None, :]
 
-    A straight-line ``[ROWS, KK]`` block with no dynamic loop is the only
-    structure the XPU backend lowers efficiently here: a row-carried vector in
-    a ``maxnumf``/``subf`` loop trips the "requires the same encoding" codegen
-    failure, while a ``[1, BLOCK_K]`` streaming tile collapses to ~1 GB/s.
-    Grouping several rows into a single tile also makes the compiler reduce all
-    of them across the core group in one shot, amortizing the cross-core
-    reduction over ROWS rows.
-    """
-    rows = tl.program_id(0) * ROWS + tl.arange(0, ROWS)
-    cols = tl.arange(0, KK)
-    offs = rows[:, None] * KK + cols[None, :]
-    vals = tl.load(input_ptr + offs).to(tl.float32) * scale_factor
-    row_max = tl.max(vals, axis=1)
-    exps = tl.exp(vals - row_max[:, None])
-    row_sum = tl.sum(exps, axis=1)
-    tl.store(output_ptr + offs, exps * (1.0 / row_sum)[:, None])
+    s = tl.load(input_ptr + off)
+    s = s * scale_factor
+
+    m = tl.max(s, axis=1)
+    e = tl.exp(s - m[:, None])
+    z = tl.sum(e, axis=1)
+    out = e * (1.0 / z)[:, None]
+
+    tl.store(output_ptr + off, out)
 
 
 @libentry()
 @triton.jit
-def scaled_softmax_forward_kernel(
+def scaled_softmax_forward_row_kernel(
     output_ptr,
     input_ptr,
     scale_factor,
@@ -63,50 +63,48 @@ def scaled_softmax_forward_kernel(
     stride_b,
     stride_h,
     stride_q,
-    BLOCK_Q: tl.constexpr,
     BLOCK_K: tl.constexpr,
 ):
-    query_seq_tile_idx = tl.program_id(0)
+    # One program per (batch, head, query) row: the whole row is a 1D tile so the
+    # per-row max/sum reductions stay 1D (2D (1, BLOCK_K) tiles lower badly on XPU:
+    # BLOCK_Q>1 fails to compile with `uni_sram`, and even BLOCK_Q=1 is ~2 orders of
+    # magnitude slower than a 1D row kernel for the same BLOCK_K). Used for strided
+    # inputs and non power-of-two key lengths, where the multirow path does not fit.
+    query_idx = tl.program_id(0)
     attn_head_idx = tl.program_id(1)
     batch_idx = tl.program_id(2)
-
-    start_query_idx = query_seq_tile_idx * BLOCK_Q
-    query_offsets = start_query_idx + tl.arange(0, BLOCK_Q)
-
-    query_mask = query_offsets < query_seq_len
 
     row_start_ptr = (
         input_ptr
         + batch_idx * stride_b
         + attn_head_idx * stride_h
-        + query_offsets * stride_q
+        + query_idx * stride_q
     )
 
-    m = tl.full([BLOCK_Q], -float("inf"), dtype=tl.float32)
-    exp_sum = tl.zeros([BLOCK_Q], dtype=tl.float32)
+    m = -float("inf")
+    exp_sum = 0.0
 
     for k_block_idx in range(0, tl.cdiv(key_seq_len, BLOCK_K)):
         k_offsets = k_block_idx * BLOCK_K + tl.arange(0, BLOCK_K)
-        block_ptr = row_start_ptr[:, None] + k_offsets[None, :]
-
-        row_mask = query_mask[:, None]
-        col_mask = k_offsets[None, :] < key_seq_len
-        mask = row_mask & col_mask
+        col_mask = k_offsets < key_seq_len
 
         s_block = tl.load(
-            block_ptr, mask=mask, other=-float("inf"), cache_modifier=".ca"
+            row_start_ptr + k_offsets,
+            mask=col_mask,
+            other=-float("inf"),
+            cache_modifier=".ca",
         )
         s_block = s_block * scale_factor
 
-        m_new = tl.max(s_block, axis=1)
+        m_new = tl.max(s_block, axis=0)
         m_old = m
         m = tl.maximum(m_old, m_new)
 
         s_prev = tl.exp(m_old - m)
         exp_sum = exp_sum * s_prev
 
-        s_curr = tl.exp(s_block - m[:, None])
-        l_new = tl.sum(tl.where(mask, s_curr, 0.0), axis=1)
+        s_curr = tl.exp(s_block - m)
+        l_new = tl.sum(tl.where(col_mask, s_curr, 0.0), axis=0)
         exp_sum = exp_sum + l_new
 
     exp_sum_inv = 1.0 / exp_sum
@@ -115,29 +113,31 @@ def scaled_softmax_forward_kernel(
         output_ptr
         + batch_idx * stride_b
         + attn_head_idx * stride_h
-        + query_offsets * stride_q
+        + query_idx * stride_q
     )
 
     for k_block_idx in range(0, tl.cdiv(key_seq_len, BLOCK_K)):
         k_offsets = k_block_idx * BLOCK_K + tl.arange(0, BLOCK_K)
-
-        block_ptr_in = row_start_ptr[:, None] + k_offsets[None, :]
-        block_ptr_out = out_row_start_ptr[:, None] + k_offsets[None, :]
-
-        row_mask = query_mask[:, None]
-        col_mask = k_offsets[None, :] < key_seq_len
-        mask = row_mask & col_mask
+        col_mask = k_offsets < key_seq_len
 
         s_block = tl.load(
-            block_ptr_in, mask=mask, other=-float("inf"), eviction_policy="evict_first"
+            row_start_ptr + k_offsets,
+            mask=col_mask,
+            other=-float("inf"),
+            eviction_policy="evict_first",
         )
 
         s_block = s_block * scale_factor
-        s_block = s_block - m[:, None]
+        s_block = s_block - m
         p_block = tl.exp(s_block)
-        p_block = p_block * exp_sum_inv[:, None]
+        p_block = p_block * exp_sum_inv
 
-        tl.store(block_ptr_out, p_block, mask=mask, cache_modifier=".cs")
+        tl.store(
+            out_row_start_ptr + k_offsets,
+            p_block,
+            mask=col_mask,
+            cache_modifier=".cs",
+        )
 
 
 def _rows_per_program(key_seq_len: int, n_rows: int) -> int:
@@ -176,37 +176,60 @@ def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
 
     output_t = torch.empty_like(input_t)
 
+    # Fast path: contiguous [M, N] with N a power of two -> single-pass multirow
+    # kernel (one read + one write per element). Same structure as the tuned
+    # `softmax_kernel_multirow` in _kunlunxin/ops/softmax.py; the scale is fused
+    # into the load and the normalise uses a per-row reciprocal instead of a
+    # per-element divide.
+    if input_t.is_contiguous() and key_seq_len >= 2:
+        num_rows = batch_size * attn_heads * query_seq_len
+        if (key_seq_len & (key_seq_len - 1)) == 0:
+            # TILE_M buckets measured on the official matrix (fp16, XPU3):
+            # N<=128 -> 64, N=256 -> 32, N<=2048 -> 64, N>2048 -> 256. The tile
+            # is then shrunk until it divides the row count (no row mask in the
+            # kernel), giving up to TILE_M=1 for odd row counts.
+            if key_seq_len <= 128:
+                tile_m = 64
+            elif key_seq_len <= 256:
+                tile_m = 32
+            elif key_seq_len <= 2048:
+                tile_m = 64
+            else:
+                tile_m = 256
+            while tile_m > 1 and num_rows % tile_m != 0:
+                tile_m >>= 1
+            grid = (num_rows // tile_m,)
+            if tile_m * key_seq_len > 8192:
+                scaled_softmax_forward_multirow_kernel[grid](
+                    output_t,
+                    input_t,
+                    scale_factor,
+                    N=key_seq_len,
+                    TILE_M=tile_m,
+                    num_warps=4,
+                    buffer_size_limit=2048,
+                )
+            else:
+                scaled_softmax_forward_multirow_kernel[grid](
+                    output_t,
+                    input_t,
+                    scale_factor,
+                    N=key_seq_len,
+                    TILE_M=tile_m,
+                    num_warps=4,
+                )
+            return output_t
+
     stride_b = input_t.stride(0)
     stride_h = input_t.stride(1)
     stride_q = input_t.stride(2)
 
-    # Fast path: a contiguous tensor can be treated as
-    # (batch_size * attn_heads * query_seq_len) independent softmax rows.
-    # It needs a power-of-two key length (for tl.arange) and a row count that
-    # divides evenly so the tile stays unmasked.
-    rows_per_program = 0
-    n_rows = batch_size * attn_heads * query_seq_len
-    if input_t.is_contiguous() and (key_seq_len & (key_seq_len - 1)) == 0:
-        rows_per_program = _rows_per_program(key_seq_len, n_rows)
-
-    if rows_per_program:
-        grid = (n_rows // rows_per_program,)
-        scaled_softmax_forward_rows_kernel[grid](
-            output_t,
-            input_t,
-            scale_factor,
-            KK=key_seq_len,
-            ROWS=rows_per_program,
-            num_warps=4,
-            num_stages=2,
-        )
-        return output_t
-
-    # General path: streaming tile with masks, for non-contiguous / odd sizes.
-    # The grid is a plain tuple (not a callable): a callable grid participates
-    # in the compilation cache key on this backend.
+    # Strided / non-power-of-two fallback: one program per query row; constant
+    # tuple grid (a callable grid is folded into the XPU compile-cache key, see
+    # harness knowledge §2.4-41).
     grid = (query_seq_len, attn_heads, batch_size)
-    scaled_softmax_forward_kernel[grid](
+
+    scaled_softmax_forward_row_kernel[grid](
         output_t,
         input_t,
         scale_factor,
@@ -215,8 +238,7 @@ def scaled_softmax_forward(input_t: torch.Tensor, scale_factor: float):
         stride_b,
         stride_h,
         stride_q,
-        BLOCK_Q=1,
-        BLOCK_K=128,
+        BLOCK_K=1024,
         num_warps=4,
         num_stages=2,
     )

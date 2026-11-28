@@ -84,7 +84,8 @@ def _reference_mkldnn_rnn_layer(
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.vendor_name != "enflame"
+    and (cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available()),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
@@ -154,7 +155,8 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.vendor_name != "enflame"
+    and (cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available()),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
@@ -169,7 +171,7 @@ def test_mkldnn_rnn_layer_direct_wrapper(
 ):
     """Direct wrapper smoke test: call the gems wrapper directly and compare
     against the oneDNN reference."""
-    from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer as gems_op
+    gems_op = flag_gems.mkldnn_rnn_layer
 
     input_tensor = torch.randn(
         seq_len, batch_size, input_size, dtype=dtype, device=flag_gems.device
@@ -218,14 +220,15 @@ def test_mkldnn_rnn_layer_direct_wrapper(
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.vendor_name != "enflame"
+    and (cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available()),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
 def test_mkldnn_rnn_layer_direct_backward():
     """Direct wrapper backward: compare gradients against a native PyTorch
     LSTM recomputation (matching the backward internals)."""
-    from flag_gems.ops.mkldnn_rnn_layer import mkldnn_rnn_layer as gems_op
+    gems_op = flag_gems.mkldnn_rnn_layer
 
     seq, batch, input_size, hidden_size = 4, 2, 8, 8
     dtype = torch.float32

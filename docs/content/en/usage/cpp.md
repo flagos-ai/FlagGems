@@ -134,7 +134,7 @@ To make the C++ wrapper **fully effective** you need both of the following:
    - `-DFLAGGEMS_USE_EXTERNAL_TRITON_JIT=ON -DTritonJIT_ROOT=<path>`:
      build against an externally installed `libtriton_jit`.
 
-   See the [install guide](../../getting-started/install/#install-from-source)
+   See the [install guide](../getting-started/install.md#install-from-source)
    for the complete per-backend examples and `libtriton_jit` details.
 
 1. **At runtime: `export USE_C_EXTENSION=1`**
@@ -327,7 +327,7 @@ The following operators currently have C++ wrappers shipped with *FlagGems*.
 > [!NOTE]
 > Operators marked as *pointwise dynamic C++* are built only when the
 > `-DFLAGGEMS_BUILD_POINTWISE_DYNAMIC_CPP=ON` CMake option is enabled.
-> See the [install guide](../../getting-started/install/#install-from-source)
+> See the [install guide](../getting-started/install.md#install-from-source)
 > for details.
 
 We are actively expanding this list as part of our ongoing performance optimization work.

@@ -1,0 +1,130 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""not_equal candidate v1: hand-written flat monotonic-grid kernel (replaces the grid=12 pointwise_dynamic path).
+
+Root cause (2026-11-13 probe): production not_equal uses generic flag_gems.utils.pointwise_dynamic,
+whose ENFLAME CodeGenConfig is max_grid_size=(12,1,1) + max_tile_size=4096 -
+only 12 CTAs on 48 SPs, each running a 21846-tile GSL long loop; 1G fp16 measured
+13.19ms (effective 379GB/s, torch native 1.92ms = 2.6TB/s).
+
+This file uses a hand-written 1D flat kernel (pid*BLOCK+arange, int32 offsets, native dtype comparison):
+- Semantically equivalent: fp16/bf16->fp32 is injective, so != matches ALWAYS_BOOL promotion bit-for-bit;
+  native int8/16/32 comparison also fixes fp32 cast's precision defect at |x|>2^24.
+- Tiering (probe, GCU400/libra, do_bench w1000/r100 median):
+  * n <= 8192        : BLOCK=next_pow2(n) (16..8192), nw4, single CTA (launch overhead dominates)
+  * n <= 2^18        : BLOCK=8192, nw4 (2^16 measured 4.03us vs pd 4.70us)
+  * n <= 2^20        : BLOCK=clamp(131072//es, 8192, 65536), nw4 (2^20 7.29us vs pd 16.07us)
+  * others           : same BLOCK, nw2 (2^30 fp16 1.95ms vs pd 13.18ms = 6.7x; fp32
+                        BLOCK=32768 3.86ms vs pd 13.02ms = 3.4x, DSM sweet spot 2 tiles ~=256KB)
+  * n % BLOCK == 0   : EVEN unmasked fast path (2^30 saves another ~1.7%)
+- Invalid shapes (non-contiguous/broadcast/different dtype/es>4/complex/fp8/n>=2^31/grid>65535) fall back to
+  production not_equal_func (pointwise_dynamic), guaranteeing zero behavioral regression.
+- DSM budget: peak = 2*BLOCK*es (inputs) + BLOCK*1B (bool output) <= 320KB < 448KB/program.
+"""
+
+import logging
+
+import torch
+import triton
+import triton.language as tl
+
+from flag_gems.runtime import device
+
+from .not_equal import not_equal_func
+
+logger = logging.getLogger(__name__)
+device = device.name
+
+_FAST_DTYPES = {
+    dt
+    for dt in (
+        getattr(torch, name, None)
+        for name in (
+            "bool",
+            "uint8",
+            "int8",
+            "int16",
+            "uint16",
+            "int32",
+            "uint32",
+            "float16",
+            "bfloat16",
+            "float32",
+        )
+    )
+    if dt is not None
+}
+
+_INT32_LIMIT = 0x7FFFFFFF
+_GRID_LIMIT = 65535
+
+
+@triton.jit(do_not_specialize=["N"])
+def _not_equal_flat_kernel(X, Y, Out, N, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    if EVEN:
+        x = tl.load(X + offs)
+        y = tl.load(Y + offs)
+        tl.store(Out + offs, x != y)
+    else:
+        mask = offs < N
+        x = tl.load(X + offs, mask=mask)
+        y = tl.load(Y + offs, mask=mask)
+        tl.store(Out + offs, x != y, mask=mask)
+
+
+def not_equal(A, B):
+    if A.device != B.device:
+        if A.device.type == device:
+            B = B.to(A.device)
+        else:
+            A = A.to(B.device)
+    logger.debug("GEMS_ENFLAME NOT_EQUAL")
+    if (
+        A.dtype is B.dtype
+        and A.dtype in _FAST_DTYPES
+        and A.shape == B.shape
+        and A.is_contiguous()
+        and B.is_contiguous()
+    ):
+        n = A.numel()
+        if n == 0:
+            return torch.empty_like(A, dtype=torch.bool)
+        if n <= 8192:
+            block = max(16, 1 << (n - 1).bit_length())
+            num_warps = 4
+        else:
+            es = A.element_size()
+            if n <= (1 << 18):
+                block, num_warps = 8192, 4
+            elif es <= 2 and n <= (3 << 18):
+                block, num_warps = 16384, 4
+            else:
+                block = max(8192, min(65536, 131072 // es))
+                num_warps = 4 if n <= (1 << 20) else 2
+        grid = (triton.cdiv(n, block),)
+        if n < _INT32_LIMIT and grid[0] <= _GRID_LIMIT:
+            out = torch.empty_like(A, dtype=torch.bool)
+            _not_equal_flat_kernel[grid](
+                A,
+                B,
+                out,
+                n,
+                BLOCK=block,
+                EVEN=(n % block == 0),
+                num_warps=num_warps,
+            )
+            return out
+    return not_equal_func(A, B)

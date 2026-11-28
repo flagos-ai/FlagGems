@@ -53,17 +53,18 @@ def sample_gamma_marsaglia_tsang(
     # Rejection sampling loop. Marsaglia-Tsang has a very high acceptance
     # rate (> 95% per iteration), so nearly every lane accepts within a
     # few draws. `result` is locked to the *first* acceptance (guarded by
-    # `~done`), so once every lane in the block has accepted there is
-    # nothing left to compute and we exit early. For a given seed this
-    # yields the exact same value as running the full loop; MAX_ITER only
-    # bounds the worst case. Each iteration draws philox at counter
-    # c0 + iter*4, so iterations never share randomness.
+    # `~done`), so later iterations only ever touch lanes that have not
+    # accepted yet. The loop therefore always runs the full MAX_ITER bound and
+    # yields the exact same value as stopping as soon as every lane accepted.
+    # (The early exit required a cross-lane `tl.sum` counter inside the loop,
+    # which XPU cannot lower: "failed to legalize operation 'tt.reduce'".)
+    # Each iteration draws philox at counter c0 + iter*4, so iterations never
+    # share randomness.
     result = alpha * 0.0
     done = alpha < 0.0  # Initialize to all False
 
     iter = 0
-    n_remaining = tl.sum((~done).to(tl.int32))
-    while (iter < MAX_ITER) and (n_remaining > 0):
+    while iter < MAX_ITER:
         # Generate normal sample using Box-Muller
         r0, r1, r2, r3 = tl.philox(seed, c0 + iter * 4, c1, z, z)
         u1 = tl.maximum(uint_to_uniform_float(r0).to(COMPUTE_DTYPE), 1e-10)
@@ -97,7 +98,6 @@ def sample_gamma_marsaglia_tsang(
         done = done | accept
 
         iter += 1
-        n_remaining = tl.sum((~done).to(tl.int32))
 
     # For alpha < 1, apply correction: multiply by U^(1/alpha). The correction
     # draws at a fixed counter past the loop's range (MAX_ITER*4 + 4), so it is
@@ -155,7 +155,10 @@ def sample_dirichlet_kernel(
     tiny = tl.load(tiny_ptr).to(COMPUTE_DTYPE)
 
     # Pass 1: accumulate the full-row gamma sum in COMPUTE_DTYPE.
-    gamma_sum = tl.zeros([], dtype=COMPUTE_DTYPE)
+    # The partial sums are accumulated as a vector and reduced once, after the
+    # loop: on XPU a `tl.sum` inside a loop mis-computes when the loop runs
+    # more than one iteration.
+    gamma_sum = tl.zeros([BLOCK_K], dtype=COMPUTE_DTYPE)
     for k_start in range(0, K, BLOCK_K):
         k_offs = k_start + tl.arange(0, BLOCK_K)
         mask = k_offs < K
@@ -175,7 +178,9 @@ def sample_dirichlet_kernel(
         # value so tiny-alpha rows (whose boost factor U**(1/alpha) underflows
         # to zero) still sum to a well-defined 1 instead of 0/0.
         gamma = tl.maximum(gamma, tiny)
-        gamma_sum += tl.sum(tl.where(mask, gamma, 0.0).to(COMPUTE_DTYPE))
+        gamma_sum += tl.where(mask, gamma, 0.0).to(COMPUTE_DTYPE)
+
+    gamma_sum = tl.sum(gamma_sum, axis=0)
 
     # Every gamma was clamped to tiny, so gamma_sum >= K * tiny > 0; no epsilon
     # floor is needed (and a fixed floor like 1e-30 would corrupt fp32 rows whose
@@ -253,12 +258,15 @@ def _sample_dirichlet(input, generator=None):
         increment, generator=generator
     )
 
-    # Use power-of-2 block size
-    BLOCK_K = triton.next_power_of_2(min(K, 1024))
+    # Use power-of-2 block size. A one-lane tile cannot be lowered on XPU, so
+    # keep at least 2 lanes (masked lanes contribute nothing). Tiles of 256
+    # lanes or more blow up the XPU unroll pass ("out of resource: uni_sram"),
+    # hence the 128 cap.
+    BLOCK_K = max(triton.next_power_of_2(min(K, 128)), 2)
 
     # Worst-case rejection iterations. Marsaglia-Tsang accepts in ~1 draw on
-    # average; the kernel exits as soon as every lane has accepted, so this is
-    # only a safety bound and is rarely reached.
+    # average; the loop always runs this many iterations and later iterations
+    # cannot change an already-accepted lane, so this is only a safety bound.
     MAX_ITER = 100
 
     # fp64 inputs keep double precision through sampling and normalization;

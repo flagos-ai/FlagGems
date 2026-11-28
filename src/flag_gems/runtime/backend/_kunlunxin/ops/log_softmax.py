@@ -16,12 +16,14 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 
 from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
+from ..utils.pointwise_dynamic import pointwise_dynamic
 from ..utils.tle_copy import tle_copy
 
 logger = logging.getLogger(__name__)
@@ -837,6 +839,76 @@ BWD_MT_TILE_N = 8192
 # length is an exact multiple of it (so there is no masked tail block).
 BWD_MT_TILE_N_WIDE = 16384
 
+BWD_SPLIT_MIN_ELEMS = 1 << 22
+BWD_SPLIT_TILE = 4096  # must divide N; matches buffer_size_limit below
+
+_BWD_APPLY_CONFIG = CodeGenConfig(
+    512,
+    (65536, 65536, 65536),
+    32,
+    True,
+    prefer_1d_tile=True,
+    buffer_size_limit=BWD_SPLIT_TILE,
+    isCloseVectorization=False,
+    unroll_num=8,
+)
+
+
+@pointwise_dynamic(
+    is_tensor=[True, True, True],
+    promotion_methods=[(0, 1, "DEFAULT")],
+    config=_BWD_APPLY_CONFIG,
+)
+@triton.jit
+def _log_softmax_backward_apply_kernel(out_grad, output, scale):
+    # in_grad = out_grad - exp(output) * rowsum(out_grad); `scale` arrives as a
+    # (M, 1) fp32 view, broadcast over the reduction axis.
+    og = out_grad.to(tl.float32)
+    o = output.to(tl.float32)
+    return (og - tl.exp(o) * scale).to(out_grad.dtype)
+
+
+def _backward_split_ok(grad_output, output, in_grad, M, N):
+    dtype = grad_output.dtype
+    return (
+        N > 1
+        and dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and output.dtype == dtype
+        and in_grad.dtype == dtype
+        and grad_output.is_contiguous()
+        and output.is_contiguous()
+        and in_grad.is_contiguous()
+        and N % BWD_SPLIT_TILE == 0
+        and M * N >= BWD_SPLIT_MIN_ELEMS
+    )
+
+
+def _backward_split(output, grad_output, in_grad, M, N):
+    # Row sums through the vendor tle reduce (fp32 accumulate, same as the
+    # in-kernel `.to(tl.float32)` accumulation), then one flat pointwise pass.
+    # Returns False (caller keeps the single-kernel dispatch) only when the
+    # sibling reduce override cannot be imported; runtime errors stay loud.
+    try:
+        from .sum import sum_dim_out as _sum_dim_out
+    except ImportError:  # pragma: no cover - vendor sum override missing
+        return False
+
+    scale = torch.empty((M,), dtype=torch.float32, device=grad_output.device)
+    _sum_dim_out(
+        grad_output.view(M, N),
+        (-1,),
+        False,
+        dtype=torch.float32,
+        out=scale,
+    )
+    _log_softmax_backward_apply_kernel(
+        grad_output.view(M, N),
+        output.view(M, N),
+        scale.view(M, 1),
+        out0=in_grad.view(M, N),
+    )
+    return True
+
 
 # single-pass per-row: N fits one TILE_N tile, out_grad cached in registers.
 @libentry()
@@ -1016,6 +1088,10 @@ def _forward_launch(out, inp, M, N, K=1):
 
 
 def _backward_launch(output, grad_output, in_grad, M, N):
+    if _backward_split_ok(grad_output, output, in_grad, M, N) and _backward_split(
+        output, grad_output, in_grad, M, N
+    ):
+        return
     if N == 1:
         # in_grad[i] = og[i] - exp(o[i]) * og[i]: pure flat pointwise.
         grid = (triton.cdiv(M, 256), 1, 1)
@@ -1277,6 +1353,11 @@ def log_softmax_backward_out(grad_output, output, dim, input_dtype, *, out):
         raise RuntimeError(
             f"_log_softmax_backward_data.out: expected out dtype {input_dtype}, got {out.dtype}"
         )
+
+    if output.numel() == 0:
+        # ATen returns the (resized) empty `out` untouched; the M/N divisions
+        # below would raise ZeroDivisionError for e.g. (0, 4096) or (4096, 0).
+        return out
 
     K = output.numel() // M // N
     if K == 1 and out.is_contiguous():

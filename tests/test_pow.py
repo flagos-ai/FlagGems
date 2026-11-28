@@ -34,7 +34,7 @@ def test_pow_tensor_tensor(shape, dtype):
 
     # Issue #2841
     # Issue #2842
-    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
+    if flag_gems.vendor_name == "kunlunxin":
         inp1 = inp1.uniform_(-1, 1)
         inp2 = inp2.uniform_(-1, 1)
 
@@ -93,7 +93,7 @@ def test_pow_tensor_scalar(scalar, shape, dtype):
     inp1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     inp2 = scalar
 
-    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
+    if flag_gems.vendor_name == "kunlunxin":
         if scalar == -0.999:
             inp1 = inp1.uniform_(-1, 1)
         elif scalar == -111.999 and dtype == torch.float16:
@@ -155,7 +155,7 @@ def test_pow_scalar(scalar, shape, dtype):
     inp1 = scalar
     inp2 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-    if flag_gems.vendor_name == "kunlunxin" or flag_gems.vendor_name == "ascend":
+    if flag_gems.vendor_name == "kunlunxin":
         inp2 = inp2.uniform_(-1, 1)
 
     ref_inp2 = utils.to_reference(inp2, True)

@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import itertools
 import random
 
 import numpy as np
@@ -19,89 +20,45 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops.bmm_w8a8_fp8 import bmm_w8a8_fp8
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .gemm_utils import GEMM_DTYPES, accuracy_dtype_cases, accuracy_shapes
 
-if cfg.QUICK_MODE:
-    MNK_SHAPES = [
-        (1, 1, 32),
-    ]
-    FLOAT_DTYPES = [torch.float32]
-else:
-    MNK_SHAPES = [
-        (1, 1, 32),
-        (15, 160, 1024),
-        (495, 5333, 71),
-    ]
-    FLOAT_DTYPES = utils.FLOAT_DTYPES
+BMNK_SHAPES = accuracy_shapes("bmm", cfg.QUICK_MODE)
+MNK_SHAPES = list(dict.fromkeys(shape[1:] for shape in BMNK_SHAPES))
 
 
 @pytest.mark.bmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_bmm(monkeypatch, M, N, K, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("#2799: Skipping fp32 bmm test on tsingmicro platform.")
-
+@pytest.mark.parametrize(
+    "dtype, batch, M, N, K, b_column_major", accuracy_dtype_cases("bmm", cfg.QUICK_MODE)
+)
+def test_bmm(batch, M, N, K, b_column_major, dtype):
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
         np.random.seed(0)
         random.seed(0)
 
-    batch = 4
     mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
-    mat2 = torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    mat2 = (
+        torch.randn((batch, N, K), dtype=dtype, device=flag_gems.device).transpose(1, 2)
+        if b_column_major
+        else torch.randn((batch, K, N), dtype=dtype, device=flag_gems.device)
+    )
     ref_mat1 = utils.to_reference(mat1, True)
     ref_mat2 = utils.to_reference(mat2, True)
 
     ref_out = torch.bmm(ref_mat1, ref_mat2)
     res_out = flag_gems.bmm(mat1, mat2)
 
-    utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
-
-
-@pytest.mark.bmm
-@pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_bmm_non_contiguous(M, N, K, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #2799: Skipping fp32 bmm test on tsingmicro.")
-
-    if flag_gems.vendor_name == "kunlunxin":
-        torch.manual_seed(0)
-        torch.cuda.manual_seed_all(0)
-        np.random.seed(0)
-        random.seed(0)
-
-    batch = 4
-    mat1 = torch.randn((batch, M, K), dtype=dtype, device=flag_gems.device)
-    mat2_raw = torch.randn((batch, N, K), dtype=dtype, device=flag_gems.device)
-    # make mat2 non-contiguous
-    mat2 = mat2_raw.transpose(1, 2)
-
-    if N > 1 and K > 1:
-        assert not mat2.is_contiguous()
-    else:
-        # Skipping non-contiguous test for small N or K
-        return
-
-    ref_mat1 = utils.to_reference(mat1, True)
-    ref_mat2 = utils.to_reference(mat2, True)
-    ref_out = torch.bmm(ref_mat1, ref_mat2)
-    res_out = flag_gems.bmm(mat1, mat2)
     utils.gems_assert_close(res_out, ref_out, dtype, reduce_dim=K)
 
 
 @pytest.mark.bmm_out
 @pytest.mark.parametrize("M, N, K", MNK_SHAPES)
-@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", GEMM_DTYPES)
 def test_bmm_out(M, N, K, dtype):
-    if flag_gems.vendor_name == "tsingmicro" and dtype == torch.float32:
-        pytest.skip("Issue #2799: Skipping fp32 bmm test on tsingmicro.")
-
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)
@@ -130,7 +87,17 @@ FP8_W8A8_BLOCK_SCALE_BMM_SHAPES = [
 
 
 def _is_fp8e4nv_supported():
-    if flag_gems.device != "cuda" or FP8_DTYPE is None:
+    if FP8_DTYPE is None:
+        return False
+    if flag_gems.vendor_name == "enflame":
+        # GCU has no CUDA capability query; probe whether the backend can
+        # allocate an fp8e4nv tensor instead.
+        try:
+            torch.zeros(1, dtype=FP8_DTYPE, device=flag_gems.device)
+        except Exception:
+            return False
+        return True
+    if flag_gems.device != "cuda":
         return False
     major, minor = torch.cuda.get_device_capability()
     return major + minor / 10 >= 8.9
@@ -252,6 +219,80 @@ def test_bmm_w8a8_fp8(batch, M, N, K):
     B_dequant = _dequant_b_fp8_per_nk_block(B_fp8, B_scale)
 
     ref_out = torch.bmm(A_dequant, B_dequant).to(torch.bfloat16)
-    res_out = bmm_w8a8_fp8(A_fp8, B_fp8, A_scale, B_scale)
+    res_out = flag_gems.bmm_w8a8_fp8(A_fp8, B_fp8, A_scale, B_scale)
 
     utils.gems_assert_close(res_out, ref_out, torch.bfloat16, reduce_dim=K)
+
+
+EMPTY_BMM_SHAPES = [
+    shape for shape in itertools.product((0, 2), (0, 3), (0, 5), (0, 4)) if 0 in shape
+]
+
+
+@pytest.mark.bmm
+@pytest.mark.parametrize("batch, M, N, K", EMPTY_BMM_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_bmm_empty_dimensions(batch, M, N, K, dtype):
+    mat1 = torch.empty((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.empty((batch, K, N), dtype=dtype, device=flag_gems.device)
+    expected = torch.bmm(mat1.cpu(), mat2.cpu())
+
+    result = flag_gems.bmm(mat1, mat2)
+
+    assert result.shape == expected.shape
+    assert result.dtype == dtype
+    assert result.device == mat1.device
+    torch.testing.assert_close(result.cpu(), expected, rtol=0, atol=0)
+
+
+@pytest.mark.bmm_out
+@pytest.mark.parametrize("batch, M, N, K", EMPTY_BMM_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("strided", [False, True])
+def test_bmm_out_empty_dimensions(batch, M, N, K, dtype, strided):
+    mat1 = torch.empty((batch, M, K), dtype=dtype, device=flag_gems.device)
+    mat2 = torch.empty((batch, K, N), dtype=dtype, device=flag_gems.device)
+    expected = torch.bmm(mat1.cpu(), mat2.cpu())
+    shape = (batch, M, 2 * N + 1) if strided else (batch, M, N)
+    storage = torch.full(shape, float("nan"), dtype=dtype, device=flag_gems.device)
+    out = storage[..., 1::2] if strided else storage
+    expected_storage = torch.full(shape, float("nan"), dtype=dtype)
+    expected_out = expected_storage[..., 1::2] if strided else expected_storage
+    expected_out.copy_(expected)
+    strides, offset = out.stride(), out.storage_offset()
+
+    result = flag_gems.bmm_out(mat1, mat2, out=out)
+
+    assert result is out
+    assert out.shape == expected.shape
+    assert out.dtype == dtype
+    assert out.device == mat1.device
+    assert out.stride() == strides
+    assert out.storage_offset() == offset
+    torch.testing.assert_close(out.cpu(), expected, rtol=0, atol=0)
+    torch.testing.assert_close(
+        storage.cpu(), expected_storage, rtol=0, atol=0, equal_nan=True
+    )
+
+
+@pytest.mark.bmm
+@pytest.mark.bmm_out
+@pytest.mark.parametrize("use_out", [False, True])
+@pytest.mark.parametrize(
+    "a_shape, b_shape, message",
+    [
+        ((0, 0, 4), (2, 4, 5), "Batch dim mismatch"),
+        ((2, 0, 4), (2, 3, 5), "K dim mismatch"),
+    ],
+)
+def test_bmm_empty_dimensions_reject_mismatch(a_shape, b_shape, message, use_out):
+    mat1 = torch.empty(a_shape, device=flag_gems.device)
+    mat2 = torch.empty(b_shape, device=flag_gems.device)
+    with pytest.raises(AssertionError, match=message):
+        if use_out:
+            out = torch.empty(
+                (a_shape[0], a_shape[1], b_shape[2]), device=flag_gems.device
+            )
+            flag_gems.bmm_out(mat1, mat2, out=out)
+        else:
+            flag_gems.bmm(mat1, mat2)

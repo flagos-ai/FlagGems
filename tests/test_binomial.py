@@ -134,6 +134,9 @@ def test_binomial_out(shape, dtype):
     res_out = flag_gems.binomial_out(count, prob, out=out)
 
     assert res_out.data_ptr() == out.data_ptr()
+    assert res_out.device == out.device
+    assert res_out.dtype == out.dtype
+    assert res_out.shape == out.shape
     ref_out = to_reference(out).to(torch.float32)
     mean = torch.mean(ref_out)
 

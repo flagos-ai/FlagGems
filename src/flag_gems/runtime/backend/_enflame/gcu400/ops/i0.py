@@ -26,6 +26,14 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
+# int32 offset safe domain: the masked tail block evaluates
+# block_id * BLOCK + arange for masked lanes as well, reaching up to
+# num_blocks * BLOCK - 1; keep n_total <= 2^31 - 2^17 (BLOCK <= 131072)
+# so flat int32 offsets cannot wrap negative on the tail block.
+_INT32_SAFE_LIMIT = (1 << 31) - (1 << 17)
+
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
 
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
@@ -33,85 +41,96 @@ def i0_kernel(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK)
-    for block_id in tl.range(pid, (N_total + BLOCK - 1) // BLOCK, num_pids):
+    num_blocks = (N_total + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
         mask = off < N_total
         x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
         ax = tl.abs(x)
+        use_small = ax <= 3.75
 
-        t = x / 3.75
-        y = t * t
-        p_small = 1.0 + y * (
-            3.5156229
-            + y
-            * (
-                3.0899424
-                + y * (1.2067492 + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))
-            )
-        )
+        # small region: |x| <= 3.75, Horner in y = (ax/3.75)^2
+        z = ax * (1.0 / 3.75)
+        y = z * z
+        p_small_inner = tl.fma(y, 0.0045813, 0.0360768)
+        p_small_inner = tl.fma(y, p_small_inner, 0.2659732)
+        p_small_inner = tl.fma(y, p_small_inner, 1.2067492)
+        p_small_inner = tl.fma(y, p_small_inner, 3.0899424)
+        p_small_inner = tl.fma(y, p_small_inner, 3.5156229)
+        res_small = tl.fma(y, p_small_inner, 1.0)
 
-        yb = 3.75 / ax
-        p_big = 0.39894228 + yb * (
-            0.01328592
-            + yb
-            * (
-                0.00225319
-                + yb
-                * (
-                    -0.00157565
-                    + yb
-                    * (
-                        0.00916281
-                        + yb
-                        * (
-                            -0.02057706
-                            + yb * (0.02635537 + yb * (-0.01647633 + yb * 0.00392377))
-                        )
-                    )
+        # large region: one shared rsqrt feeds both yb = 3.75/ax and the
+        # exp(ax) * p_big / sqrt(ax) tail, replacing two IEEE divisions
+        # plus one sqrt with one rsqrt and three multiplies (dead lanes
+        # with ax == 0 produce inf/nan and are dropped by the select).
+        r = tl.rsqrt(ax)
+        yb = 3.75 * r * r
+        p_big_inner = tl.fma(yb, 0.00392377, -0.01647633)
+        p_big_inner = tl.fma(yb, p_big_inner, 0.02635537)
+        p_big_inner = tl.fma(yb, p_big_inner, -0.02057706)
+        p_big_inner = tl.fma(yb, p_big_inner, 0.00916281)
+        p_big_inner = tl.fma(yb, p_big_inner, -0.00157565)
+        p_big_inner = tl.fma(yb, p_big_inner, 0.00225319)
+        p_big_inner = tl.fma(yb, p_big_inner, 0.01328592)
+        p_big = tl.fma(yb, p_big_inner, 0.39894228)
+        res_big = tl.exp(ax) * p_big * r
+
+        res = tl.where(use_small, res_small, res_big)
+        tl.store(out_ptr + off, res.to(out_ptr.dtype.element_ty), mask=mask)
+
+
+# GCU400 retune (2026-11-16, interleaved do_bench(median) A/B): this op is
+# ALU-bound (exp + fma chains), not bandwidth-bound, so the wide 2B tiles
+# that help streaming ops regress here; BLOCK=4096/nw4 is flat-optimal from
+# 16.7M up (512M 16-bit 5570us vs 10028us at B131072/nw1), tiny shapes want
+# the multi-CTA B512/nw2 band (4096 elems: 3.73us vs 4.14us).
+def _choose_launch(n_total):
+    if n_total <= 8192:
+        return 512, 2
+    return 4096, 4
+
+
+def _launch_i0(inp, out):
+    n_total = inp.numel()
+    if n_total == 0:
+        return
+    block, num_warps = _choose_launch(n_total)
+    grid_size = min(triton.cdiv(n_total, block), NUM_SIPS * 2)
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic, host-level userland flake windows on shared
+    # nodes); retrying the launch recompiles and succeeds (abs.py /
+    # hardsigmoid.py / neg.py precedents).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(inp.device):
+                i0_kernel[(grid_size,)](
+                    inp, out, n_total, BLOCK=block, num_warps=num_warps
                 )
+            return
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "i0 flat kernel launch failed (attempt %d): %s", attempt + 1, exc
             )
-        )
-        res_big = tl.exp(ax) * p_big / tl.sqrt(ax)
-        res = tl.where(ax <= 3.75, p_small, res_big)
-        tl.store(out_ptr + off, res, mask=mask)
 
 
-def _launch_i0(out: torch.Tensor, x: torch.Tensor):
-    if x.device.type != flag_gems.device or out.device.type != flag_gems.device:
-        raise ValueError(f"Input and output must be {flag_gems.device} tensors")
-
-    x_in = x
-    out_in = out
-    if not x_in.is_floating_point():
-        x_in = x_in.to(torch.get_default_dtype())
-    if x_in.dtype != out_in.dtype:
-        x_in = x_in.to(out_in.dtype)
-
-    x_contig = x_in.contiguous()
-    out_was_noncontig = not out_in.is_contiguous()
-    out_contig = out_in.contiguous() if out_was_noncontig else out_in
-
-    N_total = out_contig.numel()
-    if N_total == 0:
-        return out_in
-
-    BLOCK = 8192
-    grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
-    with torch_device_fn.device(x_contig.device):
-        i0_kernel[(grid_size,)](x_contig, out_contig, N_total, BLOCK=BLOCK, num_warps=4)
-
-    if out_was_noncontig:
-        out_in.copy_(out_contig)
-    return out_in
+def _flat_path_ok(t):
+    return (
+        t.is_contiguous() and t.dtype in _FLAT_DTYPES and t.numel() < _INT32_SAFE_LIMIT
+    )
 
 
 def i0(x: torch.Tensor):
     logger.debug("GEMS_ENFLAME I0")
     if x.device.type != flag_gems.device:
         raise ValueError(f"i0: input tensor must be on {flag_gems.device} device")
-    out_dtype = x.dtype if x.is_floating_point() else torch.get_default_dtype()
-    out = torch.empty_like(x.to(dtype=out_dtype), dtype=out_dtype, device=x.device)
-    _launch_i0(out, x)
+    if not _flat_path_ok(x):
+        from flag_gems.ops.i0 import i0 as _public
+
+        return _public(x)
+    out = torch.empty_like(x)
+    _launch_i0(x, out)
     return out
 
 
@@ -127,57 +146,12 @@ def i0_out(x: torch.Tensor, out: torch.Tensor):
         raise ValueError(
             "i0_out: input and output must have the same number of elements"
         )
-    _launch_i0(out, x)
+    if not (_flat_path_ok(x) and _flat_path_ok(out) and x.dtype == out.dtype):
+        from flag_gems.ops.i0 import i0_out as _public
+
+        return _public(x, out)
+    _launch_i0(x, out)
     return out
-
-
-@libentry()
-@triton.jit(do_not_specialize=["N_total"])
-def i0_kernel_(x_ptr, N_total, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    num_pids = tl.num_programs(0)
-    arange = tl.arange(0, BLOCK)
-    for block_id in tl.range(pid, (N_total + BLOCK - 1) // BLOCK, num_pids):
-        off = block_id * BLOCK + arange
-        mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        ax = tl.abs(x)
-
-        t = x / 3.75
-        y = t * t
-        p_small = 1.0 + y * (
-            3.5156229
-            + y
-            * (
-                3.0899424
-                + y * (1.2067492 + y * (0.2659732 + y * (0.0360768 + y * 0.0045813)))
-            )
-        )
-
-        yb = 3.75 / ax
-        p_big = 0.39894228 + yb * (
-            0.01328592
-            + yb
-            * (
-                0.00225319
-                + yb
-                * (
-                    -0.00157565
-                    + yb
-                    * (
-                        0.00916281
-                        + yb
-                        * (
-                            -0.02057706
-                            + yb * (0.02635537 + yb * (-0.01647633 + yb * 0.00392377))
-                        )
-                    )
-                )
-            )
-        )
-        res_big = tl.exp(ax) * p_big / tl.sqrt(ax)
-        res = tl.where(ax <= 3.75, p_small, res_big)
-        tl.store(x_ptr + off, res, mask=mask)
 
 
 def i0_(*args, **kwargs):
@@ -196,12 +170,8 @@ def i0_(*args, **kwargs):
             "Unsupported dtype for i0_. Supported: float16, bfloat16, float32, float64."
         )
 
-    N_total = x.numel()
-    if N_total == 0:
-        return x
-
-    BLOCK = 8192
-    grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
-    with torch_device_fn.device(x.device):
-        i0_kernel_[(grid_size,)](x, N_total, BLOCK=BLOCK, num_warps=4)
+    # float64 keeps the f32-internal-math path through the same kernel
+    # (GCU400 has no fp64 ALU); every dtype here loads, casts to fp32,
+    # computes and stores back to the input dtype in place.
+    _launch_i0(x, x)
     return x

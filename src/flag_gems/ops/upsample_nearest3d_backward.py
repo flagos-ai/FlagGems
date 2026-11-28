@@ -24,6 +24,11 @@ from flag_gems.runtime import device, torch_device_fn
 
 logger = logging.getLogger(__name__)
 
+# Per-dimension CUDA/GCU launch limits differ (256 for grid.y and grid.z on the
+# Enflame GCU300 launcher, 65535 on CUDA), so the (n, c) plane index is spread
+# over y and z instead of being put in a single dimension.
+_MAX_GRID_Y = 255
+
 
 # Gather-based backward kernel for nearest-neighbor 3D upsampling.
 # Each thread owns one input voxel and sums the gradients of every output
@@ -48,13 +53,20 @@ def _upsample_nearest3d_backward_kernel(
     reciprocal_scale_d,
     reciprocal_scale_h,
     reciprocal_scale_w,
+    N_TILES_Y,
+    N_C,
     MAX_D: tl.constexpr,
     MAX_H: tl.constexpr,
     MAX_W: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(0)
-    nc_pid = tl.program_id(1)
+    # The (n, c) plane index is spread over the y and z grid dimensions so that
+    # neither of them has to hold N * C: some backends cap grid.y/grid.z at 255
+    # while grid.x goes far higher.  The y/z tiling can round up, so the wrap
+    # folds the surplus programs back onto existing planes (they recompute the
+    # same values) instead of letting them index past the tensor.
+    nc_pid = (tl.program_id(2) * N_TILES_Y + tl.program_id(1)) % N_C
 
     # Linear index over the spatial input volume (ID * IH * IW).
     idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -66,13 +78,20 @@ def _upsample_nearest3d_backward_kernel(
     id_ = tmp // IH
 
     # Starting candidate output index for each dimension (one before the
-    # nominal start to stay robust to rounding).
-    od_start = (id_.to(tl.float32) / reciprocal_scale_d).to(tl.int32) - 1
-    oh_start = (ih.to(tl.float32) / reciprocal_scale_h).to(tl.int32) - 1
-    ow_start = (iw.to(tl.float32) / reciprocal_scale_w).to(tl.int32) - 1
-    od_start = tl.maximum(od_start, 0)
-    oh_start = tl.maximum(oh_start, 0)
-    ow_start = tl.maximum(ow_start, 0)
+    # nominal start to stay robust to rounding).  The "not below zero" clamp is
+    # evaluated in float and truncated once: clamping an int index vector with
+    # tl.maximum lowers to arith.maxsi, which the Enflame (GCU) pointer-analysis
+    # pass rejects ("add logic to support op arith.maxsi") and aborts the
+    # compile of the whole kernel.  Same values on every backend.
+    od_start = tl.maximum(id_.to(tl.float32) / reciprocal_scale_d - 1.0, 0.0).to(
+        tl.int32
+    )
+    oh_start = tl.maximum(ih.to(tl.float32) / reciprocal_scale_h - 1.0, 0.0).to(
+        tl.int32
+    )
+    ow_start = tl.maximum(iw.to(tl.float32) / reciprocal_scale_w - 1.0, 0.0).to(
+        tl.int32
+    )
 
     acc = tl.zeros((BLOCK_SIZE,), dtype=tl.float32)
 
@@ -150,7 +169,9 @@ def _upsample_nearest3d_backward_impl(
     # 256 is a good default: a multiple of the warp size that keeps occupancy
     # high while bounding register pressure from the static candidate scan.
     BLOCK = 256
-    grid = (triton.cdiv(ID * IH * IW, BLOCK), N * C)
+    n_tiles_y = min(N * C, _MAX_GRID_Y)
+    n_tiles_z = triton.cdiv(N * C, n_tiles_y)
+    grid = (triton.cdiv(ID * IH * IW, BLOCK), n_tiles_y, n_tiles_z)
 
     with torch_device_fn.device(grad_output.device):
         _upsample_nearest3d_backward_kernel[grid](
@@ -165,6 +186,8 @@ def _upsample_nearest3d_backward_impl(
             reciprocal_scale_d,
             reciprocal_scale_h,
             reciprocal_scale_w,
+            n_tiles_y,
+            N * C,
             MAX_D,
             MAX_H,
             MAX_W,

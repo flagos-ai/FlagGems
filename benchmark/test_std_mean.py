@@ -21,7 +21,7 @@ import triton
 from packaging.version import Version
 
 import flag_gems
-from flag_gems.ops.std_mean import (
+from flag_gems import (
     std_mean,
     std_mean_correction,
     std_mean_correction_names,
@@ -77,6 +77,19 @@ def _dtype_parameters(variant, *, named=False):
                     flag_gems.vendor_name == "ascend",
                     reason=(
                         "the Ascend native std_mean baseline rejects complex tensors"
+                    ),
+                )
+            )
+            # The enflame GCU aten std_mean kernels reject complex outputs
+            # ("Complex output is not supported yet"), so the native baseline
+            # of this benchmark cannot be timed for any complex dtype. Skip the
+            # case instead of reporting a failure that no kernel change can fix.
+            parameter_marks.append(
+                pytest.mark.skipif(
+                    flag_gems.vendor_name == "enflame",
+                    reason=(
+                        "the enflame native std_mean baseline cannot produce "
+                        "complex output"
                     ),
                 )
             )

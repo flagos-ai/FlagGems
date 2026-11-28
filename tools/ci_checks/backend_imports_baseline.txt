@@ -1,0 +1,7 @@
+# Known unresolved flag_gems imports in vendor backends.
+# Format: <file>::<message>. Fix the entry and delete the line;
+# do not add new ones.
+src/flag_gems/runtime/backend/_aipu/ops/multinomial.py::module 'flag_gems.ops.runtime.backend._aipu.ops.cumsum' not found
+src/flag_gems/runtime/backend/_enflame/gcu300/ops/baddbmm.py::module 'flag_gems.runtime.backend._iluvatar.ops.bmm' not found
+src/flag_gems/runtime/backend/_kunlunxin/ops/scaled_mm.py::'_can_use_ascend_aligned_scaled_mm' is not defined in 'flag_gems.ops.scaled_mm'
+src/flag_gems/runtime/backend/_kunlunxin/ops/scaled_mm.py::'_maybe_make_contiguous_for_kernel' is not defined in 'flag_gems.ops.scaled_mm'

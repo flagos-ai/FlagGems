@@ -264,6 +264,27 @@ jobs:
             pip config set global.extra-index-url "https://mirrors.aliyun.com/pypi/simple/ https://mirrors.cloud.tencent.com/pypi/simple/ https://mirrors.163.com/pypi/simple/"
             pip config set global.trusted-host "pypi.tuna.tsinghua.edu.cn mirrors.aliyun.com mirrors.cloud.tencent.com mirrors.163.com"
           fi
+          # Reconcile the image's preinstalled pinned deps (flagtree, torch, …)
+          # against backends.yaml before installing the package, for backends
+          # that declare a backends.yaml key. This lets a version bump in
+          # backends.yaml (e.g. flagtree 0.7.0 -> 0.7.1a1) take effect on the
+          # existing runtime image: reconcile reinstalls only the mismatches
+          # from the vendor's own index (pypi_base/mirror), leaving matching
+          # packages in place. Backends without a key keep trusting the image.
+          #
+          # Caveat this handles: the runtime image bakes the compiler (flagtree)
+          # OUTSIDE the venv (e.g. /opt/flagtree) and ahead of the venv on
+          # sys.path. pip reinstalls the pin INTO the venv but cannot uninstall
+          # the baked copy ("Not uninstalling flagtree at /opt/..."), so the
+          # stale baked version still wins at runtime. enforce_pinned_compiler
+          # then deletes any copy that is both stale (!= pin) and outside the
+          # venv, and hard-verifies the pinned version is what resolves — failing
+          # the job rather than silently testing the wrong compiler build.
+          if [ -n "${{ matrix.backend }}" ]; then
+            python3 tools/reconcile_backend_deps.py "${{ matrix.backend }}"
+            BACKEND="${{ matrix.backend }}" VIRTUAL_ENV="${VIRTUAL_ENV:-}" \
+              python3 tools/enforce_pinned_compiler.py "${{ matrix.backend }}"
+          fi
           pip install .[test]
 
       - name: Check GPU availability

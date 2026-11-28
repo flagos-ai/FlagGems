@@ -13,7 +13,7 @@
 # limitations under the License.
 
 
-def backend_not_support(device_name, backend_list):
+def backend_not_support(device_name, backend_list=None):
     raise RuntimeError(f"The {device_name} device is not supported currently. ")
 
 
@@ -27,7 +27,7 @@ def device_not_found():
 def register_error(e):
     import logging
 
-    logging.warning(f"Skipped registering operator: {e}")
+    logging.warning(f"Skipped registering operator: {str(e)}")
 
 
 def customized_op_replace_error(e):

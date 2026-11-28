@@ -8,6 +8,7 @@ import triton.language as tl
 from flag_gems.utils import tl_extra_shim
 from flag_gems.utils import triton_lang_extension as ext
 
+from ..utils.bf16_fast_store import bf16_fast_store
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -178,31 +179,32 @@ def _tanh_backward_fast(grad_output, output):
     n_elements = output.numel()
     out = torch.empty_like(output)
     block, warps, masked = _pick_block(n_elements)
-    if masked:
-        grid = (triton.cdiv(n_elements, block),)
-        tanh_backward_flat_kernel[grid](
-            output,
-            grad_output,
-            out,
-            n_elements,
-            BLOCK=block,
-            num_warps=warps,
-            unroll_num=UNROLL_NUM,
-            buffer_size_limit=BUFFER_SIZE_LIMIT,
-            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
-        )
-    else:
-        grid = (n_elements // block,)
-        tanh_backward_flat_kernel_unmasked[grid](
-            output,
-            grad_output,
-            out,
-            BLOCK=block,
-            num_warps=warps,
-            unroll_num=UNROLL_NUM,
-            buffer_size_limit=BUFFER_SIZE_LIMIT,
-            isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
-        )
+    with bf16_fast_store(out.dtype):
+        if masked:
+            grid = (triton.cdiv(n_elements, block),)
+            tanh_backward_flat_kernel[grid](
+                output,
+                grad_output,
+                out,
+                n_elements,
+                BLOCK=block,
+                num_warps=warps,
+                unroll_num=UNROLL_NUM,
+                buffer_size_limit=BUFFER_SIZE_LIMIT,
+                isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+            )
+        else:
+            grid = (n_elements // block,)
+            tanh_backward_flat_kernel_unmasked[grid](
+                output,
+                grad_output,
+                out,
+                BLOCK=block,
+                num_warps=warps,
+                unroll_num=UNROLL_NUM,
+                buffer_size_limit=BUFFER_SIZE_LIMIT,
+                isCloseMemoryAsync=IS_CLOSE_MEMORY_ASYNC,
+            )
     return out
 
 

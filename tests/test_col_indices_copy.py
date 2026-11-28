@@ -327,10 +327,6 @@ def test_col_indices_copy_out_index_layouts(
 @pytest.mark.parametrize("case", _COLS_CASES)
 @pytest.mark.parametrize("dtype", _COLS_DTYPES)
 def test_col_indices_copy(case, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype)
     ref_inp = utils.to_reference(inp)
@@ -345,10 +341,6 @@ def test_col_indices_copy(case, dtype):
 @pytest.mark.parametrize("case", _COLS_CASES)
 @pytest.mark.parametrize("dtype", _COLS_DTYPES)
 def test_col_indices_copy_out(case, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype)
     ref_inp = utils.to_reference(inp)
@@ -369,10 +361,6 @@ def test_col_indices_copy_out(case, dtype):
 @pytest.mark.parametrize("case", _SHAPE_CASES)
 @pytest.mark.parametrize("dtype", _COLS_DTYPES)
 def test_col_indices_copy_spec_shapes(case, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype)
     ref_inp = utils.to_reference(inp)
@@ -387,10 +375,6 @@ def test_col_indices_copy_spec_shapes(case, dtype):
 @pytest.mark.parametrize("case", _SHAPE_CASES)
 @pytest.mark.parametrize("dtype", _COLS_DTYPES)
 def test_col_indices_copy_out_spec_shapes(case, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype)
     ref_inp = utils.to_reference(inp)
@@ -411,10 +395,6 @@ def test_col_indices_copy_out_spec_shapes(case, dtype):
 @pytest.mark.parametrize("value_range", _VALUE_RANGES)
 @pytest.mark.parametrize("dtype", _VALUE_RANGE_DTYPES)
 def test_col_indices_copy_value_ranges(case, value_range, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype, value_range=value_range)
     ref_inp = utils.to_reference(inp)
@@ -430,10 +410,6 @@ def test_col_indices_copy_value_ranges(case, value_range, dtype):
 @pytest.mark.parametrize("value_range", _VALUE_RANGES)
 @pytest.mark.parametrize("dtype", _VALUE_RANGE_DTYPES)
 def test_col_indices_copy_out_value_ranges(case, value_range, dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     layout, size, nnz, blocks = case
     inp = _make_input(layout, size, nnz, blocks, dtype, value_range=value_range)
     ref_inp = utils.to_reference(inp)
@@ -452,10 +428,6 @@ def test_col_indices_copy_out_value_ranges(case, value_range, dtype):
 @pytest.mark.col_indices_copy
 @pytest.mark.parametrize("dtype", _COLS_DTYPES)
 def test_col_indices_copy_empty_bsr(dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input("bsr", (4, 6), 0, (2, 2), dtype)
     ref_inp = utils.to_reference(inp)
 
@@ -468,10 +440,6 @@ def test_col_indices_copy_empty_bsr(dtype):
 @pytest.mark.col_indices_copy
 @pytest.mark.parametrize("dtype", _COLS_DTYPES)
 def test_col_indices_copy_out_empty_bsr(dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input("bsr", (4, 6), 0, (2, 2), dtype)
     ref_inp = utils.to_reference(inp)
     out = torch.full((0,), -1, dtype=torch.long, device=inp.device)
@@ -497,10 +465,6 @@ def _uncoalesced_csr(dtype):
 @pytest.mark.col_indices_copy
 @pytest.mark.parametrize("dtype", _COLS_DTYPES)
 def test_col_indices_copy_unchecked_uncoalesced(dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _uncoalesced_csr(dtype)
     ref_inp = utils.to_reference(inp)
 
@@ -513,10 +477,6 @@ def test_col_indices_copy_unchecked_uncoalesced(dtype):
 @pytest.mark.col_indices_copy
 @pytest.mark.parametrize("dtype", _COLS_DTYPES)
 def test_col_indices_copy_out_unchecked_uncoalesced(dtype):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _uncoalesced_csr(dtype)
     ref_inp = utils.to_reference(inp)
     out = torch.full((5,), -1, dtype=torch.long, device=inp.device)
@@ -565,10 +525,6 @@ def _special_csr(dtype, scenario):
 @pytest.mark.col_indices_copy
 @pytest.mark.parametrize("dtype,scenario", _special_value_cases(_COLS_DTYPES))
 def test_col_indices_copy_nan_inf_values(dtype, scenario):
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _special_csr(dtype, scenario)
     ref_inp = utils.to_reference(inp)
 
@@ -580,10 +536,6 @@ def test_col_indices_copy_nan_inf_values(dtype, scenario):
 
 @pytest.mark.col_indices_copy
 def test_col_indices_copy_negative_dense():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = torch.randn(3, 4, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
         torch.ops.aten.col_indices_copy(utils.to_reference(inp))
@@ -593,10 +545,6 @@ def test_col_indices_copy_negative_dense():
 
 @pytest.mark.col_indices_copy
 def test_col_indices_copy_negative_csc():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     ccol_indices = torch.tensor([0, 2, 4], dtype=torch.long, device=flag_gems.device)
     row_indices = torch.tensor([0, 1, 2, 3], dtype=torch.long, device=flag_gems.device)
     values = torch.randn(4, device=flag_gems.device)
@@ -611,10 +559,6 @@ def test_col_indices_copy_negative_csc():
 
 @pytest.mark.col_indices_copy
 def test_col_indices_copy_negative_coo():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     indices = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
     values = torch.ones(2, dtype=torch.float32)
     inp = torch.sparse_coo_tensor(indices, values, (3, 3), device=flag_gems.device)
@@ -626,10 +570,6 @@ def test_col_indices_copy_negative_coo():
 
 @pytest.mark.col_indices_copy
 def test_col_indices_copy_negative_non_tensor():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     with pytest.raises(RuntimeError):
         torch.ops.aten.col_indices_copy(3.14)
     with pytest.raises((TypeError, ValueError, RuntimeError)):
@@ -638,10 +578,6 @@ def test_col_indices_copy_negative_non_tensor():
 
 @pytest.mark.col_indices_copy
 def test_col_indices_copy_out_negative_dense():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = torch.randn(3, 4, device=flag_gems.device)
     out = torch.empty(5, dtype=torch.long, device=flag_gems.device)
     with pytest.raises((RuntimeError, TypeError)):
@@ -652,10 +588,6 @@ def test_col_indices_copy_out_negative_dense():
 
 @pytest.mark.col_indices_copy
 def test_col_indices_copy_out_negative_coo():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     indices = torch.tensor([[0, 1], [1, 2]], dtype=torch.long)
     values = torch.ones(2, dtype=torch.float32)
     inp = torch.sparse_coo_tensor(indices, values, (3, 3), device=flag_gems.device)
@@ -668,10 +600,6 @@ def test_col_indices_copy_out_negative_coo():
 
 @pytest.mark.col_indices_copy
 def test_col_indices_copy_out_negative_wrong_dtype():
-    # The op output is device-independent, but --ref=cpu moves the native
-    # reference to CPU; this suite is validated on the device path.
-    if utils.TO_CPU:
-        pytest.skip("reference-device suite; skipped under --ref=cpu")
     inp = _make_input("csr", (5, 4), 6, None, torch.float32)
     ref_inp = utils.to_reference(inp)
     out = torch.empty(6, dtype=torch.float32, device=inp.device)
@@ -680,3 +608,49 @@ def test_col_indices_copy_out_negative_wrong_dtype():
         torch.ops.aten.col_indices_copy.out(ref_inp, out=ref_out)
     with pytest.raises((RuntimeError, TypeError)):
         flag_gems.col_indices_copy(inp, out=out)
+
+
+def _make_noncontiguous_col_csr(dtype):
+    # The stored column-index buffer interleaves sentinel entries between the
+    # real indices, so the CSR accessor exposes stride-2 column indices.
+    col_full = torch.tensor(
+        [0, 99, 1, 99, 2, 99], dtype=torch.long, device=flag_gems.device
+    )
+    crow = torch.tensor([0, 1, 2, 3], dtype=torch.long, device=flag_gems.device)
+    values = _make_values(dtype, (3,), ["-1", "1"])
+    return torch.sparse_csr_tensor(crow, col_full[::2], values, size=(3, 3))
+
+
+@pytest.mark.col_indices_copy
+@pytest.mark.parametrize("dtype", _COLS_DTYPES)
+def test_col_indices_copy_noncontiguous_source(dtype):
+    inp = _make_noncontiguous_col_csr(dtype)
+    assert not inp.col_indices().is_contiguous()
+    ref_inp = utils.to_reference(inp)
+
+    ref_out = torch.ops.aten.col_indices_copy(ref_inp)
+    res_out = flag_gems.col_indices_copy(inp)
+
+    assert res_out.is_contiguous()
+    assert res_out.data_ptr() != inp.col_indices().data_ptr()
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.col_indices_copy
+@pytest.mark.parametrize("dtype", _COLS_DTYPES)
+def test_col_indices_copy_out_noncontiguous_out(dtype):
+    inp = _make_input("csr", (5, 4), 6, None, dtype)
+    src = inp.col_indices()
+    n = src.numel()
+    out_base = torch.full((2 * n,), -1, dtype=src.dtype, device=inp.device)
+    out = out_base[::2]
+    assert not out.is_contiguous()
+    ref_inp = utils.to_reference(inp)
+    ref_base = torch.full((2 * n,), -1, dtype=src.dtype, device=ref_inp.device)
+    ref_out = ref_base[::2]
+
+    torch.ops.aten.col_indices_copy(ref_inp, out=ref_out)
+    res_ret = flag_gems.col_indices_copy(inp, out=out)
+
+    assert res_ret is out
+    utils.gems_assert_equal(out_base, ref_base)

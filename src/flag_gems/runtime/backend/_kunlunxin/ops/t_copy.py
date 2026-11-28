@@ -112,7 +112,8 @@ def _launch_t_copy_kernel(inp: torch.Tensor, out: torch.Tensor):
         if n == 0:
             return
         src = inp if inp.is_contiguous() else inp.contiguous()
-        grid = lambda meta: (triton.cdiv(n, meta["BLOCK_SIZE"]),)
+        # Constant-tuple grid: keeps the launch cache key stable across calls.
+        grid = (triton.cdiv(n, 1024),)
         _copy_1d_kernel[grid](src.view(-1), out.view(-1), n, BLOCK_SIZE=1024)
     elif dim == 2:
         M, N = inp.shape

@@ -22,7 +22,7 @@ weight: 20
 # Add a C++ Wrapped Operator
 
 To add a C++ wrapped operator, you need to first build FlagGems with C++ extensions enabled.
-Please refer to [installation](/FlagGems/getting-started/install/) section
+Please refer to [installation](../getting-started/install.md) section
 for detailed instructions on setting up `flag_gems` with C++ extensions enabled.
 
 ## 1. Write the wrapper
@@ -47,7 +47,7 @@ FlagGems uses `ctest` and `googletest` for C++ unit tests.
 After having finished the C++ wrapper, a corresponding C++ test case should be added.
 Add your unit test in `ctests/test_triton_xxx.cpp` and `ctests/CMakeLists.txt`.
 Finally, build your test source and run it with
-[C++ Tests](/FlagGems/testing/ctests/).
+[C++ Tests](../testing/unittest.md).
 
 ## 3. Running the C++ test cases
 

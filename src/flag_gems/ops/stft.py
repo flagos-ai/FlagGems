@@ -27,7 +27,7 @@ from triton.language.extra import libdevice
 
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
-from flag_gems.utils.stft_fft import fft_frames
+from flag_gems.utils.fft_intf import fft_frames
 
 logger = logging.getLogger(__name__)
 
