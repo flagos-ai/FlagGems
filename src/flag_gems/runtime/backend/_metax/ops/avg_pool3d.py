@@ -271,6 +271,12 @@ def avg_pool3d_backward(
     if divisor_override is not None and divisor_override == 0:
         raise ValueError("divisor_override cannot be zero")
 
+    unbatched = input.ndim == 4
+    if unbatched:
+        if grad_output.ndim != 4:
+            raise RuntimeError("Expected a 4D grad_output for a 4D input")
+        input = input.unsqueeze(0)
+        grad_output = grad_output.unsqueeze(0)
     grad_output = grad_output.contiguous()
 
     (
@@ -295,7 +301,8 @@ def avg_pool3d_backward(
     grad_input = torch.empty_like(input)
 
     if grad_output.numel() == 0:
-        return grad_input.zero_()
+        grad_input.zero_()
+        return grad_input.squeeze(0) if unbatched else grad_input
 
     # Input-centric grid: iterate over input positions
     grid = lambda meta: (
@@ -336,4 +343,4 @@ def avg_pool3d_backward(
         divisor_override=divisor_override if divisor_override is not None else 0.0,
     )
 
-    return grad_input
+    return grad_input.squeeze(0) if unbatched else grad_input
