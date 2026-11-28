@@ -283,7 +283,11 @@ def _attn_fwd(
 
     # initialize pointer to m and l
     m_i = tl.zeros([BLOCK_M], dtype=tl.float32) - float("inf")
-    l_i = tl.zeros([BLOCK_M], dtype=tl.float32) + 1.0
+    # Start at zero: the first iteration has alpha = exp2(-inf) = 0 on conforming
+    # backends, but some Triton backends leak a non-zero initial value into the
+    # running denominator once the KV loop runs more than one iteration
+    # (https://github.com/flagos-ai/FlagGems/issues/9287).
+    l_i = tl.zeros([BLOCK_M], dtype=tl.float32)
     acc = tl.zeros([BLOCK_M, HEAD_DIM], dtype=tl.float32)
     # load scales
     qk_scale = sm_scale
