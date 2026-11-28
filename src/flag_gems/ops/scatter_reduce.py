@@ -295,6 +295,25 @@ def _atomic_min_propagate_nan(base_ptr, offsets, value, mask):
 
 
 @triton.jit
+def _atomic_extrema_fp64(base_ptr, offsets, value, mask, IS_AMAX: tl.constexpr):
+    # Compare values in FP64 and do CAS on their bits so NaNs can settle.
+    ptr = base_ptr.to(tl.pointer_type(tl.uint64)) + tl.where(mask, offsets, 0)
+    expected = tl.load(ptr, mask=mask, other=0)
+    active = mask
+    while tl.sum(active.to(tl.int32), 0) > 0:
+        current = expected.to(tl.float64, bitcast=True)
+        if IS_AMAX:
+            improves = value > current
+        else:
+            improves = value < current
+        update = active & (current == current) & (improves | (value != value))
+        desired = tl.where(update, value.to(tl.uint64, bitcast=True), expected)
+        observed = tl.atomic_cas(ptr, expected, desired, sem="relaxed")
+        active = update & (observed != expected)
+        expected = observed
+
+
+@triton.jit
 def _encode_nan_min(value):
     value = tl.cast(value, tl.float32)
     bits = value.to(tl.int32, bitcast=True)
@@ -894,7 +913,9 @@ def scatter_reduce_sum_2d_kernel(
             idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
+            out_ptr.dtype.element_ty
+        )
         tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
 
         if USE_MASK:
@@ -1098,9 +1119,13 @@ def scatter_reduce_amax_2d_kernel(
             idx = tl.load(index_ptr + idx_offsets, mask=mask, other=0).to(tl.int64)
             out_offsets = row * out_ncols + idx
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
+            out_ptr.dtype.element_ty
+        )
 
-        if PROPAGATE_MIN_NAN and not IS_AMAX:
+        if out_ptr.dtype.element_ty == tl.float64:
+            _atomic_extrema_fp64(out_ptr, out_offsets, src_val, mask, IS_AMAX)
+        elif PROPAGATE_MIN_NAN and not IS_AMAX:
             _atomic_min_propagate_nan(out_ptr, out_offsets, src_val, mask)
         elif USE_CAS:
             stop = tl.where(mask, 0, 1).to(tl.int1)
@@ -1257,7 +1282,9 @@ def scatter_reduce_sum_kernel(
                 + idx * out_stride_4
             )
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
+            out_ptr.dtype.element_ty
+        )
         tl.atomic_add(out_ptr + out_offsets, src_val, mask=mask, sem="relaxed")
 
         if USE_MASK:
@@ -1690,9 +1717,13 @@ def scatter_reduce_amax_kernel(
                 + idx * out_stride_4
             )
 
-        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(tl.float32)
+        src_val = tl.load(src_ptr + src_offsets, mask=mask, other=0).to(
+            out_ptr.dtype.element_ty
+        )
 
-        if PROPAGATE_MIN_NAN and not IS_AMAX:
+        if out_ptr.dtype.element_ty == tl.float64:
+            _atomic_extrema_fp64(out_ptr, out_offsets, src_val, mask, IS_AMAX)
+        elif PROPAGATE_MIN_NAN and not IS_AMAX:
             _atomic_min_propagate_nan(out_ptr, out_offsets, src_val, mask)
         elif USE_CAS:
             stop = tl.where(mask, 0, 1).to(tl.int1)
@@ -2009,32 +2040,37 @@ def scatter_reduce(
     src_shape_dim = src.size(dim)
     N = index.numel()
 
-    # Avoid double clone: merge contiguous + float32 cast
-    inp_f32 = inp.to(torch.float32).contiguous()
+    # The sum and extrema kernels can use native double precision.
+    acc_dtype = (
+        torch.float64
+        if inp.dtype == torch.float64 and reduce in ("sum", "amax", "amin")
+        else torch.float32
+    )
+    inp_acc = inp.to(acc_dtype).contiguous()
 
     if N == 0:
-        return inp_f32.to(inp.dtype).clone()
+        return inp_acc.to(inp.dtype).clone()
 
     if include_self:
-        out = inp_f32.clone()
+        out = inp_acc.clone()
     else:
         if reduce in ("sum", "mean"):
-            out = torch.zeros_like(inp_f32)
+            out = torch.zeros_like(inp_acc)
         elif reduce == "prod":
-            out = torch.ones_like(inp_f32)
+            out = torch.ones_like(inp_acc)
         elif reduce == "amax":
             out = torch.full(
-                inp_f32.shape,
+                inp_acc.shape,
                 float("-inf"),
-                dtype=inp_f32.dtype,
-                device=inp_f32.device,
+                dtype=inp_acc.dtype,
+                device=inp_acc.device,
             )
         elif reduce == "amin":
             out = torch.full(
-                inp_f32.shape,
+                inp_acc.shape,
                 float("inf"),
-                dtype=inp_f32.dtype,
-                device=inp_f32.device,
+                dtype=inp_acc.dtype,
+                device=inp_acc.device,
             )
 
     use_mask = not include_self
@@ -2261,7 +2297,7 @@ def scatter_reduce(
             has_contributions = count > 0
             count = torch.clamp(count, min=1.0)
             out = out / count
-            out = torch.where(has_contributions, out, inp_f32)
+            out = torch.where(has_contributions, out, inp_acc)
         elif reduce in ("amax", "amin"):
             use_cas = _needs_cas_fallback()
             if use_2d:
@@ -2323,7 +2359,7 @@ def scatter_reduce(
 
     if use_mask and reduce != "mean":
         unreduced = reduced_mask == 0
-        out = torch.where(unreduced, inp_f32, out)
+        out = torch.where(unreduced, inp_acc, out)
 
     return out.to(inp.dtype)
 
