@@ -2966,7 +2966,7 @@ def _mm_tile(
     )
 
 
-@libentry()
+@libentry(cache_binding=True)
 @triton.jit
 def _mm_backward_kernel(
     GRAD_OUT,
@@ -3090,6 +3090,7 @@ _HOST_BOUND_LIMIT = {
 _GROUP_M = 8
 
 
+@functools.lru_cache(maxsize=64)
 def _tile_shape(dtype, rows, cols):
     """Fused-kernel tile, including the small/medium-output sweep on H20.
 
@@ -3200,22 +3201,33 @@ def mm_backward(grad_output, a, b, needs_input_grad):
 
     # A zero-length output dimension is empty and a contraction over no terms
     # is zero; both are answered by allocation, without a kernel launch.
-    grad_a = None
-    if need_a:
-        if m != 0 and k != 0 and n == 0:
-            grad_a = torch.zeros((m, k), dtype=a.dtype, device=a.device)
-        else:
-            grad_a = torch.empty((m, k), dtype=a.dtype, device=a.device)
-
-    grad_b = None
-    if need_b:
-        if k != 0 and n != 0 and m == 0:
-            grad_b = torch.zeros((k, n), dtype=b.dtype, device=b.device)
-        else:
-            grad_b = torch.empty((k, n), dtype=b.dtype, device=b.device)
-
     if m == 0 or k == 0 or n == 0:
+        grad_a = None
+        if need_a:
+            if m != 0 and k != 0 and n == 0:
+                grad_a = torch.zeros((m, k), dtype=a.dtype, device=a.device)
+            else:
+                grad_a = torch.empty((m, k), dtype=a.dtype, device=a.device)
+
+        grad_b = None
+        if need_b:
+            if k != 0 and n != 0 and m == 0:
+                grad_b = torch.zeros((k, n), dtype=b.dtype, device=b.device)
+            else:
+                grad_b = torch.empty((k, n), dtype=b.dtype, device=b.device)
+
         return grad_a, grad_b
+
+    # Fused path: the kernel writes each gradient buffer in place.
+    if need_a and need_b:
+        grad_a = torch.empty((m, k), dtype=a.dtype, device=a.device)
+        grad_b = torch.empty((k, n), dtype=b.dtype, device=b.device)
+    elif need_a:
+        grad_a = torch.empty((m, k), dtype=a.dtype, device=a.device)
+        grad_b = None
+    else:
+        grad_a = None
+        grad_b = torch.empty((k, n), dtype=b.dtype, device=b.device)
 
     _fused_mm_backward(grad_output, a, b, grad_a, grad_b, need_a, need_b)
     return grad_a, grad_b
