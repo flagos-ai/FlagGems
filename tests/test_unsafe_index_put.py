@@ -53,6 +53,8 @@ UNSAFE_INDEX_PUT_SHAPE_ACC_FALSE = (
     ((100,), ((100,),), (100,), True),
     ((32, 32), ((32, 32),), (32, 32), True),
     ((16, 16, 4), ((16, 16, 4),), (16, 16, 4), True),
+    # >_MASK_SINGLE_BLOCK_LIMIT: exercises the multi-block mask fast path.
+    ((128, 128), ((128, 128),), (128, 128), True),
 )
 
 UNSAFE_INDEX_PUT_SHAPE_ACC_TRUE = (
@@ -61,6 +63,8 @@ UNSAFE_INDEX_PUT_SHAPE_ACC_TRUE = (
     ((512, 512, 512), ((128,), (128,), (128,)), (128,), False),
     ((64, 64, 64), ((2, 8), (2, 8), (2, 8)), (2, 8), False),
     ((32, 32), ((32, 32),), (32 * 32,), True),
+    # >_MASK_SINGLE_BLOCK_LIMIT: exercises the multi-block mask fast path.
+    ((128, 128), ((128, 128),), (128 * 128,), True),
 )
 
 # Make sure every thread has same seed.

@@ -300,6 +300,7 @@ from .true_divide_ import true_divide_
 from .trunc import trunc, trunc_
 from .uniform import uniform
 from .unique import _unique2
+from .unsafe_index_put import unsafe_index_put
 from .upsample_bilinear2d import upsample_bilinear2d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest3d_backward import upsample_nearest3d_backward
@@ -632,6 +633,7 @@ __all__ = [
     "trunc",
     "trunc_",
     "uniform",
+    "unsafe_index_put",
     "upsample_bilinear2d",
     "upsample_linear1d_backward",
     "upsample_nearest3d_backward",
