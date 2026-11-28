@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.all import all_dim as generic_all_dim
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -113,28 +114,65 @@ def all(inp):
     return out
 
 
+@libentry()
+@triton.jit
+def _all_f32_rows(
+    inp,
+    out,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+):
+    rows = tl.program_id(0) * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = tl.arange(0, BLOCK_N)
+    offsets = rows[:, None] * N + cols[None, :]
+    mask = (rows[:, None] < M) & (cols[None, :] < N)
+    values = tl.load(inp + offsets, mask=mask, other=1.0)
+    # IEEE FP32: only +/-0 are false. Integer truth testing also preserves
+    # subnormal truth on targets that flush floating-point comparisons to zero.
+    truth = (values.to(tl.int32, bitcast=True) & 0x7FFFFFFF) != 0
+    result = tl.reduce(truth, axis=1, combine_fn=reduce_all)
+    tl.store(out + rows, result, mask=rows < M)
+
+
+def _can_use_all_dim_fast_path(inp, dim, keepdim):
+    # Vendor selection is handled by the normal backend export mechanism.
+    # Inspect only metadata; never sample values or infer the reduction result.
+    if type(dim) is not int or type(keepdim) is not bool:
+        return False
+    if inp.dtype != torch.float32 or inp.layout != torch.strided:
+        return False
+    if not 1 <= inp.ndim <= 8 or dim not in (-1, inp.ndim - 1):
+        return False
+    if not inp.is_contiguous() or inp.is_conj() or inp.is_neg():
+        return False
+    n = inp.shape[-1]
+    count = inp.numel()
+    if type(n) is not int or type(count) is not int:
+        return False
+    return 128 <= n <= 1024 and 1 <= count // n <= 65536 and count <= 2147483647
+
+
 def all_dim(inp, dim=None, keepdim=False):
     logger.debug("GEMS_HYGON ALL_DIM")
-    shape = list(inp.shape)
-    if dim is None:
-        out = all(inp)
-        if keepdim:
-            out = torch.reshape(out, [1] * inp.ndim)
-    else:
-        assert dim >= -inp.ndim and dim < inp.ndim, "Invalid dim"
-        dim = dim % inp.ndim
-        inp = dim_compress(inp, dim)
-        N = shape[dim]
-        shape[dim] = 1
-        M = inp.numel() // N
+    if not _can_use_all_dim_fast_path(inp, dim, keepdim):
+        return generic_all_dim(inp, dim=dim, keepdim=keepdim)
 
-        out = torch.empty(shape, dtype=torch.bool, device=inp.device)
-
-        grid = lambda meta: (triton.cdiv(M, meta["BLOCK_M"]),)
-        with torch_device_fn.device(inp.device):
-            all_kernel_dim[grid](inp, out, M, N)
-        if not keepdim:
-            out = out.squeeze(dim=dim)
+    n = inp.shape[-1]
+    m = inp.numel() // n
+    shape = tuple(inp.shape[:-1]) + ((1,) if keepdim else ())
+    out = torch.empty(shape, dtype=torch.bool, device=inp.device)
+    with torch_device_fn.device(inp.device):
+        _all_f32_rows[(triton.cdiv(m, 4),)](
+            inp,
+            out,
+            m,
+            n,
+            BLOCK_M=4,
+            BLOCK_N=triton.next_power_of_2(n),
+            num_warps=4,
+        )
     return out
 
 
