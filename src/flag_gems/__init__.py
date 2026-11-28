@@ -2857,6 +2857,7 @@ __all__ = [
     "flagtune",
     "linalg_eigh_backward",
     "linalg_svd_backward",
+    "masked_fill_backward",
     "maximum_backward",
     "native_batch_norm_legit_no_training_backward",
     "only_enable",
