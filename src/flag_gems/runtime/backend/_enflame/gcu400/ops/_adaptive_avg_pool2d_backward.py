@@ -363,7 +363,7 @@ def _adaptive_avg_pool2d_backward(
         grad_input: Gradient with respect to the input.
                    Shape: same as self
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _ADAPTIVE_AVG_POOL2D_BACKWARD")
+    logger.debug("GEMS_ENFLAME _ADAPTIVE_AVG_POOL2D_BACKWARD")
 
     # Handle 3D input (C, H, W) by adding batch dimension
     input_is_3d = self.dim() == 3

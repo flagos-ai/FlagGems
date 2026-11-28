@@ -19,13 +19,32 @@ import logging
 
 import torch
 
-from flag_gems.ops.cumsum import cumsum_wrapper
+# The generic implementation (reduce_then_scan) is only a fallback for edge cases: on GCU its long-row splitting is
+# worse than
+# the gcu400-specific implementation, and its kernel does not accept out aliasing inp, so it cannot be used for in-place
+# writes.
+from flag_gems.ops.cumsum import cumsum_wrapper as generic_cumsum_wrapper
+
+# gcu400-specific implementation: two passes of intra-block cumsum + cross-block prefix, with BLOCK adaptive up to 8192.
+from .cumsum import cumsum_wrapper
 
 logger = logging.getLogger(__name__)
 
+# scan_part_sum_abc_kernel places "all dimensions after the scan dimension" entirely on grid.z,
+# subject to the hardware limit grid.z <= 255; beyond that this kernel raises OutOfResources.
+GRID_Z_LIMIT = 255
+
+
+def _trailing_dims_product(inp, dim):
+    """Total elements of the dims after the scan dim (the C dim / grid.z of the gcu400 kernel)."""
+    trailing = 1
+    for size in inp.shape[dim + 1 :]:
+        trailing *= size
+    return trailing
+
 
 def cumsum_(inp, dim, *, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 CUMSUM_")
+    logger.debug("GEMS_ENFLAME CUMSUM_")
     if dtype is not None and dtype != inp.dtype:
         raise RuntimeError(
             "Bad in-place call: input tensor dtype and output tensor dtype should match"
@@ -37,6 +56,30 @@ def cumsum_(inp, dim, *, dtype=None):
         torch.int16,
         torch.int32,
     ), f"cumsum_ only supports float/int dtypes, got {inp.dtype}"
-    result = cumsum_wrapper(inp, dim, dtype)
-    inp.copy_(result)
+    # Accumulating along a dimension of length 1 is an identity operation and needs no computation or copy under
+    # in-place semantics.
+    # On the generic path this degenerates into an extremely inefficient launch of "A programs each handling 1 element"
+    # (measured [10000,1] takes 2.2ms), so it is short-circuited separately. Out-of-range dim still raises an error as
+    # before.
+    assert -inp.ndim <= dim < inp.ndim, "Invalid dim"
+    if inp.shape[dim] == 1:
+        return inp
+
+    dim %= inp.ndim
+    if inp.is_contiguous() and _trailing_dims_product(inp, dim) <= GRID_Z_LIMIT:
+        # In-place write: for contiguous input, use inp directly as the output buffer, saving a full-tensor intermediate
+        # result
+        # (the torch.empty_like allocation) and a full-tensor round trip through inp.copy_(result).
+        # Each program of scan_then_fan / scan_then_fan_col does "read the same block ->
+        # scan in registers -> write back to the same block"; there is no address overlap across programs and reads
+        # precede writes within a block,
+        # so aliasing inp with out is safe.
+        cumsum_wrapper(inp, dim, dtype, out=inp)
+    else:
+        # Two cases that fall back to "compute into a temporary tensor, then copy back":
+        # 1) Non-contiguous input - the wrapper first makes a contiguous() copy, so aliasing directly would write to the
+        # wrong memory;
+        # 2) More than 255 elements after the scan dimension - the gcu400 kernel's grid.z would exceed the hardware
+        # limit.
+        inp.copy_(generic_cumsum_wrapper(inp, dim, dtype))
     return inp

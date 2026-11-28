@@ -905,7 +905,7 @@ def cudnn_convolution(
     Returns:
         Output tensor after convolution
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONVOLUTION")
+    logger.debug("GEMS_ENFLAME CUDNN_CONVOLUTION")
 
     ndim = input.ndim - 2
     if ndim not in (1, 2, 3):

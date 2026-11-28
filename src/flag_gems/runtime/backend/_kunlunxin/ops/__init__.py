@@ -102,6 +102,7 @@ from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_exp_ import _foreach_exp_  # noqa: F401
 from ._foreach_expm1 import _foreach_expm1, _foreach_expm1_  # noqa: F401
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
@@ -157,7 +158,6 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_cos,
     _foreach_cos_,
     _foreach_exp,
-    _foreach_exp_,
     _foreach_log10,
     _foreach_log10_,
     _foreach_reciprocal_,
@@ -213,6 +213,7 @@ from ._scaled_dot_product_fused_attention_overrideable import (
 )
 from ._slow_conv2d_forward import _slow_conv2d_forward  # noqa: F401
 from ._sobol_engine_ff_ import _sobol_engine_ff_  # noqa: F401
+from ._sparse_semi_structured_linear import _sparse_semi_structured_linear  # noqa: F401
 from ._sparse_semi_structured_mm import _sparse_semi_structured_mm  # noqa: F401
 from ._thnn_differentiable_gru_cell_backward import (  # noqa: F401
     _thnn_differentiable_gru_cell_backward,
@@ -235,6 +236,9 @@ from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backwa
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from ._weight_norm_differentiable_backward import (  # noqa: F401
     weight_norm_differentiable_backward,
+)
+from ._wrapped_quantized_linear_prepacked import (  # noqa: F401
+    _wrapped_quantized_linear_prepacked,
 )
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
@@ -299,6 +303,7 @@ from .atanh import atanh, atanh_  # noqa: F401
 from .attention import (  # noqa: F401
     ScaleDotProductAttention,
     _scaled_dot_product_attention_math,
+    _scaled_dot_product_attention_math_for_mps,
     _scaled_dot_product_cudnn_attention,
     _scaled_dot_product_flash_attention,
     cudnn_attention_forward,
@@ -396,6 +401,10 @@ from .conv_tbc import conv_tbc, conv_tbc_out  # noqa: F401
 from .conv_transpose1d import conv_transpose1d
 from .conv_transpose2d import conv_transpose2d
 from .conv_transpose3d import conv_transpose3d
+from .convert_indices_from_csr_to_coo import (  # noqa: F401
+    _convert_indices_from_csr_to_coo,
+    _convert_indices_from_csr_to_coo_out,
+)
 from .copy import copy, copy_
 from .copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from .copysign import copysign, copysign_out
@@ -523,7 +532,6 @@ from .fractional_max_pool2d import fractional_max_pool2d, fractional_max_pool2d_
 from .frexp import frexp
 from .full import full
 from .full_like import full_like
-from .functional_assert_async import _functional_assert_async
 from .fused_experts_impl import (
     fused_experts_impl,
     inplace_fused_experts,
@@ -552,6 +560,7 @@ from .grid_sampler_3d import grid_sampler_3d
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
 from .grouped_mm import group_mm
 from .groupnorm import group_norm, group_norm_backward
+from .gru import gru, gru_data
 from .gru_cell import gru_cell
 from .gt import gt, gt_scalar, gt_scalar_, gt_tensor_
 from .hadamard_transform import hadamard_transform
@@ -573,7 +582,6 @@ from .histogramdd_from_bin_cts import (
     _histogramdd_from_bin_cts,
     _histogramdd_from_bin_cts_out,
 )
-from .hsplit import hsplit  # noqa: F401
 from .hstack import hstack
 from .hypot import hypot, hypot_, hypot_out
 from .i0 import i0, i0_out
@@ -1027,10 +1035,14 @@ from .unique import _unique2
 from .unique_consecutive import unique_consecutive
 from .unique_dim import unique_dim
 from .unique_dim_consecutive import unique_dim_consecutive
-from .unsqueeze import unsqueeze_  # noqa: F401 (in-place dim insertion, XPU fast path)
 from .upsample_bicubic2d_aa import _upsample_bicubic2d_aa
 from .upsample_bicubic2d_aa_backward import _upsample_bicubic2d_aa_backward
 from .upsample_bilinear2d import upsample_bilinear2d  # noqa: F401
+from .upsample_lanczos2d_aa import (  # noqa: F401
+    _upsample_lanczos2d_aa,
+    _upsample_lanczos2d_aa_out,
+    _upsample_lanczos2d_aa_vec,
+)
 from .upsample_linear1d import upsample_linear1d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
@@ -1077,6 +1089,36 @@ from .xor import xor, xor_scalar
 from .zero import zero, zero_, zero_out
 from .zeros import zeros
 from .zeros_like import zeros_like
+
+_upsample_lanczos2d_aa_ops_patched = False
+
+
+def _patch_upsample_lanczos2d_aa_ops_module():
+    """Route ``flag_gems.ops.upsample_lanczos2d_aa`` to the vendor kernels.
+
+    ``SpecOpRegistrar`` only swaps the top-level ``flag_gems.<name>``, but the
+    KernelGen-generated ``tests/test_upsample_lanczos2d_aa.py`` and
+    ``benchmark/test_upsample_lanczos2d_aa.py`` import the ops submodule
+    directly (``from flag_gems.ops.upsample_lanczos2d_aa import ...``), so
+    without this explicit patch the vendor kernels would never be exercised
+    (the generic kernels do not compile on XPU).  Same rationale as
+    ``_patch_sobol_engine_ff_ops_module``; the ``setattr`` is process-global and
+    idempotent, and ``flag_gems.ops`` is fully imported before the vendor
+    registrar runs.
+    """
+    global _upsample_lanczos2d_aa_ops_patched
+    if _upsample_lanczos2d_aa_ops_patched:
+        return
+    _upsample_lanczos2d_aa_ops_patched = True
+
+    from flag_gems.ops import upsample_lanczos2d_aa as _generic_lanczos
+
+    _generic_lanczos._upsample_lanczos2d_aa = _upsample_lanczos2d_aa
+    _generic_lanczos._upsample_lanczos2d_aa_out = _upsample_lanczos2d_aa_out
+    _generic_lanczos._upsample_lanczos2d_aa_vec = _upsample_lanczos2d_aa_vec
+
+
+_patch_upsample_lanczos2d_aa_ops_module()
 
 # Importing from the submodule above rebinds this name to the module; rebind
 # the function so the vendor override is registered.
@@ -1214,7 +1256,6 @@ __all__ = [
     "_foreach_tanh_",
     "_foreach_zero",
     "_foreach_zero_",
-    "_functional_assert_async",
     "_functional_sym_constrain_range",
     "_functional_sym_constrain_range_for_size",
     "_fused_adagrad_",
@@ -1253,6 +1294,7 @@ __all__ = [
     "_segment_reduce_backward",
     "_segment_reduce_backward_out",
     "_slow_conv2d_forward",
+    "_sparse_semi_structured_linear",
     "_thnn_fused_gru_cell",
     "_thnn_fused_gru_cell_out",
     "_thnn_fused_lstm_cell",
@@ -1262,12 +1304,16 @@ __all__ = [
     "_unsafe_masked_index_put_accumulate",
     "_upsample_bicubic2d_aa",
     "_upsample_bicubic2d_aa_backward",
+    "_upsample_lanczos2d_aa",
+    "_upsample_lanczos2d_aa_out",
+    "_upsample_lanczos2d_aa_vec",
     "_upsample_nearest_exact2d",
     "_upsample_nearest_exact2d_backward",
     "_upsample_nearest_exact2d_out",
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward_grad_input",
     "_weight_norm",
+    "_wrapped_quantized_linear_prepacked",
     "abs",
     "abs_",
     "absolute",
@@ -1574,7 +1620,9 @@ __all__ = [
     "group_mm",
     "group_norm",
     "group_norm_backward",
+    "gru",
     "gru_cell",
+    "gru_data",
     "gt",
     "gt_scalar",
     "gt_scalar_",
@@ -1591,7 +1639,6 @@ __all__ = [
     "hinge_embedding_loss",
     "histc",
     "histogramdd",
-    "hsplit",
     "hstack",
     "hypot",
     "hypot_",

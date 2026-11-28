@@ -21,7 +21,7 @@ import triton
 import triton.language as tl
 from torch import Tensor
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
@@ -258,7 +258,7 @@ def batch_norm_backward_reduce(
         (sum_dy, sum_dy_xmu, grad_weight, grad_bias) tuple
         Each is (C,) or None depending on the corresponding flag
     """
-    logger.debug("GEMS_ENFLAME_GCU400 BATCH_NORM_BACKWARD_REDUCE")
+    logger.debug("GEMS_ENFLAME BATCH_NORM_BACKWARD_REDUCE")
 
     # Ensure contiguous memory layout
     grad_out = grad_out.contiguous()
@@ -378,53 +378,3 @@ def batch_norm_backward_reduce(
         grad_weight if weight_g else None,
         grad_bias if bias_g else None,
     )
-
-
-# ---------------------------------------------------------------------------
-# ATen dispatcher registration for the GCU backend key
-#
-# torch_gcu ships no kernel for aten::batch_norm_backward_reduce: its
-# PrivateUse1 backend falls back to the CPU implementation, and the CPU
-# backend has no batch_norm_backward_reduce either, so every
-# torch.batch_norm_backward_reduce call on GCU tensors raised
-# NotImplementedError -- the accuracy test's reference leg (which calls the
-# aten op directly, without entering the FlagGems enable()/use_gems() path
-# that would register this same function through _FULL_CONFIG) failed on all
-# 48 quick cases. Register the implementation here, idempotently, exactly
-# like _dimI.py / values_copy.py / cudnn_convolution_relu.py do for the ops
-# torch_gcu leaves unimplemented. The registration only adds a working GCU
-# kernel where none existed; it cannot shadow an existing one.
-# ---------------------------------------------------------------------------
-
-_ATEN_REG_FLAG = "_flag_gems_gcu400_batch_norm_backward_reduce_aten_registered"
-_ATEN_LIBRARY = None
-
-
-def _ensure_aten_gcu_kernels():
-    """Idempotently register batch_norm_backward_reduce on the GCU key.
-
-    The flag lives on ``torch`` (not module level) because the arch ops tree
-    is imported under several module names at once; the library handle is
-    kept in a module global so the registration outlives this call.
-    """
-    global _ATEN_LIBRARY
-    if getattr(torch, _ATEN_REG_FLAG, False):
-        return
-    dispatch_key = runtime.device.dispatch_key
-    _ATEN_LIBRARY = torch.library.Library("aten", "IMPL")
-    try:
-        _ATEN_LIBRARY.impl(
-            "batch_norm_backward_reduce", batch_norm_backward_reduce, dispatch_key
-        )
-    except RuntimeError as error:
-        logger.warning(
-            "batch_norm_backward_reduce: aten registration %s@%s skipped: %s",
-            "batch_norm_backward_reduce",
-            dispatch_key,
-            error,
-        )
-        return
-    setattr(torch, _ATEN_REG_FLAG, True)
-
-
-_ensure_aten_gcu_kernels()

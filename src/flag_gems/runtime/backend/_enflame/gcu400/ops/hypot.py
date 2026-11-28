@@ -50,6 +50,7 @@ def _hypot_kernel(
     BLOCK_SIZE: tl.constexpr,
     OUT_DTYPE: tl.constexpr,
     COMPUTE_DTYPE: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
     num_pids = tl.num_programs(axis=0)
@@ -57,13 +58,23 @@ def _hypot_kernel(
     num_blocks = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
     for block_id in tl.range(pid, num_blocks, num_pids):
         offsets = block_id * BLOCK_SIZE + arange
-        mask = offsets < n_elements
-        x = tl.load(x_ptr + offsets, mask=mask)
-        y = tl.load(y_ptr + offsets, mask=mask)
-        xf = x.to(COMPUTE_DTYPE)
-        yf = y.to(COMPUTE_DTYPE)
-        res = tl.sqrt(xf * xf + yf * yf)
-        tl.store(out_ptr + offsets, res.to(OUT_DTYPE), mask=mask)
+        # The full-tile case (n divisible by BLOCK) takes the mask-free arm: no predicate tax on the 2 loads + 1 store
+        # Measured -0.5% at the 1G bucket and -1.3% at the 16.7M bucket (probe_hypot2: 2271→2304 GB/s).
+        if EVEN:
+            x = tl.load(x_ptr + offsets)
+            y = tl.load(y_ptr + offsets)
+            xf = x.to(COMPUTE_DTYPE)
+            yf = y.to(COMPUTE_DTYPE)
+            res = tl.sqrt(xf * xf + yf * yf)
+            tl.store(out_ptr + offsets, res.to(OUT_DTYPE))
+        else:
+            mask = offsets < n_elements
+            x = tl.load(x_ptr + offsets, mask=mask)
+            y = tl.load(y_ptr + offsets, mask=mask)
+            xf = x.to(COMPUTE_DTYPE)
+            yf = y.to(COMPUTE_DTYPE)
+            res = tl.sqrt(xf * xf + yf * yf)
+            tl.store(out_ptr + offsets, res.to(OUT_DTYPE), mask=mask)
 
 
 def _hypot_launch_config(n_elements, out_dtype):
@@ -103,6 +114,7 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
 
     block_size, num_warps = _hypot_launch_config(n_elements, out_dtype)
     grid = (min(triton.cdiv(n_elements, block_size), GRID_CAP),)
+    even = (n_elements % block_size) == 0
 
     with torch_device_fn.device(out.device):
         _hypot_kernel[grid](
@@ -113,6 +125,7 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
             BLOCK_SIZE=block_size,
             OUT_DTYPE=_torch_dtype_to_triton(out_dtype),
             COMPUTE_DTYPE=tl.float64 if out_dtype == torch.float64 else tl.float32,
+            EVEN=even,
             num_warps=num_warps,
         )
 

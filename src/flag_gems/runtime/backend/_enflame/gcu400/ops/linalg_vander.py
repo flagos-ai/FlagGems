@@ -61,15 +61,18 @@ def vander_complex_kernel(
 ):
     """Complex vander: each output element is (a + b j)**p with integer p in [0, N).
 
-    For p = 0 the result is 1 + 0 j. Otherwise we use the polar form
-    (a + b j)**p = r**p * (cos(p*theta) + j sin(p*theta)) where
-    r = sqrt(a*a + b*b) and theta = atan2(b, a). To preserve accuracy for
-    large p (the test matrix has up to N=16 columns), the magnitude/angle
-    arithmetic is carried out in fp64 regardless of the storage dtype, then
-    truncated to complex64/complex128 at the store. Inputs/outputs are
-    viewed as interleaved real/imag float arrays via torch.view_as_real so
-    the kernel only ever handles real dtypes (Triton cannot specialise on
-    complex tensors).
+    ``aten::linalg_vander`` builds its columns with ``cumprod`` along the new
+    axis, i.e. ``z**p = z**(p-1) * z`` with one complex64 multiplication per
+    column, so the reference's rounding is that product chain.  The kernel
+    therefore evaluates the same chain (``acc = acc * z``, up to N-1 masked
+    steps) instead of a polar form: a polar ``r**p * (cos p*theta + j sin
+    p*theta)`` is ~p*eps less accurate and lands outside the complex64
+    resolution (rtol 1.3e-6) for large p.  A side effect is that no libdevice
+    ``atan2``/``pow`` is needed -- gcu400's libdevice has no fp64 entry for
+    either, which used to break compilation for complex64.  Inputs/outputs are
+    viewed as interleaved real/imag float arrays via torch.view_as_real so the
+    kernel only ever handles real dtypes (Triton cannot specialise on complex
+    tensors).
     """
     pid = tl.program_id(axis=0)
     offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
@@ -84,28 +87,30 @@ def vander_complex_kernel(
     real = tl.load(x_ri_ptr + base, mask=mask, other=0.0)
     imag = tl.load(x_ri_ptr + base + 1, mask=mask, other=0.0)
 
-    # Always compute in fp64 for accuracy; this matters for complex64 too
-    # because r**p with p up to N-1 amplifies rounding error in fp32.
-    real_compute = real.to(tl.float64)
-    imag_compute = imag.to(tl.float64)
+    # complex128 keeps fp64; complex64 stays in its own storage dtype so the
+    # product chain rounds exactly like the reference.
+    if STORE_FP64:
+        acc_r = tl.full(real.shape, 1.0, tl.float64)
+        acc_i = tl.full(real.shape, 0.0, tl.float64)
+        zr = real.to(tl.float64)
+        zi = imag.to(tl.float64)
+    else:
+        acc_r = tl.full(real.shape, 1.0, tl.float32)
+        acc_i = tl.full(real.shape, 0.0, tl.float32)
+        zr = real.to(tl.float32)
+        zi = imag.to(tl.float32)
 
-    # r = sqrt(a**2 + b**2), theta = atan2(b, a)
-    mag = tl.sqrt(real_compute * real_compute + imag_compute * imag_compute)
-    angle = tl_extra_shim.atan2(imag_compute, real_compute)
-
-    # r**p via libdevice.pow (integer exponent cast to fp64); for p == 0
-    # the result must be 1 + 0 j regardless of the input (matching torch).
-    col_float = col.to(tl.float64)
-    mag_pow = tl_extra_shim.pow(mag, col_float)
-    angle_pow = angle * col_float
-
-    out_real = tl.where(col == 0, 1.0, mag_pow * tl_extra_shim.cos(angle_pow))
-    out_imag = tl.where(col == 0, 0.0, mag_pow * tl_extra_shim.sin(angle_pow))
+    for step in tl.range(0, N - 1):
+        take = col > step
+        nr = acc_r * zr - acc_i * zi
+        ni = acc_r * zi + acc_i * zr
+        acc_r = tl.where(take, nr, acc_r)
+        acc_i = tl.where(take, ni, acc_i)
 
     # Cast back to the storage dtype before storing.
     store_dtype = tl.float64 if STORE_FP64 else tl.float32
-    out_real_store = out_real.to(store_dtype)
-    out_imag_store = out_imag.to(store_dtype)
+    out_real_store = acc_r.to(store_dtype)
+    out_imag_store = acc_i.to(store_dtype)
 
     out_base = offsets * 2
     tl.store(out_ri_ptr + out_base, out_real_store, mask=mask)
@@ -113,7 +118,7 @@ def vander_complex_kernel(
 
 
 def linalg_vander(x, N=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_VANDER")
+    logger.debug("GEMS_ENFLAME LINALG_VANDER")
 
     # fmt: off
     assert x.dtype.is_floating_point or x.dtype.is_complex, f"Unsupported dtype {x.dtype}"

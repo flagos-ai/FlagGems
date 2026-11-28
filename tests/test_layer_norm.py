@@ -495,7 +495,6 @@ def test_layer_norm_backward_from_forward(shape, normalized_shape, dtype, wb_non
         weight=ref_weight,
         bias=ref_bias,
     )
-    ref_out.backward(ref_grad)
 
     res_out, res_mean, res_rstd = flag_gems.native_layer_norm(
         res_inp, normalized_shape, res_weight, res_bias
@@ -515,10 +514,32 @@ def test_layer_norm_backward_from_forward(shape, normalized_shape, dtype, wb_non
     N = math.prod(normalized_shape)
     M = res_inp.numel() // N
     utils.gems_assert_close(res_out, ref_out, dtype)
-    utils.gems_assert_close(res_in_grad, ref_inp.grad, dtype, reduce_dim=N)
+
+    if flag_gems.vendor_name == "enflame":
+        # CPU low-precision backward under-accumulates the weight/bias reduction;
+        # recompute an fp64 reference from the kernel's own forward statistics.
+        ref_in_grad, ref_weight_grad, ref_bias_grad = (
+            torch.ops.aten.native_layer_norm_backward(
+                utils.to_reference(res_grad, True),
+                utils.to_reference(res_inp, True),
+                normalized_shape,
+                utils.to_reference(res_mean, True),
+                utils.to_reference(res_rstd, True),
+                utils.to_reference(res_weight, True),
+                utils.to_reference(res_bias, True),
+                [True, not wb_none, not wb_none],
+            )
+        )
+    else:
+        ref_out.backward(ref_grad)
+        ref_in_grad = ref_inp.grad
+        ref_weight_grad = ref_weight.grad if ref_weight is not None else None
+        ref_bias_grad = ref_bias.grad if ref_bias is not None else None
+
+    utils.gems_assert_close(res_in_grad, ref_in_grad, dtype, reduce_dim=N)
     if not wb_none:
-        utils.gems_assert_close(res_weight_grad, ref_weight.grad, dtype, reduce_dim=M)
-        utils.gems_assert_close(res_bias_grad, ref_bias.grad, dtype, reduce_dim=M)
+        utils.gems_assert_close(res_weight_grad, ref_weight_grad, dtype, reduce_dim=M)
+        utils.gems_assert_close(res_bias_grad, ref_bias_grad, dtype, reduce_dim=M)
     else:
         assert res_weight_grad is res_bias_grad is None
 

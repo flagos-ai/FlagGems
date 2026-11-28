@@ -212,7 +212,7 @@ def _weight_int8pack_mm_kernel_i64(
 
 
 def weight_int8pack_mm(A, B, scales):
-    logger.debug("GEMS_ENFLAME_GCU400 _WEIGHT_INT8PACK_MM")
+    logger.debug("GEMS_ENFLAME _WEIGHT_INT8PACK_MM")
 
     assert (
         A.shape[1] == B.shape[1]

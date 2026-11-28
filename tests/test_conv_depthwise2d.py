@@ -19,7 +19,10 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+# aten::_conv_depthwise2d is registered only on CUDA/Meta and similar backends;
+# neither kunlunxin nor enflame provides a reference implementation, so both use the
+# equivalent CPU F.conv2d(groups=C_in) to build the reference result.
+NEEDS_CPU_CONV_REF = flag_gems.vendor_name in ("kunlunxin", "enflame")
 
 SHAPE_DEPTHWISE = [
     ((32, 4, 8, 8), (32, 1, 2, 2), (2, 2)),
@@ -75,7 +78,7 @@ def test_conv_depthwise2d(
         bias_tensor = None
         ref_bias = None
 
-    if IS_KUNLUNXIN:
+    if NEEDS_CPU_CONV_REF:
         ref_out = torch.nn.functional.conv2d(
             ref_inp.float(),
             ref_weight.float(),

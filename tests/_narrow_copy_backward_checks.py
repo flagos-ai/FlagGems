@@ -16,6 +16,7 @@
 import dataclasses
 from unittest.mock import patch
 
+import pytest
 import torch
 import triton
 from torch.utils._python_dispatch import TorchDispatchMode
@@ -239,6 +240,8 @@ def check_saved_hooks_and_fresh_data(op, hooks):
 
 def check_stream(op):
     shape, _, _ = next(accuracy_specs(op))
+    if not torch.cuda.is_available():
+        pytest.skip("stream test requires CUDA")
     launcher = triton.runtime.driver.active.launcher_cls
     original = launcher.__call__
     launches = []

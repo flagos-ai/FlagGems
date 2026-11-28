@@ -19,10 +19,11 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame dose not support torch nest tensor completely",
-)
+# torch_gcu cannot build a legacy (torch.strided) NestedTensor from a flat value
+# buffer: `_nested_view_from_buffer` is not implemented there, so the cases that
+# compare nested metadata stay device-path only.  The mask validation case below
+# never reaches that constructor, so it still runs on the enflame backend.
+_NESTED_VIEW_FROM_BUFFER = flag_gems.vendor_name != "enflame"
 
 
 # (N, L, D) shapes for the padded dense tensor `t` and the (N, L) mask.
@@ -71,6 +72,10 @@ def _assert_nested_equal(res, ref, dtype):
 
 
 @pytest.mark.nested_tensor_from_mask
+@pytest.mark.skipif(
+    not _NESTED_VIEW_FROM_BUFFER,
+    reason="torch_gcu cannot build a legacy nested view from a flat buffer",
+)
 @pytest.mark.parametrize("shape", NESTED_FROM_MASK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_nested_tensor_from_mask(shape, dtype):
@@ -88,6 +93,10 @@ def test_nested_tensor_from_mask(shape, dtype):
 
 
 @pytest.mark.nested_tensor_from_mask
+@pytest.mark.skipif(
+    not _NESTED_VIEW_FROM_BUFFER,
+    reason="torch_gcu cannot build a legacy nested view from a flat buffer",
+)
 @pytest.mark.parametrize("shape", NESTED_FROM_MASK_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_nested_tensor_from_mask_no_mask_check(shape, dtype):

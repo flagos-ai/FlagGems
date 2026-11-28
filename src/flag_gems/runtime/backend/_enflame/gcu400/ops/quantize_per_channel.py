@@ -33,16 +33,18 @@ Three GCU facts reshape the generic implementation:
    fma Newton refinement, and the float-qparams scheme fuses the zero-point
    add with ``fma`` like the native CUDA kernel.
 
-3. **The quantized wrapper stays on the device.**  torch_gcu's raw
-   ``Quantizedgcu`` key is empty, so the per-channel factory is served by this
-   backend through the ``QuantizedPrivateUse1`` bridge
-   (``ops/empty_per_channel_affine_quantized.py`` + ``ops/quantized_max_pool2d.py``),
-   which redispatches the device-generic native allocator to ``QuantizedCPU``
-   with ``device=gcu``.  The resulting wrapper is a real quantized ``Tensor``
-   whose payload lives in GCU storage, so it can be addressed by the Triton
-   kernel directly and no host round trip is needed: the kernel writes the
-   integer payload *in place* through a storage alias (``_payload_view``), both
-   for the allocating path and for the ``out=`` path.
+3. **The quantized wrapper stays on the device.**  torch_gcu serves the
+   per-channel quantized factories through its QuantizedPrivateUse1 backend
+   fallbacks (RegisterQuantizedGCU.cpp), so ``_empty_per_channel_affine_quantized``
+   with ``device=gcu`` allocates real GCU storage behind a native quantized
+   ``Tensor``.  The wrapper can therefore be addressed by the Triton kernel
+   directly and no host round trip is needed: the kernel writes the integer
+   payload *in place* through a storage alias (``_payload_view``), both for
+   the allocating path and for the ``out=`` path.  What that machinery cannot
+   fix is the public ``torch.quantize_per_channel`` entry, which torch_gcu's
+   transfer layer routes to a CPU fallback ahead of the dispatcher; the entry
+   correction installed at the bottom of this module routes GCU calls back to
+   this implementation while the FlagGems registration is active.
 
    In-place qparam adoption: PyTorch keeps a per-channel quantizer's
    ``scales``/``zero_points`` as ordinary tensors, and the accessors return
@@ -72,6 +74,7 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._enflame.gcu400.ops.quantize_per_tensor import (
     _QCPU_KEYSET,
     _SET_STORAGE_OP,
+    _gems_registration_active,
 )
 from flag_gems.utils import libentry
 
@@ -111,6 +114,33 @@ def _scalar_type_name(dtype):
     }.get(dtype, str(dtype))
 
 
+# Elements per program for the flat (1-D) kernel: it is the register-resident
+# working set, so it trades CTA count against per-CTA occupancy.
+_BLOCK_SIZE = 4096
+_BLOCK_NUM_WARPS = 4
+
+
+# ``float2int_rn`` is a rounding conversion instruction on GCU, while ``nearbyint`` goes through libdevice's
+# slow path (measured 0.47ms vs 0.26ms with the same flat grid, see 16.7M fp32 -> int8 on 4.0).
+# Both are round-half-to-even, so the former can be used for 8-bit targets. To avoid triggering undefined
+# behavior on int32 overflow, apply a ±2^30 pre-clamp first: the 8-bit quantization ranges ([0,255] / [-128,127])
+# plus the zero-point offset are far smaller than 2^30, so any result that would land in range is not changed by this
+# clamp,
+# while out-of-range values would be clamped to q_min / q_max anyway, so it is bit-for-bit equivalent.
+# Use ``float2int_rn`` when q_max does not exceed this value; qint32 keeps ``nearbyint`` (the range hugs
+# the int32 boundary, where pre-clamping cannot guarantee equivalence).
+_F2I_MAX_QMAX = 65535
+
+
+@triton.jit
+def _round_half_even(scaled, RNE_F2I: tl.constexpr):
+    """Rounds ``scaled`` half-to-even in place, keeping fp32."""
+    if RNE_F2I:
+        safe = tl.minimum(tl.maximum(scaled, -1073741824.0), 1073741824.0)
+        return libdevice.float2int_rn(safe).to(tl.float32)
+    return libdevice.nearbyint(scaled)
+
+
 @libentry()
 @triton.jit
 def quantize_per_channel_kernel(
@@ -125,9 +155,11 @@ def quantize_per_channel_kernel(
     q_min: tl.constexpr,
     q_max: tl.constexpr,
     USE_FLOAT_ZERO_POINT: tl.constexpr,
+    SCALAR_CHANNEL: tl.constexpr,
     ALIGNED_CHANNEL: tl.constexpr,
     POW2_CHANNEL: tl.constexpr,
     EVEN: tl.constexpr,
+    RNE_F2I: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -160,46 +192,68 @@ def quantize_per_channel_kernel(
     else:
         axis_coord = (offsets // stride_axis) % shape_axis
 
-    if EVEN:
-        scale = tl.load(scales_ptr + axis_coord).to(tl.float32)
-    else:
-        scale = tl.load(scales_ptr + axis_coord, mask=mask, other=1.0).to(tl.float32)
-
-    # RNE reciprocal: ``rcp_rn`` plus one fma Newton refinement.  GCU's ``/``
-    # and ``div_rn`` both lower to the approximate path, which is off IEEE
-    # round-to-nearest by 1 ulp on ~24.5% of inputs; this chain reproduces
-    # the CPU reference's ``1.0f / scale`` (see the module docstring).
-    inv_scale = libdevice.rcp_rn(scale)
-    residual = libdevice.fma(-inv_scale, scale, 1.0)
-    inv_scale = libdevice.fma(residual, inv_scale, inv_scale)
-
-    if USE_FLOAT_ZERO_POINT:
-        # per_channel_affine_float_qparams: the native kernel computes
-        #   q = lrintf(raw * (1.f / scale) + zero_point)
-        # entirely in float32, fusing the zero-point add into one fma so the
-        # product is rounded only once.
-        if EVEN:
-            zero_point_f = tl.load(zero_points_ptr + axis_coord).to(tl.float32)
+    if SCALAR_CHANNEL:
+        # One block covers exactly one channel row, so the qparams collapse to
+        # two scalar loads instead of a BLOCK-wide gather — this removes the
+        # per-element qparam traffic that otherwise doubles the read volume.
+        channel = block_start % shape_axis
+        scale = tl.load(scales_ptr + channel).to(tl.float32)
+        inv_scale = libdevice.rcp_rn(scale)
+        residual = libdevice.fma(-inv_scale, scale, 1.0)
+        inv_scale = libdevice.fma(residual, inv_scale, inv_scale)
+        if USE_FLOAT_ZERO_POINT:
+            zero_point_f = tl.load(zero_points_ptr + channel).to(tl.float32)
+            q = libdevice.nearbyint(libdevice.fma(x_val, inv_scale, zero_point_f))
         else:
-            zero_point_f = tl.load(
-                zero_points_ptr + axis_coord, mask=mask, other=0.0
-            ).to(tl.float32)
-        q = libdevice.nearbyint(libdevice.fma(x_val, inv_scale, zero_point_f))
-    else:
-        # per_channel_affine: the zero-point is a genuine integer, validated
-        # on the host against the target dtype's range (which is
-        # int32-representable), so it loads as int32.  Both the CPU and the
-        # CUDA kernel round the scaled value *first* and then add the
-        # zero-point, so the addition sits outside ``nearbyint``.
-        if EVEN:
-            zero_point_i = tl.load(zero_points_ptr + axis_coord).to(tl.int32)
-        else:
-            zero_point_i = tl.load(zero_points_ptr + axis_coord, mask=mask, other=0).to(
-                tl.int32
+            zero_point_i = tl.load(zero_points_ptr + channel).to(tl.int32)
+            q = _round_half_even(x_val * inv_scale, RNE_F2I) + zero_point_i.to(
+                tl.float32
             )
-        q = libdevice.nearbyint(x_val * inv_scale) + zero_point_i.to(tl.float32)
+    else:
+        if EVEN:
+            scale = tl.load(scales_ptr + axis_coord).to(tl.float32)
+        else:
+            scale = tl.load(scales_ptr + axis_coord, mask=mask, other=1.0).to(
+                tl.float32
+            )
 
-    # nearbyint implements round-half-to-even (PyTorch's default rounding mode).
+        # RNE reciprocal: ``rcp_rn`` plus one fma Newton refinement.  GCU's ``/``
+        # and ``div_rn`` both lower to the approximate path, which is off IEEE
+        # round-to-nearest by 1 ulp on ~24.5% of inputs; this chain reproduces
+        # the CPU reference's ``1.0f / scale`` (see the module docstring).
+        inv_scale = libdevice.rcp_rn(scale)
+        residual = libdevice.fma(-inv_scale, scale, 1.0)
+        inv_scale = libdevice.fma(residual, inv_scale, inv_scale)
+
+        if USE_FLOAT_ZERO_POINT:
+            # per_channel_affine_float_qparams: the native kernel computes
+            #   q = lrintf(raw * (1.f / scale) + zero_point)
+            # entirely in float32, fusing the zero-point add into one fma so the
+            # product is rounded only once.
+            if EVEN:
+                zero_point_f = tl.load(zero_points_ptr + axis_coord).to(tl.float32)
+            else:
+                zero_point_f = tl.load(
+                    zero_points_ptr + axis_coord, mask=mask, other=0.0
+                ).to(tl.float32)
+            q = libdevice.nearbyint(libdevice.fma(x_val, inv_scale, zero_point_f))
+        else:
+            # per_channel_affine: the zero-point is a genuine integer, validated
+            # on the host against the target dtype's range (which is
+            # int32-representable), so it loads as int32.  Both the CPU and the
+            # CUDA kernel round the scaled value *first* and then add the
+            # zero-point, so the addition sits outside ``nearbyint``.
+            if EVEN:
+                zero_point_i = tl.load(zero_points_ptr + axis_coord).to(tl.int32)
+            else:
+                zero_point_i = tl.load(
+                    zero_points_ptr + axis_coord, mask=mask, other=0
+                ).to(tl.int32)
+            q = _round_half_even(x_val * inv_scale, RNE_F2I) + zero_point_i.to(
+                tl.float32
+            )
+
+    # _round_half_even implements round-half-to-even (PyTorch's default mode).
     q = tl.minimum(tl.maximum(q, q_min), q_max)
     q = q.to(out_ptr.dtype.element_ty)
 
@@ -207,6 +261,98 @@ def quantize_per_channel_kernel(
         tl.store(out_ptr + offsets, q)
     else:
         tl.store(out_ptr + offsets, q, mask=mask)
+
+
+# Elements per program for the row-major (2-D) formulation: ``ROWS * CHANNEL``
+# is held in registers, so this is the same budget the 1-D kernel spends.
+_ROWS_TARGET_BLOCK = 32768
+# Upper bound on the rows per program, so a small channel count cannot inflate
+# the grid granularity into a single-program launch.
+_ROWS_MAX = 64
+_ROWS_NUM_WARPS = 4
+# Above this element count the reciprocal precompute pays for its extra launch.
+_INV_SCALE_MIN_ELEMENTS = 1 << 22
+_RECIPROCAL_BLOCK = 1024
+
+
+@libentry()
+@triton.jit
+def rne_reciprocal_kernel(scales_ptr, inv_scales_ptr, n_channels, BLOCK: tl.constexpr):
+    """Materialize the fp32 RNE reciprocal of one qparam vector.
+
+    ``rcp_rn`` plus the Newton refinement is three ALU ops; the row-major kernel
+    would replay them once per program for the whole ``CHANNEL`` vector, so on
+    large tensors it is cheaper to pay them once over ``n_channels`` elements and
+    let the main kernel read the finished reciprocal.
+    """
+    offsets = tl.program_id(axis=0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_channels
+    scale = tl.load(scales_ptr + offsets, mask=mask, other=1.0).to(tl.float32)
+    inv_scale = libdevice.rcp_rn(scale)
+    residual = libdevice.fma(-inv_scale, scale, 1.0)
+    inv_scale = libdevice.fma(residual, inv_scale, inv_scale)
+    tl.store(inv_scales_ptr + offsets, inv_scale, mask=mask)
+
+
+@libentry()
+@triton.jit
+def quantize_per_channel_rows_kernel(
+    x_ptr,
+    scales_ptr,
+    zero_points_ptr,
+    inv_scales_ptr,
+    out_ptr,
+    n_rows,
+    q_min: tl.constexpr,
+    q_max: tl.constexpr,
+    USE_FLOAT_ZERO_POINT: tl.constexpr,
+    INV_PRECOMPUTED: tl.constexpr,
+    CHANNEL: tl.constexpr,
+    ROWS: tl.constexpr,
+    ROW_TAIL: tl.constexpr,
+    RNE_F2I: tl.constexpr,
+):
+    """Quantize a contiguous tensor whose channel axis is the trailing dim.
+
+    The flat space is viewed as ``(n_rows, CHANNEL)``.  On this layout the
+    channel coordinate of an element is simply its column, so the qparams are
+    loaded once as one coalesced ``CHANNEL``-wide vector and broadcast over the
+    rows -- replacing the per-element ``scales_ptr + axis_coord`` gather, which
+    re-read the whole qparam vector for every block and doubled the read volume.
+    """
+    pid = tl.program_id(axis=0)
+    row = pid * ROWS + tl.arange(0, ROWS)
+    col = tl.arange(0, CHANNEL)
+    offsets = row[:, None] * CHANNEL + col[None, :]
+    if ROW_TAIL:
+        mask = row[:, None] < n_rows
+        x_val = tl.load(x_ptr + offsets, mask=mask, other=0.0).to(tl.float32)
+    else:
+        x_val = tl.load(x_ptr + offsets).to(tl.float32)
+
+    # Same fp32 RNE reciprocal chain as the 1-D kernel (see module docstring),
+    # unless the launcher already materialized it for this qparam vector.
+    if INV_PRECOMPUTED:
+        inv_scale = tl.load(inv_scales_ptr + col).to(tl.float32)[None, :]
+    else:
+        scale = tl.load(scales_ptr + col).to(tl.float32)
+        inv_scale = libdevice.rcp_rn(scale)
+        residual = libdevice.fma(-inv_scale, scale, 1.0)
+        inv_scale = libdevice.fma(residual, inv_scale, inv_scale)[None, :]
+
+    if USE_FLOAT_ZERO_POINT:
+        zero_point_f = tl.load(zero_points_ptr + col).to(tl.float32)[None, :]
+        q = libdevice.nearbyint(libdevice.fma(x_val, inv_scale, zero_point_f))
+    else:
+        zero_point_i = tl.load(zero_points_ptr + col).to(tl.int32)[None, :]
+        q = _round_half_even(x_val * inv_scale, RNE_F2I) + zero_point_i.to(tl.float32)
+
+    q = tl.minimum(tl.maximum(q, q_min), q_max)
+    q = q.to(out_ptr.dtype.element_ty)
+    if ROW_TAIL:
+        tl.store(out_ptr + offsets, q, mask=mask)
+    else:
+        tl.store(out_ptr + offsets, q)
 
 
 def _is_float_qparams(scales, zero_points):
@@ -316,6 +462,39 @@ def _check_zero_points_on_host(zero_points, q_min, q_max, use_float_zero_point):
         raise RuntimeError(f"{prefix}zero_point is above upper bound.")
 
 
+def _check_zero_points_once(zero_points, q_min, q_max, use_float_zero_point):
+    """Run ``_check_zero_points_on_host`` at most once per zero-point vector state.
+
+    The check needs the values on the host, i.e. a D2H copy plus a stream
+    synchronisation, which costs more than the kernel itself on small tensors.
+    The range only depends on the vector's contents, so the verdict is memoized
+    on the tensor keyed by ``_version``: any in-place update invalidates it and
+    the copy is retaken.
+    """
+    signature = (zero_points._version, q_min, q_max, use_float_zero_point)
+    if getattr(zero_points, _ZP_RANGE_SIG_ATTR, None) == signature:
+        return
+    _check_zero_points_on_host(zero_points.cpu(), q_min, q_max, use_float_zero_point)
+    try:
+        setattr(zero_points, _ZP_RANGE_SIG_ATTR, signature)
+    except (AttributeError, TypeError):
+        pass
+
+
+def _as_kernel_dtype(param, dtype):
+    """Convert one qparam vector to the kernel-side dtype without spurious copies.
+
+    ``.to(dtype).contiguous()`` issues two dispatcher calls even when both are
+    no-ops, and each call is ~15us of host time on this backend; the attribute
+    checks below keep the common already-normalized case at zero calls.
+    """
+    if param.dtype != dtype:
+        param = param.to(dtype)
+    if not param.is_contiguous():
+        param = param.contiguous()
+    return param
+
+
 def _qparam_tensors(scales, zero_points, device, use_float_zero_point):
     """Build the qparam tensors a native per-channel quantizer would store.
 
@@ -342,7 +521,7 @@ def _empty_per_channel_quantized(shape, q_scales, q_zero_points, axis, dtype, de
     the native allocator, so the result is a real quantized tensor over GCU
     storage — no host shell, and therefore no downward copy of the payload.
     """
-    return torch.ops.aten._empty_per_channel_affine_quantized(  # allow-torch-compute
+    return torch.ops.aten._empty_per_channel_affine_quantized(
         list(shape),
         scales=q_scales,
         zero_points=q_zero_points,
@@ -371,6 +550,37 @@ def _payload_view(quantized, int_dtype):
     )
 
 
+# Per-tensor memo caches live on the tensors themselves, so the invalidation is
+# exact: a cached entry can only match the very object it was computed for, and
+# any in-place update bumps ``_version`` and therefore drops the entry.  This is
+# what keeps the ``out=`` fast path free of the host round trips (a payload
+# alias construction, the zero-point range check's D2H copy and a quantizer
+# rebuild) that dominate the small-shape latency of this elementwise kernel.
+_PAYLOAD_VIEW_ATTR = "_gems_gcu400_payload_view"
+_QUANTIZER_SIG_ATTR = "_gems_gcu400_quantizer_signature"
+_ZP_RANGE_SIG_ATTR = "_gems_gcu400_zp_range_signature"
+
+
+def _cached_payload_view(quantized, int_dtype):
+    """``_payload_view`` memoized per (storage, dtype, shape, stride, offset)."""
+    key = (
+        quantized.untyped_storage().data_ptr(),
+        int_dtype,
+        tuple(quantized.shape),
+        tuple(quantized.stride()),
+        quantized.storage_offset(),
+    )
+    cached = getattr(quantized, _PAYLOAD_VIEW_ATTR, None)
+    if cached is not None and cached[0] == key:
+        return cached[1]
+    view = _payload_view(quantized, int_dtype)
+    try:
+        setattr(quantized, _PAYLOAD_VIEW_ATTR, (key, view))
+    except (AttributeError, TypeError):
+        pass
+    return view
+
+
 def _launch_quantize_kernel(
     input,
     scales_k,
@@ -385,15 +595,59 @@ def _launch_quantize_kernel(
     n_elements = input.numel()
     if n_elements == 0:
         return
-    # 4096 elements per program keeps the CTA count low enough that the block
-    # bookkeeping stops competing with the memory pipeline (1024 measured 2.4x
-    # slower at equal traffic); 8192 regressed, so 4096 is the plateau.
-    BLOCK_SIZE = 4096
+    BLOCK_SIZE = _BLOCK_SIZE
     shape_axis = input.shape[axis]
     stride_axis = input.stride(axis)
+    # Row-major path: a trailing channel axis turns the flat space into
+    # ``(n_rows, shape_axis)``, so the qparams collapse into one broadcast vector
+    # instead of a per-element gather.  ``tl.arange`` needs a power-of-two width,
+    # which is the only requirement the 1-D kernel below does not have.
+    if (
+        stride_axis == 1
+        and shape_axis >= 16
+        and shape_axis <= _ROWS_TARGET_BLOCK
+        and (shape_axis & (shape_axis - 1)) == 0
+    ):
+        rows_per_program = max(1, min(_ROWS_MAX, _ROWS_TARGET_BLOCK // shape_axis))
+        n_rows = n_elements // shape_axis
+        row_grid = (triton.cdiv(n_rows, rows_per_program),)
+        # Only worth a second launch once the reciprocal would be replayed often
+        # enough to pay for it (see ``rne_reciprocal_kernel``).
+        inv_scales = scales_k
+        inv_precomputed = n_elements >= _INV_SCALE_MIN_ELEMENTS
+        if inv_precomputed:
+            inv_scales = torch.empty_like(scales_k)
+        with torch_device_fn.device(input.device):
+            if inv_precomputed:
+                rne_reciprocal_kernel[(triton.cdiv(shape_axis, _RECIPROCAL_BLOCK),)](
+                    scales_k,
+                    inv_scales,
+                    shape_axis,
+                    BLOCK=_RECIPROCAL_BLOCK,
+                )
+            quantize_per_channel_rows_kernel[row_grid](
+                input,
+                scales_k,
+                zero_points_k,
+                inv_scales,
+                int_out,
+                n_rows,
+                q_min,
+                q_max,
+                USE_FLOAT_ZERO_POINT=use_float_zero_point,
+                INV_PRECOMPUTED=inv_precomputed,
+                CHANNEL=shape_axis,
+                ROWS=rows_per_program,
+                ROW_TAIL=n_rows % rows_per_program != 0,
+                RNE_F2I=q_max <= _F2I_MAX_QMAX,
+                num_warps=_ROWS_NUM_WARPS,
+            )
+        return
     # A block that starts channel-aligned and stays inside one channel row can
-    # derive the channel index from a scalar instead of a per-element modulo.
+    # derive the channel index from a scalar instead of a per-element modulo;
+    # when the block covers a whole channel row the qparams become true scalars.
     aligned_channel = stride_axis == 1 and shape_axis % BLOCK_SIZE == 0
+    scalar_channel = stride_axis == 1 and shape_axis == BLOCK_SIZE
     pow2_channel = stride_axis == 1 and (shape_axis & (shape_axis - 1)) == 0
     grid = (triton.cdiv(n_elements, BLOCK_SIZE),)
     with torch_device_fn.device(input.device):
@@ -409,10 +663,13 @@ def _launch_quantize_kernel(
             q_min,
             q_max,
             USE_FLOAT_ZERO_POINT=use_float_zero_point,
+            SCALAR_CHANNEL=scalar_channel,
             ALIGNED_CHANNEL=aligned_channel,
             POW2_CHANNEL=pow2_channel,
             EVEN=n_elements % BLOCK_SIZE == 0,
+            RNE_F2I=q_max <= _F2I_MAX_QMAX,
             BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=_BLOCK_NUM_WARPS,
         )
 
 
@@ -431,18 +688,18 @@ def _prepare_quantize_operands(input, scales, zero_points, axis, dtype):
     # any conversion, like ATen's ``check_zero_points_cuda``.  The vector is
     # read on its host copy: under ``use_gems`` a device-side ``min`` over an
     # int32 zero-point vector would dispatch into FlagGems' float-only
-    # ``amin`` and die.
-    _check_zero_points_on_host(zero_points.cpu(), q_min, q_max, use_float_zero_point)
+    # ``amin`` and die.  The verdict is memoized (see ``_check_zero_points_once``).
+    _check_zero_points_once(zero_points, q_min, q_max, use_float_zero_point)
 
     # Kernel operands stay in the fp32 / int32 safe domains on the device:
     # scales as fp32 (the fp32 reciprocal chain is the ATen CPU semantics),
     # zero-points as int32 (the host range check above confines them to
     # [q_min, q_max], int32-representable for all three quantized dtypes).
-    scales_k = scales.to(torch.float32).contiguous()
+    scales_k = _as_kernel_dtype(scales, torch.float32)
     if use_float_zero_point:
-        zero_points_k = zero_points.to(torch.float32).contiguous()
+        zero_points_k = _as_kernel_dtype(zero_points, torch.float32)
     else:
-        zero_points_k = zero_points.to(torch.int32).contiguous()
+        zero_points_k = _as_kernel_dtype(zero_points, torch.int32)
     return (
         input,
         scales_k,
@@ -535,7 +792,7 @@ def _quantize_per_channel_out_impl(input, scales, zero_points, axis, dtype, out)
         use_float_zero_point,
     ) = _prepare_quantize_operands(input, scales, zero_points, axis, dtype)
 
-    payload = _payload_view(out, int_dtype)
+    payload = _cached_payload_view(out, int_dtype)
     if payload.is_contiguous() and payload.device == input.device:
         # Straight into the destination storage: no intermediate buffer.
         int_out = payload
@@ -560,6 +817,31 @@ def _quantize_per_channel_out_impl(input, scales, zero_points, axis, dtype, out)
     # metadata moves: a quantized alias is built over the very same storage with
     # the requested scales / zero-points / axis and installed through ``.data``,
     # which keeps the caller's tensor object and layout untouched.
+    #
+    # When the same qparam vector state was already installed on this very
+    # destination (a quantize loop reusing one ``out``), the rebuild is a no-op
+    # that only costs dispatcher calls, so it is skipped.  The signature holds
+    # the qparam objects themselves, so identity is exact and any in-place
+    # qparam update bumps ``_version`` and forces the rebuild.
+    signature = (
+        scales,
+        zero_points,
+        scales._version,
+        zero_points._version,
+        axis,
+        dtype,
+        out.untyped_storage().data_ptr(),
+    )
+    cached = getattr(out, _QUANTIZER_SIG_ATTR, None)
+    # Element-wise ``is`` comparison: comparing the tensors with ``==`` would
+    # build a boolean tensor and raise on the multi-element case.
+    if (
+        cached is not None
+        and cached[0] is signature[0]
+        and cached[1] is signature[1]
+        and cached[2:] == signature[2:]
+    ):
+        return out
     alias = _empty_per_channel_quantized(
         out.shape,
         *_qparam_tensors(scales, zero_points, out.device, use_float_zero_point),
@@ -576,92 +858,79 @@ def _quantize_per_channel_out_impl(input, scales, zero_points, axis, dtype, out)
         out.stride(),
     )
     out.data = alias
+    try:
+        setattr(out, _QUANTIZER_SIG_ATTR, signature)
+    except (AttributeError, TypeError):
+        pass
     return out
 
 
 # ---------------------------------------------------------------------------
-# torch_gcu quantized-backend bridging
+# torch.quantize_per_channel entry correction
 # ---------------------------------------------------------------------------
-# torch_gcu (a +cpu torch build with the gcu backend on PrivateUse1) ships no
-# kernels under the QuantizedPrivateUse1 dispatch key — its display name
-# "Quantizedgcu" is the one every "Could not run 'aten::empty_quantized' ...
-# NotImplementedError" failure reports — and FlagGems' generic registrations
-# for the quantized factories target QuantizedCUDA, a dead key on this build.
-# Without the bridge below, every per-channel quantized call path with gcu
-# tensors dies inside torch_gcu before reaching FlagGems code:
+# The history of this section: it used to install torch.library IMPL
+# registrations for the aten per-channel entries (the "quantized bridge"),
+# which vendor commit 5fe27c58e ("revert register to aten") removed again.
+# The registrations are not needed on the current stack -- torch_gcu itself
+# serves the quantized factories and copies through its QuantizedPrivateUse1
+# backend fallbacks (RegisterQuantizedGCU.cpp), so the device-native wrapper
+# construction below just works.
 #
-#   * ``torch.quantize_per_channel(gcu, ...)`` -> PrivateUse1 CPU fallback ->
-#     native CPU kernel -> ``empty_quantized(device=gcu)`` -> BackendSelect ->
-#     Quantizedgcu -> NotImplementedError (the reference path the accuracy
-#     tests exercise).
-#   * ``torch.ops.aten._empty_per_channel_affine_quantized(..., device=gcu)``
-#     -> BackendSelect -> QuantizedPrivateUse1 -> served device-natively by the
-#     backend bridge, so it needs no intervention from this module.
-#   * ``torch._make_per_channel_quantized_tensor(gcu_int, ...)`` under
-#     ``use_gems`` -> the generic FlagGems impl builds a gcu tensor over the
-#     wrapper's host storage and launches a Triton kernel on it — a wild
-#     device pointer.  The bridge keeps that op on the host instead.
+# What is still broken without help is the *public Python entry*
+# ``torch.quantize_per_channel``.  Two layers sit in front of it:
 #
-# The registrations are part of this op's contract on gcu: the aten entry
-# points route gcu-argument calls into this module, and the payload is computed
-# on the device into the destination wrapper's own storage.  The keys are
-# otherwise unoccupied (FlagGems only registers ``dequantize.self`` on
-# QuantizedPrivateUse1), and the PrivateUse1 slots hold the same functions
-# ``use_gems()`` would register from ``_FULL_CONFIG``, so a later
-# ``use_gems()`` merely warns about the duplicates and keeps these kernels.
+#   * the per-tensor sibling's reference shim (quantize_per_tensor.py,
+#     ``_per_channel_safe``), which computes a CPU reference when FlagGems is
+#     not active, and otherwise defers to the entry it captured at install
+#     time;
+#   * torch_gcu's transfer layer, which routes the captured C++ binding on GCU
+#     arguments to its aten_cpu_fallback instead of the dispatcher.
+#
+# The second point is the trap: under ``use_gems()`` the aten op has this
+# backend's Triton kernel registered on PrivateUse1, but the deferred binding
+# never consults the dispatcher, so the call silently pays a full
+# D2H -> CPU quantize -> H2D round trip (measured 205 ms vs 0.15 ms for the
+# Triton kernel on a 4096x4096 quint8 input).  ``torch.ops.aten.
+# quantize_per_channel`` does dispatch and reaches the kernel, which is why
+# only the ``out`` benchmark (an ops-packet entry) ever exercised the kernel.
+# The sibling fixed the same trap for its own entry by routing to the backend
+# implementation while the FlagGems registration is active; the wrapper below
+# installs the mirrored correction for the per-channel entry.
+#
+# Composition: this module imports the sibling at the top, so the sibling's
+# shim is always installed first and the wrapper chains onto it.  When
+# FlagGems is inactive the call still falls through to the sibling's CPU
+# reference (the accuracy-reference path the accuracy suite relies on).  The
+# wrapper deliberately does not carry the sibling's
+# ``_flaggems_gcu_quantize_ref`` marker, so a sibling (re)install after this
+# one keeps wrapping this entry instead of skipping it, and its active-branch
+# defer then lands back here -- both install orders compose.  No dispatch
+# keys are touched, matching the "revert register to aten" policy.
 
-_QUANT_BRIDGE_FLAG = "_flag_gems_gcu400_per_channel_quantized_bridge"
+_ENTRY_FLAG = "_flaggems_gcu400_quantize_per_channel_entry"
 
 
-def _install_per_channel_quantized_bridge():
-    """Register the per-channel quantized aten entries for the gcu keys.
-
-    Idempotent across every module name this file may be imported under: the
-    library handle lives on torch-attached state (the values_copy precedent),
-    so exactly one import performs the registration.
-    """
-    if getattr(torch, _QUANT_BRIDGE_FLAG, None) is not None:
+def _install_quantize_per_channel_entry():
+    previous = torch.quantize_per_channel
+    if getattr(previous, _ENTRY_FLAG, False):
         return
-    bridge_lib = torch.library.Library("aten", "IMPL")
 
-    def _make_per_channel_quantized_tensor_host(self, scale, zero_point, axis):
-        # Host-side wrap of an integer payload: values verbatim, the aten
-        # factory's own semantics.  Keeps the generic FlagGems impl — which
-        # would hand a gcu tensor a host storage — away from gcu arguments.
-        logger.debug("GEMS_ENFLAME MAKE_PER_CHANNEL_QUANTIZED_TENSOR_HOST")
-        self_host = self.cpu() if isinstance(self, torch.Tensor) else self
-        scale_host = scale.cpu() if isinstance(scale, torch.Tensor) else scale
-        zero_point_host = (
-            zero_point.cpu() if isinstance(zero_point, torch.Tensor) else zero_point
-        )
-        return torch._make_per_channel_quantized_tensor(
-            self_host, scale_host, zero_point_host, axis
-        )
+    def _quantize_per_channel_entry(
+        input, scales, zero_points, axis, dtype=None, *args, **kwargs
+    ):
+        if (
+            isinstance(input, torch.Tensor)
+            and input.device.type == "gcu"
+            and _gems_registration_active()
+        ):
+            return quantize_per_channel(input, scales, zero_points, axis, dtype)
+        return previous(input, scales, zero_points, axis, dtype, *args, **kwargs)
 
-    registrations = (
-        ("quantize_per_channel", quantize_per_channel, "PrivateUse1"),
-        ("quantize_per_channel.out", quantize_per_channel_out, "PrivateUse1"),
-        # The quantized factories are deliberately not overridden here: the
-        # QuantizedPrivateUse1 bridge (``empty_per_channel_affine_quantized.py``)
-        # already serves them device-natively, which is what the implementation
-        # above relies on for its zero-copy payload writes.
-        (
-            "_make_per_channel_quantized_tensor",
-            _make_per_channel_quantized_tensor_host,
-            "PrivateUse1",
-        ),
-    )
-    for op_name, kernel, dispatch_key in registrations:
-        try:
-            bridge_lib.impl(op_name, kernel, dispatch_key)
-        except RuntimeError as error:
-            logger.warning(
-                "quantize_per_channel: bridge registration %s@%s skipped: %s",
-                op_name,
-                dispatch_key,
-                error,
-            )
-    setattr(torch, _QUANT_BRIDGE_FLAG, bridge_lib)
+    setattr(_quantize_per_channel_entry, _ENTRY_FLAG, True)
+    try:
+        torch.quantize_per_channel = _quantize_per_channel_entry
+    except (AttributeError, TypeError):
+        pass
 
 
-_install_per_channel_quantized_bridge()
+_install_quantize_per_channel_entry()

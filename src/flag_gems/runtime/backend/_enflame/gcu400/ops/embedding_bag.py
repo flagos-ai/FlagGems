@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+from functools import lru_cache
 
 import torch
 import triton
@@ -26,17 +27,53 @@ from flag_gems.utils import triton_lang_extension as tle
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-# Generated per optimization round; only launch geometry changes, not semantics.
+# Generated round by round by the optimization-iteration driver script; only the launch geometry changes, not the
+# semantics.
 NUM_WARPS = 1
-BLOCK_D_CAP = 256
-BLOCK_L_SMALL = 16
-BLOCK_L_LARGE = 32
+# Column block cap. On GCU400, loading a whole row contiguously is far better than splitting a row into several blocks
+# (at d=512, block_d=512
+# is 3x faster than 256), so a whole row is allowed to fit in one column block.
+BLOCK_D_CAP = 512
+# Position block height within a bag: derived from the average bag length (indices/bags) and clamped.
+# MAX mode reduces the iteration count to 1 at block height 64, empirically better than 16 (on GCU400 the per-iteration
+# mask/where/count overhead exceeds the reduction tree cost), so it shares the 64 cap with the normal mode.
+BLOCK_L_MIN = 8
+BLOCK_L_MAX = 64
+BLOCK_L_MAX_MODE = 64
 INDEX_BLOCK = 256
 FALLBACK_TO_PUBLIC = 0
 GRID_CAP = 65535
 USE_FAST_ERROR_CHECK = 1
 # --- TUNING PARAMS END ---
+# In the per-call host overhead for small shapes, torch.empty costs about 2µs each time; the empty max_indices returned
+# when mode!=2
+# is a zero-element constant and can be safely cached and reused.
+_EMPTY_INDEX_CACHE = {}
+
+
+def _empty_index_tensor(device, dtype):
+    key = (device, dtype)
+    tensor = _EMPTY_INDEX_CACHE.get(key)
+    if tensor is None:
+        tensor = torch.empty((0,), device=device, dtype=dtype)
+        _EMPTY_INDEX_CACHE[key] = tensor
+    return tensor
+
+
 _USE_DEVICE_ASSERT = runtime_device.vendor_name in ("nvidia", "hygon")
+
+
+@lru_cache(maxsize=256)
+def _pick_block_l(num_indices, num_bags, mode):
+    """Picks the position-block height from the average bag length (power of two, clamped to
+
+    [BLOCK_L_MIN, cap]). The result depends on three integers only, so after caching a call
+    is one dict lookup, avoiding extra host Python cost on small shapes (about +2us uncached).
+    """
+    average_bag_length = num_indices // num_bags if num_bags else num_indices
+    height = 1 << (max(average_bag_length, 1) - 1).bit_length()
+    ceiling = BLOCK_L_MAX_MODE if mode == 2 else BLOCK_L_MAX
+    return min(max(height, BLOCK_L_MIN), ceiling)
 
 
 @libentry()
@@ -68,13 +105,14 @@ def _embedding_bag_forward_kernel(
     block_d: tl.constexpr,  # embedding-dimension block size
     ascend_abi: tl.constexpr = False,  # Ascend auxiliary-output application binary interface
     bag_size_b: tl.constexpr = False,  # bag-size output uses num_bags entries
-    search_steps: tl.constexpr = 0,
     index_block: tl.constexpr = 128,
     async_assert: tl.constexpr = False,  # asynchronous device assertion
     serial_max: tl.constexpr = False,  # serial maximum reduction
     key_max: tl.constexpr = False,  # maximum reduction using ordered keys
     reciprocal_mean: tl.constexpr = False,
     skip_pad_scale: tl.constexpr = False,  # skip padding-scale adjustment
+    dim_mask: tl.constexpr = True,  # Whether the column dimension needs a boundary mask
+    pos32: tl.constexpr = False,  # Position/count vectors use int32 (to avoid 64-bit emulation overhead)
 ):
     pid = tle.program_id(0)
     programs = tle.num_programs(0)
@@ -84,6 +122,9 @@ def _embedding_bag_forward_kernel(
     )
     rows = tl.arange(0, block_l)
     cols = tl.arange(0, block_d)
+    # GCU400 has no native 64-bit vector operations, so positions/counts are always carried in int32 (safe when n <
+    # 2^31).
+    pos_ty: tl.constexpr = tl.int32 if pos32 else tl.int64
     total_work = num_bags * dim_tiles
     for work in range(pid, total_work, programs):
         bag = work // dim_tiles
@@ -98,75 +139,65 @@ def _embedding_bag_forward_kernel(
         valid_offsets &= (bag != 0) | (begin == 0)
         if num_offsets > num_bags:
             valid_offsets &= (bag != num_bags - 1) | (end == num_indices)
+        end = tl.where(valid_offsets, end, begin)
+        begin = tl.minimum(tl.maximum(begin, 0), num_indices)
+        end = tl.minimum(tl.maximum(end, begin), num_indices)
+        if pos32:
+            begin = begin.to(tl.int32)
+            end = end.to(tl.int32)
         if dim_tile == 0:
             code = tl.where(valid_offsets, 0, 2)
             index_lane = tl.arange(0, index_block)
-            # Fixed partitions keep mapping writes disjoint even when a
-            # malformed offset sequence makes different bags overlap.
+            # Scan only this bag's [begin, end) range: valid offsets guarantee that bag ranges are disjoint,
+            # so the per-position bag index is directly the bag, equivalent to the original full-table binary-search
+            # mapping but saving
+            # log2(bags) offsets gathers per element. Invalid offsets are already reported below via
+            # the error flag, and the auxiliary output contents have no contract requirement.
             if num_indices > 0:
-                for input_base in range(
-                    bag * index_block,
-                    num_indices,
-                    tl.maximum(num_bags, 1) * index_block,
-                ):
+                for input_base in range(begin, end, index_block):
                     pos = input_base + index_lane
-                    in_bounds = pos < num_indices
+                    in_bounds = pos < end
                     idx = tl.load(indices + pos * stride_i, in_bounds, other=0)
                     invalid = in_bounds & ((idx < 0) | (idx >= num_weights))
                     code |= tl.max(invalid.to(tl.int32), 0)
-                    low = tl.full((index_block,), 0, tl.int64)
-                    high = tl.full((index_block,), num_bags, tl.int64)
-                    for _ in range(search_steps):
-                        mid = (low + high) // 2
-                        off = tl.load(
-                            offsets + mid * stride_o,
-                            in_bounds & (mid < num_bags),
-                            other=num_indices,
-                        )
-                        right = (mid < num_bags) & (off <= pos)
-                        low = tl.where(right, mid + 1, low)
-                        high = tl.where(right, high, mid)
-                    tl.store(offset_to_bag + pos, tl.maximum(low - 1, 0), in_bounds)
+                    tl.store(offset_to_bag + pos, bag, in_bounds)
             if async_assert:
                 tl.device_assert(code == 0, "embedding_bag: invalid index or offset")
             else:
                 tl.store(error + bag, code)
-        end = tl.where(valid_offsets, end, begin)
-        begin = tl.minimum(tl.maximum(begin, 0), num_indices)
-        end = tl.minimum(tl.maximum(end, begin), num_indices)
         if mode == 2 and serial_max:
-            count = tl.full((), 0, tl.int64)
+            count = tl.full((), 0, pos_ty)
             best = tl.full((block_d,), 0, acc_dtype)
             winner = tl.full((block_d,), -1, tl.int64)
             for pos in range(begin, end):
                 idx = tl.load(indices + pos * stride_i).to(tl.int64)
                 valid = (idx >= 0) & (idx < num_weights) & (idx != padding)
-                values = tl.load(
-                    weight + idx * stride_w0 + dim * stride_w1,
-                    valid & (dim < embedding_dim),
-                    other=0.0,
-                ).to(acc_dtype)
+                # Masked gathers are noticeably slower on GCU400: clamp the row index, do an unmasked load,
+                # then use where to zero out invalid rows, semantically equivalent to other=0.0.
+                load_idx = tl.where(valid, idx, 0)
+                ptrs = weight + load_idx * stride_w0 + dim * stride_w1
+                if dim_mask:
+                    values = tl.load(ptrs, dim < embedding_dim, other=0.0)
+                else:
+                    values = tl.load(ptrs)
+                values = tl.where(valid, values, 0.0).to(acc_dtype)
                 replace = valid & ((count == 0) | (values > best))
                 best = tl.where(replace, values, best)
                 winner = tl.where(replace, idx, winner)
-                count += valid.to(tl.int64)
+                count += valid.to(pos_ty)
             result = best
             tl.store(
                 max_indices + bag * embedding_dim + dim, winner, dim < embedding_dim
             )
         else:
-            count = tl.full((), 0, tl.int64)
+            count = tl.full((), 0, pos_ty)
             if mode == 2:
                 if key_max:
                     best = tl.full((block_d,), -9223372036854775808, tl.int64)
                 else:
                     best = tl.full((block_d,), float("-inf"), acc_dtype)
-                best_pos = tl.full(
-                    (block_d,),
-                    num_indices,
-                    tl.int32 if key_max and num_indices < 2147483647 else tl.int64,
-                )
-                first = tl.full((), num_indices, tl.int64)
+                best_pos = tl.full((block_d,), num_indices, pos_ty)
+                first = tl.full((), num_indices, pos_ty)
             else:
                 acc = tl.zeros((block_l, block_d), acc_dtype)
             if num_indices > 0:
@@ -178,13 +209,19 @@ def _embedding_bag_forward_kernel(
                     )
                     valid = active & (idx >= 0) & (idx < num_weights) & (idx != padding)
                     if embedding_dim > 0:
-                        values = tl.load(
+                        load_idx = tl.where(valid, idx, 0)
+                        ptrs = (
                             weight
-                            + idx[:, None] * stride_w0
-                            + dim[None, :] * stride_w1,
-                            valid[:, None] & (dim[None, :] < embedding_dim),
-                            other=0.0,
-                        ).to(acc_dtype)
+                            + load_idx[:, None] * stride_w0
+                            + dim[None, :] * stride_w1
+                        )
+                        if dim_mask:
+                            values = tl.load(
+                                ptrs, dim[None, :] < embedding_dim, other=0.0
+                            )
+                        else:
+                            values = tl.load(ptrs)
+                        values = tl.where(valid[:, None], values, 0.0).to(acc_dtype)
                     else:
                         values = tl.zeros((block_l, block_d), acc_dtype)
                     count += tl.sum(valid.to(tl.int32), 0)
@@ -264,7 +301,7 @@ def _embedding_bag_forward_kernel(
                     else:
                         best_pos = tl.where(first_value != first_value, first, best_pos)
                     winner = tl.load(
-                        indices + best_pos.to(tl.int64) * stride_i,
+                        indices + best_pos.to(pos_ty) * stride_i,
                         best_pos < num_indices,
                         other=-1,
                     )
@@ -405,8 +442,10 @@ def _embedding_bag_impl(
     if ascend_abi and mode != 2:
         max_indices = bag_size
     else:
-        max_indices = torch.empty(
-            (bags, d) if mode == 2 else (0,), device=weight.device, dtype=index_dtype
+        max_indices = (
+            torch.empty((bags, d), device=weight.device, dtype=index_dtype)
+            if mode == 2
+            else _empty_index_tensor(weight.device, index_dtype)
         )
     with torch_device_fn.device(weight.device):
         error = None
@@ -419,7 +458,21 @@ def _embedding_bag_impl(
         if o:
             # One masked feature tile also defines helpers for zero-width weights.
             block_d = min(BLOCK_D_CAP, triton.next_power_of_2(max(d, 1)))
-            block_l = BLOCK_L_SMALL if n <= bags * 16 else BLOCK_L_LARGE
+            # Position block height is clamped after rounding the average bag length to a power of 2: longer bags mean
+            # more rows convolved per iteration,
+            # and fewer iterations and DMA issues; MAX mode has two row reductions per iteration built in,
+            # so increasing block height linearly amplifies the reduction tree cost, hence a separate cap.
+            block_l = _pick_block_l(n, bags, mode)
+            # Keep the accumulation tile within 32KB to avoid register/DSM overflow when a wide column block combines
+            # with a high block height.
+            acc_element_bytes = 8 if weight.dtype == torch.float64 else 4
+            block_l = max(
+                1,
+                min(
+                    block_l,
+                    32768 // (block_d * acc_element_bytes) if block_d else block_l,
+                ),
+            )
             num_warps = NUM_WARPS
             serial_max = key_max = reciprocal_mean = False
             # Wide or long FP64 bags are limited by double-precision reduction
@@ -485,8 +538,9 @@ def _embedding_bag_impl(
                 bag_size_b=bag_size_b,
                 # A single bag maps every position to zero. Avoid a redundant
                 # vector gather from one scalar offset on Ascend's compiler.
-                search_steps=bags.bit_length() if bags > 1 else 0,
                 index_block=index_block,
+                dim_mask=(d % block_d) != 0,
+                pos32=n < 2147483647,
                 async_assert=async_assert,
                 serial_max=serial_max,
                 key_max=key_max,
@@ -551,6 +605,11 @@ def _embedding_bag(
         per_sample_weights,
         include_last_offset,
         padding_idx,
+        # ATen on GCU falls back to the CPU kernel, which drops padding (and
+        # out-of-bag) positions before applying per-sample weights instead of
+        # multiplying their zero values, so a nonfinite weight at a padding
+        # position must not leak NaN/Inf into the bag sum.
+        _launch_kwargs={"skip_pad_scale": True},
     )
 
 
@@ -565,7 +624,7 @@ def _embedding_bag_forward_only(
     include_last_offset=False,
     padding_idx=-1,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _EMBEDDING_BAG_FORWARD_ONLY")
+    logger.debug("GEMS_ENFLAME _EMBEDDING_BAG_FORWARD_ONLY")
     return _embedding_bag_impl(
         weight,
         indices,
@@ -577,6 +636,7 @@ def _embedding_bag_forward_only(
         include_last_offset,
         padding_idx,
         forward_only=True,
+        _launch_kwargs={"skip_pad_scale": True},
     )
 
 

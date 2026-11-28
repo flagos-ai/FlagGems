@@ -51,6 +51,13 @@ class MaskedScaleBenchmark(base.Benchmark):
 FLOAT_DTYPES = [torch.float32]
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_masked_scale; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.masked_scale
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 def test_masked_scale(dtype):

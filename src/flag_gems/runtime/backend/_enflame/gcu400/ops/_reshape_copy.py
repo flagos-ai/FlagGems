@@ -23,8 +23,14 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-_BLOCK_SIZE = 1024
 _MAX_RANK = 8
+# Persistent copy grid: one program per SP on gcu400 (48SP); each program
+# strides over multiple copy blocks, so the launch grid never exceeds the
+# 65535 hardware limit regardless of tensor size.
+_COPY_GRID = 48
+_INT32_LIMIT = 2**31
+# Element count threshold for switching the fp32 (4-byte) chunk size.
+_WIDE_CHUNK_THRESHOLD = 8 * 1024 * 1024
 
 
 @triton.jit
@@ -32,6 +38,8 @@ def _reshape_copy_contig_kernel(
     src_ptr,
     dst_ptr,
     n_elements,
+    n_blocks,
+    GRID: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     """Linear copy used when the input is contiguous.
@@ -39,13 +47,66 @@ def _reshape_copy_contig_kernel(
     ``src_ptr`` is the input's data pointer, which already accounts for any
     storage offset, and for a contiguous input the logical (row-major) order
     coincides with the flat element order, so no strided gather is needed.
+    Programs stride over blocks so the grid stays at ``GRID`` programs.
     """
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    offsets = offsets.to(tl.int64)
-    values = tl.load(src_ptr + offsets, mask=mask)
-    tl.store(dst_ptr + offsets, values, mask=mask)
+    for block in range(pid, n_blocks, GRID):
+        offsets = block * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        values = tl.load(src_ptr + offsets, mask=mask)
+        tl.store(dst_ptr + offsets, values, mask=mask)
+
+
+@triton.jit
+def _reshape_copy_contig_kernel_i64(
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    n_blocks,
+    GRID: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    """int64-offset variant for tensors with >= 2**31 elements."""
+    pid = tl.program_id(axis=0)
+    for block in range(pid, n_blocks, GRID):
+        base = block.to(tl.int64) * BLOCK_SIZE
+        offsets = base + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        values = tl.load(src_ptr + offsets, mask=mask)
+        tl.store(dst_ptr + offsets, values, mask=mask)
+
+
+@triton.jit
+def _reshape_copy_transpose_kernel(
+    src_ptr,
+    dst_ptr,
+    rows,
+    cols,
+    TILE: tl.constexpr,
+):
+    """Tiled copy used when the input's strides are fully reversed.
+
+    A fully reversed layout means the input's logical row-major order equals
+    the transpose of a contiguous ``[cols, rows]`` matrix ``M`` (i.e. the
+    input looks like ``M.t()`` with ``M`` contiguous). Each tile is read with
+    strided (non-contiguous) lanes and written back contiguously, which
+    avoids the on-chip transpose staging cost of the reverse arrangement.
+    ``src_ptr`` already carries the storage offset.
+    """
+    pid_r = tl.program_id(axis=0)
+    pid_c = tl.program_id(axis=1)
+    r = pid_r * TILE + tl.arange(0, TILE)
+    c = pid_c * TILE + tl.arange(0, TILE)
+    tile = tl.load(
+        src_ptr + c[None, :] * rows + r[:, None],
+        mask=(c[None, :] < cols) & (r[:, None] < rows),
+        other=0.0,
+    )
+    tl.store(
+        dst_ptr + r[:, None] * cols + c[None, :],
+        tile,
+        mask=(r[:, None] < rows) & (c[None, :] < cols),
+    )
 
 
 @triton.jit
@@ -69,7 +130,9 @@ def _reshape_copy_strided_kernel(
     d6,
     d7,
     n_elements,
+    n_blocks,
     RANK: tl.constexpr,
+    GRID: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     """Gather the input's logical (row-major) order into contiguous storage.
@@ -77,25 +140,41 @@ def _reshape_copy_strided_kernel(
     The destination is contiguous, so its flat offset is the output index. For
     each such index the matching source element is recovered by decomposing it
     along the *source* shape (row-major) and applying the *source* strides.
-    ``src_ptr`` already carries the storage offset.
+    ``src_ptr`` already carries the storage offset. Programs stride over
+    blocks so the launch grid stays bounded.
     """
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    offsets = offsets.to(tl.int64)
-
     src_strides = [s0, s1, s2, s3, s4, s5, s6, s7]
     src_dims = [d0, d1, d2, d3, d4, d5, d6, d7]
+    for block in range(pid, n_blocks, GRID):
+        offsets = block.to(tl.int64) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
 
-    rem = offsets
-    src_offsets = tl.zeros_like(offsets)
-    for j in tl.static_range(RANK - 1, -1, -1):
-        idx = rem % src_dims[j]
-        rem = rem // src_dims[j]
-        src_offsets += idx * src_strides[j]
+        rem = offsets
+        src_offsets = tl.zeros_like(offsets)
+        for j in tl.static_range(RANK - 1, -1, -1):
+            idx = rem % src_dims[j]
+            rem = rem // src_dims[j]
+            src_offsets += idx * src_strides[j]
 
-    values = tl.load(src_ptr + src_offsets, mask=mask)
-    tl.store(dst_ptr + offsets, values, mask=mask)
+        values = tl.load(src_ptr + src_offsets, mask=mask)
+        tl.store(dst_ptr + offsets, values, mask=mask)
+
+
+def _is_fully_reversed(dims, strides):
+    """True when strides[i] == prod(dims[:i]) for every dimension.
+
+    This is the layout produced by transposing a contiguous tensor (any
+    rank): the logical row-major order of the input is the transpose of a
+    contiguous matrix. Size-1 dimensions with non-canonical strides simply
+    fail this check and fall back to the generic strided kernel.
+    """
+    prod = 1
+    for dim, stride in zip(dims, strides):
+        if stride != prod:
+            return False
+        prod *= dim
+    return True
 
 
 def _reshape_copy(self: torch.Tensor, size):
@@ -109,7 +188,7 @@ def _reshape_copy(self: torch.Tensor, size):
     remaining dimensions and the input ``numel``, exactly like PyTorch's
     ``infer_size``. The requested ``size`` is validated against ``numel``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _RESHAPE_COPY")
+    logger.debug("GEMS_ENFLAME _RESHAPE_COPY")
 
     requested = [int(s) for s in size]
     numel = self.numel()
@@ -144,13 +223,35 @@ def _reshape_copy(self: torch.Tensor, size):
 
     with torch_device_fn.device(self.device):
         if self.is_contiguous():
-            grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)
-            _reshape_copy_contig_kernel[grid](
-                self,
-                out,
-                numel,
-                BLOCK_SIZE=_BLOCK_SIZE,
-            )
+            elem_size = self.element_size()
+            if elem_size == 2:
+                block_size = 16384
+            elif elem_size == 4:
+                block_size = 32768 if numel >= _WIDE_CHUNK_THRESHOLD else 8192
+            else:
+                block_size = 8192
+            n_blocks = (numel + block_size - 1) // block_size
+            grid = (min(_COPY_GRID, n_blocks),)
+            if numel < _INT32_LIMIT:
+                _reshape_copy_contig_kernel[grid](
+                    self,
+                    out,
+                    numel,
+                    n_blocks,
+                    GRID=grid[0],
+                    BLOCK_SIZE=block_size,
+                    num_warps=4,
+                )
+            else:
+                _reshape_copy_contig_kernel_i64[grid](
+                    self,
+                    out,
+                    numel,
+                    n_blocks,
+                    GRID=grid[0],
+                    BLOCK_SIZE=block_size,
+                    num_warps=4,
+                )
             return out
 
         rank = self.dim()
@@ -158,16 +259,43 @@ def _reshape_copy(self: torch.Tensor, size):
             raise RuntimeError(
                 f"_reshape_copy supports at most {_MAX_RANK} dimensions, got {rank}"
             )
-        src_strides = list(self.stride()) + [0] * (_MAX_RANK - rank)
-        src_dims = list(self.shape) + [1] * (_MAX_RANK - rank)
-        grid = lambda meta: (triton.cdiv(numel, meta["BLOCK_SIZE"]),)
+        src_strides = list(self.stride())
+        src_dims = list(self.shape)
+
+        if numel < _INT32_LIMIT and _is_fully_reversed(src_dims, src_strides):
+            rows = src_dims[0]
+            cols = 1
+            for dim in src_dims[1:]:
+                cols *= dim
+            if self.element_size() >= 8:
+                tile, num_warps = 128, 4
+            elif self.element_size() >= 4:
+                tile, num_warps = 256, 4
+            else:
+                tile, num_warps = 256, 2
+            grid = (triton.cdiv(rows, tile), triton.cdiv(cols, tile))
+            _reshape_copy_transpose_kernel[grid](
+                self,
+                out,
+                rows,
+                cols,
+                TILE=tile,
+                num_warps=num_warps,
+            )
+            return out
+
+        block_size = 4096
+        n_blocks = (numel + block_size - 1) // block_size
+        grid = (min(_COPY_GRID, n_blocks),)
         _reshape_copy_strided_kernel[grid](
             self,
             out,
-            *src_strides,
-            *src_dims,
+            *(src_strides + [0] * (_MAX_RANK - rank)),
+            *(src_dims + [1] * (_MAX_RANK - rank)),
             numel,
+            n_blocks,
             RANK=rank,
-            BLOCK_SIZE=_BLOCK_SIZE,
+            GRID=grid[0],
+            BLOCK_SIZE=block_size,
         )
     return out

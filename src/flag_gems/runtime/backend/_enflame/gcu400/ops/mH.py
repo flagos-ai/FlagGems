@@ -26,37 +26,76 @@ of ``self``, so a write through the result is visible in ``self``.
 
 Contract points that drive the implementation:
 
-* **Never materialize.** ``conj_physical`` / ``resolve_conj`` / ``clone`` /
-  ``contiguous`` / ``to`` / any eager elementwise negation would break the
-  shared-storage and ``is_conj()`` semantics.  Only the lazy conjugating view
-  (``Tensor.conj``) and the stride-exchange view (``Tensor.transpose``) are
-  used -- the same primitives aten composes, and the composition reproduces
-  aten's alias chain exactly (``out._base is self``) for real, complex,
-  transposed, strided, offset and batched inputs.
-* **Conjugation is dtype-dependent.** The lazy conjugate bit only exists for
-  complex dtypes; for a real tensor ``conj()`` is a no-op that hands back the
-  very same object, so the rank >= 2 result is exactly ``transpose(-2, -1)``.
-  Dispatching on ``is_complex()`` therefore removes a whole Tensor dispatch
-  from every real-dtype call (11 of the 12 benchmarked dtypes) while producing
-  byte-identical shape, strides, storage offset, storage pointer and
-  ``is_conj()`` state; complex inputs keep the ``conj().transpose()`` chain.
-* **Rank dispatch.** Rank >= 2 performs the transpose; rank 1 (including the
-  empty ``(0,)`` tensor) is rejected with ``RuntimeError``; rank 0 is the
-  deprecated path that warns (once per process, as aten does) and degrades to
-  ``conj()`` (for a real tensor that returns the input object itself).
-* **Grad flow.** ``conj`` and ``transpose`` are differentiable views, so the
+* **Never materialize.**  No ``conj_physical`` / ``resolve_conj`` / ``clone`` /
+  ``contiguous`` / ``to`` / eager elementwise negation and no kernel launch:
+  the result is built purely from view/metadata primitives and shares the
+  input storage; ``is_conj()`` is the lazy conjugate bit, exactly as aten.
+* **Conjugation is dtype-dependent and a toggle.**  The lazy conjugate bit only
+  exists for complex dtypes; for a real tensor the rank >= 2 result is exactly
+  the last-two-dim stride swap.  For complex inputs the bit is *toggled*
+  (``x.mH.mH`` recovers the input layout), including when the input already
+  carries the bit.
+* **Rank dispatch.**  Rank >= 2 performs the swap; rank 1 is rejected with
+  ``RuntimeError``; rank 0 is the deprecated path that warns (once per
+  process, as aten does) and degrades to ``conj()``: for real dtypes that is
+  the identity (aten hands back the very same object, which this copy
+  reproduces with ``return self``), for complex dtypes a fresh aliasing view
+  with the bit set.
+* **Grad flow.**  ``conj`` and ``transpose`` are differentiable views, so the
   backward of ``mH`` is the same relayout applied to the upstream gradient.
 
-There is no elementwise domain, hence no device payload and no Triton kernel
-launch: ``mH`` composes ``Tensor.conj`` and ``Tensor.transpose`` directly, and
-the rank precondition is checked on the host exactly as aten does.  (Round-1
-profiling showed a rank-guard kernel launch was the whole measured cost -- 2 us
-of device time per call on a pure metadata op -- so this revision drops it.)
+gcu400 local deviation -- dispatcher-neutral view construction:
+
+The generic composition ``transpose(conj(self))`` routes each primitive
+through the torch dispatcher.  Inside the production ``use_gems()`` window,
+``aten::transpose.int`` and ``aten::_conj`` (reached via the ``aten::conj``
+composite) are registered FlagGems kernels, so the composition degrades:
+
+* real dtypes pay a second Python dispatcher hop through FlagGems'
+  ``transpose`` kernel (~2.9 us/call direct, ~4.1 us dispatched, vs ~1.3 us
+  outside the window; interleaved harness, GCU400, 2026-11-17);
+* complex dtypes land on ``_conj_kernel`` -- an ``empty_like`` + Triton
+  materializing conjugate copy -- which silently *breaks* the view contract
+  (``is_conj()`` False, storage not shared) and costs ~35 us/call direct /
+  ~37 us dispatched.
+
+With this revision the same harness measures, inside the ``use_gems()``
+window (GCU400, interleaved, 6 shapes x {f32, c64}, 2026-11-17): dispatched
+``aten::mH`` real 4071-4161 -> 2933-3054 ns (-26..-28%), complex 36760-37682
+-> 3282-3393 ns (-91%, ~11x); direct calls 2963-3069 -> 1595-1677 ns (real)
+and 34602-35505 -> 1917-1995 ns (complex); the complex production result
+regains full aten parity (``is_conj()`` True, shared storage) that the
+materializing path had silently broken.  Outside the window the direct body
+is ~+0.35 us slower than the old native-transpose composition (permute is a
+slightly heavier single hop than native transpose, 1441 vs 1116 ns), a
+context that production never enters and that the official kernel-mode
+benchmark cannot observe anyway (its event-pair floor is ~2.1 us).
+
+This copy therefore builds the same observable state without dispatcher
+round-trips:
+
+* the stride swap uses ``Tensor.permute`` with a cached axis-order tuple
+  (``aten::permute`` is not registered by FlagGems, so it is a single native
+  C++ hop in every dispatch context) -- ``permute`` was verified to reproduce
+  ``transpose(-2, -1)`` shape/stride/offset/storage bit-for-bit on
+  contiguous, transposed, offset-window, expanded and zero-sized inputs;
+* the lazy conjugate bit is toggled with the raw C binding
+  ``torch._C._set_conj`` on the freshly created view (no dispatcher at all),
+  reproducing aten's ``alias_with_conj`` final state; the input tensor's own
+  bit is never touched;
+* complex tensors that require grad (with grad mode enabled) keep the aten
+  composition ``transpose(conj(self))``: the autograd view metadata is
+  captured at view-creation time, so a post-hoc bit flip would silently drop
+  the conjugation from the backward -- the dispatcher hops are only paid on
+  this cold, correctness-first arm;
+* if ``torch._C._set_conj`` is unavailable the composition falls back to the
+  generic chain.
 
 Host-path notes: the C-level ``Tensor`` descriptors are bound once at import
-(no per-call bound-method creation) and real dtypes skip the no-op ``conj()``
-dispatch entirely, while complex inputs keep the exact lazy-conjugate chain
-that aten builds.
+(no per-call bound-method creation), the axis order is cached per rank in a
+module dict (no per-call tuple construction), and rank-0 tensors never pay
+the complex checks.  No Triton kernel exists for this operator: there is no
+elementwise domain and no device payload.
 """
 
 import logging
@@ -79,15 +118,31 @@ _MH_WARN_STATE = {"warned": False}
 
 # Bind the C-level Tensor descriptors once: ``t.conj()`` otherwise pays a
 # type-dictionary lookup plus a bound-method creation on every call.
-_CONJ = torch.Tensor.conj
-_TRANSPOSE = torch.Tensor.transpose
-_IS_COMPLEX = torch.Tensor.is_complex
 _DIM = torch.Tensor.dim
+_IS_COMPLEX = torch.Tensor.is_complex
+_IS_CONJ = torch.Tensor.is_conj
+_PERMUTE = torch.Tensor.permute
+_AS_STRIDED = torch.Tensor.as_strided
+_STORAGE_OFFSET = torch.Tensor.storage_offset
+_TRANSPOSE = torch.Tensor.transpose
+_CONJ = torch.Tensor.conj
+_GRAD_ENABLED = torch.is_grad_enabled
+
+# Raw C-level conjugate-bit setter (no dispatcher participation).  Guarded so
+# the module still imports and degrades to the aten composition if a build
+# lacks the binding.
+try:
+    _SET_CONJ = torch._C._set_conj
+except AttributeError:  # pragma: no cover - defensive
+    _SET_CONJ = None
+
+# rank -> axis order that exchanges the last two dimensions.
+_SWAP_PERMS = {}
 
 
 def mH(self):
     """Return the zero-copy conjugate-transpose view of ``self``."""
-    logger.debug("GEMS_ENFLAME_GCU400 MH")
+    logger.debug("GEMS_ENFLAME MH")
     ndim = _DIM(self)
     if ndim < 2:
         if ndim == 1:
@@ -96,11 +151,32 @@ def mH(self):
         if not _MH_WARN_STATE["warned"]:
             _MH_WARN_STATE["warned"] = True
             warnings.warn(_MH_0D_MESSAGE, UserWarning, stacklevel=2)
-        out = _CONJ(self)
-    elif _IS_COMPLEX(self):
-        # Complex input: the lazy conjugate bit must be toggled as well.
-        out = _TRANSPOSE(_CONJ(self), -2, -1)
-    else:
-        # Real input: conj() is a no-op identity, so mH is the stride exchange.
-        out = _TRANSPOSE(self, -2, -1)
-    return out
+        if not _IS_COMPLEX(self):
+            # aten: conj() of a real tensor is the identity (same object).
+            return self
+        if self.requires_grad and _GRAD_ENABLED():
+            return _CONJ(self)
+        if _SET_CONJ is not None:
+            out = _AS_STRIDED(self, (), (), _STORAGE_OFFSET(self))
+            _SET_CONJ(out, not _IS_CONJ(self))
+            return out
+        return _CONJ(self)
+    if not _IS_COMPLEX(self):
+        # Real input: mH is exactly the last-two-dim stride swap.
+        perm = _SWAP_PERMS.get(ndim)
+        if perm is None:
+            perm = _SWAP_PERMS[ndim] = tuple(range(ndim - 2)) + (ndim - 1, ndim - 2)
+        return _PERMUTE(self, perm)
+    # Complex input: swap the axes and toggle the lazy conjugate bit.
+    if self.requires_grad and _GRAD_ENABLED():
+        # View metadata (and the conjugation inside it) is captured at
+        # view-creation time by autograd; flip the bit only when untracked.
+        return _TRANSPOSE(_CONJ(self), -2, -1)
+    if _SET_CONJ is not None:
+        perm = _SWAP_PERMS.get(ndim)
+        if perm is None:
+            perm = _SWAP_PERMS[ndim] = tuple(range(ndim - 2)) + (ndim - 1, ndim - 2)
+        out = _PERMUTE(self, perm)
+        _SET_CONJ(out, not _IS_CONJ(self))
+        return out
+    return _TRANSPOSE(_CONJ(self), -2, -1)
