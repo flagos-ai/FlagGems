@@ -502,6 +502,9 @@ def _upsample_bicubic2d_aa(
     assert input.ndim == 4, "The ndim of input must be 4"
     assert len(output_size) == 2, "The len of output_size must be 2"
 
+    # The kernels flatten NCHW offsets directly; normalize arbitrary views.
+    input = input.contiguous()
+
     OH, OW = output_size
     N, C, IH, IW = input.shape
 
