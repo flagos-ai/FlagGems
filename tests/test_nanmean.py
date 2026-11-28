@@ -181,7 +181,7 @@ def test_nanmean_real_input_complex_output(dtype):
     if dtype == torch.complex128 and not utils.fp64_is_supported:
         pytest.skip("FP64 is not supported")
     inp = _nan_input((7, 11), torch.float32, flag_gems.device)
-    use_cpu_reference = flag_gems.vendor_name == "mthreads"
+    use_cpu_reference = flag_gems.vendor_name in ("kunlunxin", "mthreads")
     if use_cpu_reference:
         real = inp.cpu()
         sum_dtype = torch.float64 if dtype == torch.complex128 else torch.float32
@@ -283,8 +283,11 @@ def test_nanmean_out_dtype_downcast(input_dtype, output_dtype):
 def test_nanmean_out_rejects_explicit_dtype_mismatch():
     inp = torch.randn((4, 8), device=flag_gems.device)
     out = torch.empty((4,), dtype=torch.float16, device=flag_gems.device)
-    with pytest.raises(RuntimeError):
-        torch.nanmean(inp, dim=1, dtype=torch.float32, out=out)
+    if flag_gems.vendor_name != "kunlunxin":
+        # The XPU eager op accepts the mismatched dtype/out pair instead of
+        # raising, so only the gems wrapper is checked there.
+        with pytest.raises(RuntimeError):
+            torch.nanmean(inp, dim=1, dtype=torch.float32, out=out)
     with pytest.raises(RuntimeError):
         flag_gems.nanmean_out(inp, dim=1, dtype=torch.float32, out=out)
 
@@ -311,8 +314,9 @@ def test_nanmean_complex_input():
         device=flag_gems.device,
     )
     result = flag_gems.nanmean(inp)
-    if flag_gems.vendor_name == "mthreads":
-        # Only 3+4j has no NaN component in this fixture.
+    if flag_gems.vendor_name in ("kunlunxin", "mthreads"):
+        # Neither backend's eager op has a complex kernel, and only 3+4j has no
+        # NaN component in this fixture.
         reference = torch.tensor(3 + 4j, dtype=inp.dtype, device="cpu")
         assert result.device == inp.device
         result = result.cpu()
@@ -380,6 +384,14 @@ def test_nanmean_complex_input_real_dtype(dtype):
         # ATen counts non-NaN complex samples, independently of the sum dtype.
         source = inp.cpu()
         reference = torch.nansum(source.real, dtype=dtype) / (~source.isnan()).sum()
+    elif flag_gems.vendor_name == "kunlunxin":
+        # The XPU eager op has no complex kernel, so the reference is rebuilt
+        # from the parts: a sample counts only when both of its parts are
+        # non-NaN, and a real output keeps the real part of that mean.
+        parts = torch.view_as_real(inp)
+        valid = ~torch.isnan(parts[..., 0]) & ~torch.isnan(parts[..., 1])
+        reference = torch.where(valid, parts[..., 0], 0.0).sum() / valid.sum()
+        reference = reference.to(dtype)
     else:
         reference = torch.nanmean(utils.to_reference(inp), dtype=dtype)
     result = flag_gems.nanmean(inp, dtype=dtype)

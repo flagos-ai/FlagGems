@@ -738,6 +738,7 @@ from .mv import mv, mv_cluster
 from .mvlgamma import mvlgamma
 from .mvlgamma_ import mvlgamma_
 from .nan_to_num import nan_to_num, nan_to_num_
+from .nanmean import nanmean, nanmean_out
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
 from .narrow_copy import narrow_copy
@@ -1841,6 +1842,8 @@ __all__ = [
     "mvlgamma_",
     "nan_to_num",
     "nan_to_num_",
+    "nanmean",
+    "nanmean_out",
     "nanmedian",
     "nanmedian_dim",
     "nanmedian_dim_values",
