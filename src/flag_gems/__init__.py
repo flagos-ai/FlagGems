@@ -1110,7 +1110,12 @@ _FULL_CONFIG = (
         None,
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
-    ("aminmax", aminmax),
+    (
+        "aminmax",
+        aminmax,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("angle", angle),
     ("any", any),
     ("any.dim", any_dim),
