@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -49,4 +51,24 @@ def test_acosh_backward():
     )
     # The Autograd fallthrough routes the default use_gems() path through
     # AcoshFunction, so this measures the fused registered backward kernel.
+    bench.run()
+
+
+def _acosh_backward_inplace_input_fn(shape, dtype, device):
+    # Keep inputs inside acosh's real domain for a finite backward reference.
+    yield torch.rand(shape, dtype=dtype, device=device) + 1.1,
+
+
+@pytest.mark.acosh_backward_
+def test_acosh_backward_():
+    bench = base.GenericBenchmark(
+        op_name="acosh_backward_",
+        input_fn=_acosh_backward_inplace_input_fn,
+        # PyTorch marks acosh_ backward as not implemented; out-of-place acosh
+        # has the same mathematical gradient and is the native baseline here.
+        torch_op=torch.acosh,
+        gems_op=lambda x: flag_gems.acosh_(x.clone()),
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
     bench.run()
