@@ -79,6 +79,10 @@ def index_select(inp, dim, index):
     if index.ndim == 0:
         index = index.unsqueeze(0)
     dim = dim % inp.ndim
+    # Both kernels below read the index tensor with flat offsets, so a strided
+    # view (e.g. a sliced index) has to be materialised first; otherwise it
+    # selects the wrong rows instead of following index.stride(0).
+    index = index.contiguous()
     index_len = index.numel()
     inp_shape = list(inp.shape)
     N = inp_shape[dim]
