@@ -360,6 +360,7 @@ from .replication_pad2d_backward import (
 )
 from .replication_pad3d_backward import replication_pad3d_backward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
+from .router_gemm import router_gemm
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
 from .scalar_tensor import scalar_tensor
 from .scatter import scatter, scatter_
@@ -752,6 +753,7 @@ __all__ = [
     "replication_pad2d_backward_grad_input",
     "replication_pad3d_backward",
     "rms_norm_w8a16_fp8",
+    "router_gemm",
     "rrelu_with_noise",
     "rrelu_with_noise_",
     "scalar_tensor",
