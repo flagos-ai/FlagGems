@@ -21,6 +21,7 @@ import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, pointwise_dynamic
+from flag_gems.utils.triton_lang_helper import tl_extra_shim
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,12 @@ logger = logging.getLogger(__name__)
 @triton.jit
 def abs_func(x):
     return tl.abs(x)
+
+
+@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@triton.jit
+def complex_abs_func(real, imag):
+    return tl_extra_shim.hypot(real, imag)
 
 
 @libentry()
@@ -102,6 +109,10 @@ class AbsFunction(torch.autograd.Function):
 
 def abs(A):
     logger.debug("GEMS ABS")
+    if A.is_complex():
+        # Conjugation does not change the magnitude.
+        parts = torch.view_as_real(torch.conj(A) if A.is_conj() else A)
+        return complex_abs_func(parts[..., 0], parts[..., 1])
     if torch.is_grad_enabled() and A.requires_grad:
         return AbsFunction.apply(A)
     return abs_func(A)

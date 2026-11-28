@@ -47,6 +47,9 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
         device = torch.device(device_.name)
 
     out = torch.empty(size, device=device, dtype=dtype)
+    if out.is_complex():
+        zero_(out)
+        return out
     N = volume(size)
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK_SIZE"]),)
     with torch_device_fn.device(device):
@@ -56,6 +59,12 @@ def zeros(size, *, dtype=None, layout=None, device=None, pin_memory=None):
 
 def zero_(x: torch.Tensor) -> torch.Tensor:
     logger.debug("GEMS ZERO_")
+    if x.numel() == 0:
+        return x
+    if x.is_complex():
+        # Both components are zero regardless of the conjugate bit.
+        zero_(torch.view_as_real(torch.conj(x) if x.is_conj() else x))
+        return x
     if not x.is_contiguous():
         # fill imports sum, which imports zero_; defer this dependency until
         # package initialization has finished.
