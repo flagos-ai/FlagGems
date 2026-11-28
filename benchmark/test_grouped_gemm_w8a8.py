@@ -20,7 +20,8 @@ The capture bundle contains shapes.json and metadata/*.jsonl. Prepared benchmark
 JSON stays outside the repository and is supplied with --shape_file PATH.
 It preserves per-scenario call counts, captured first-observation expert counts,
 cumulative offsets and tensor layouts. Operand values and scales are generated
-deterministically, not captured model values. INT8 uses ContinuousGroupedGEMM.
+deterministically, not captured model values. MetaX uses ContinuousGroupedGEMM.
+Hygon uses LightOp INT8 MoE GEMM with per-call routing and prepacked weights.
 Prepared external INT8/FP8 diagnostic JSON files are also accepted; their
 classification must identify synthetic routing.
 
@@ -71,6 +72,73 @@ def _mctlass_routing(Rows, Segments, Weights, G: tl.constexpr, BLOCK: tl.constex
     tl.store(Weights + groups, groups, groups < G)
 
 
+class HygonLightOpReference:
+    """Prepare the LightOp reference for one packed INT8 replay case."""
+
+    def __init__(self, stage, a, b, sa, sb, output, indices):
+        lightop = pytest.importorskip("lightop")
+        routing = pytest.importorskip("lmslim.vllm_compat.moe_align_block_size")
+        experts, n, k = b.shape
+        geometry = {"gate_up": (512, 6144), "down": (6144, 256)}
+        if experts != 257 or geometry.get(stage) != (n, k):
+            raise ValueError(f"No Hygon LightOp configuration for {stage}, {b.shape}")
+
+        m = a.shape[0]
+        properties = torch.cuda.get_device_properties(a.device)
+        gate_n, gate_k = geometry["gate_up"]
+        down_n, down_k = geometry["down"]
+        gate, down, supported = lightop.get_moe_cuda_marlin_config(
+            experts,
+            m,
+            gate_n,
+            gate_k,
+            down_n,
+            down_k,
+            1,
+            properties.name,
+            properties.multi_processor_count,
+            "int8",
+        )
+        if not supported:
+            raise ValueError(f"LightOp does not support {stage}, {a.shape}, {b.shape}")
+
+        self.gemm = lightop.moe_gemm_marlin_w8a8
+        self.align = routing.moe_align_block_size
+        self.config = down if stage == "down" else gate
+        # Marlin's paired projections share the gate/up routing tile.
+        self.tile = gate["BLOCK_SIZE_M"]
+        self.a, self.sa, self.sb = a, sa[:, None], sb[:, :, None]
+        # Pack [E, K/64, N, 64] before timing and preserve the API shape.
+        self.b = b.reshape(experts, n, k // 64, 64).transpose(1, 2).contiguous()
+        self.b = self.b.view_as(b)
+        self.output = output[:, None, :]
+        self.experts = experts
+        self.indices = indices[:, None]
+        self.route_weights = (
+            torch.ones((m, 1), dtype=torch.float32, device=a.device)
+            if stage == "down"
+            else None
+        )
+
+    def run(self):
+        sorted_ids, sorted_experts, padded = self.align(
+            self.indices, self.tile, self.experts
+        )
+        self.gemm(
+            self.a,
+            self.b,
+            self.output,
+            self.sa,
+            self.sb,
+            self.route_weights,
+            sorted_ids,
+            sorted_experts,
+            padded,
+            1,
+            self.config,
+        )
+
+
 class GroupedGEMMW8A8Benchmark(base.Benchmark):
     @staticmethod
     def _default_dataset(shapes):
@@ -110,12 +178,22 @@ class GroupedGEMMW8A8Benchmark(base.Benchmark):
         path = Path(shape_file_path or base.Config.shape_file)
         default = Path(__file__).with_name("core_shapes.yaml")
         if path.resolve() == default.resolve():
+            if flag_gems.vendor_name == "hygon":
+                pytest.skip(
+                    "Hygon LightOp requires the prepared INT8 replay: "
+                    "pass --shape_file PATH."
+                )
             super().set_shapes(str(path))
             self.dataset = self._default_dataset(self.shapes)
         else:
             self.dataset = json.loads(path.read_text())
         self.shapes = self.dataset["shapes"]
         self.use_deepgemm = self.dataset.get("reference") == "deep_gemm"
+        self.use_hygon = flag_gems.vendor_name == "hygon"
+        if self.use_hygon and (
+            self.use_deepgemm or self.dataset.get("input_dtype") != "int8"
+        ):
+            raise ValueError("Hygon grouped_gemm_w8a8 replay requires INT8 inputs")
         if self.use_deepgemm or self.dataset.get("input_dtype") == "int8":
             requested = base.Config.user_desired_dtypes
             if requested and requested != [torch.int8]:
@@ -124,6 +202,8 @@ class GroupedGEMMW8A8Benchmark(base.Benchmark):
             self.torch_op = (
                 self.deepgemm_reference if self.use_deepgemm else self.mctlass_reference
             )
+            if self.use_hygon:
+                self.torch_op = self.hygon_reference
             self.gems_op = flag_gems.grouped_gemm_w8a8
         self.shape_desc = "G, M, N, K; " + self.dataset["classification"]
         for row in self.shapes:
@@ -172,12 +252,16 @@ class GroupedGEMMW8A8Benchmark(base.Benchmark):
                         "captured_tensor_metadata": row.get("tensor_metadata"),
                         "routing_origin": self.dataset.get("routing_origin"),
                         "baseline": (
-                            "MetaX DeepGEMM contiguous, backend=mctlassEx, full wrapper"
-                            if self.use_deepgemm
+                            "Hygon LightOp INT8 MoE GEMM, routing included"
+                            if self.use_hygon
                             else (
-                                "ContinuousGroupedGEMM Torch API; routing + "
-                                "block selection + tile prefix included; "
-                                "FP8 uses Torch tile-prefix adapter"
+                                "MetaX DeepGEMM contiguous, backend=mctlassEx, full wrapper"
+                                if self.use_deepgemm
+                                else (
+                                    "ContinuousGroupedGEMM Torch API; routing + "
+                                    "block selection + tile prefix included; "
+                                    "FP8 uses Torch tile-prefix adapter"
+                                )
                             )
                         ),
                     },
@@ -226,6 +310,18 @@ class GroupedGEMMW8A8Benchmark(base.Benchmark):
             )
             output = torch.empty((m, n), dtype=torch.bfloat16, device="cuda")
             return a, sa[:, None], b, sb[:, :, None], output, indices, lengths
+        if self.use_hygon:
+            lengths = torch.tensor(row["lengths"], dtype=torch.int32, device=a.device)
+            indices = torch.repeat_interleave(
+                torch.arange(g, dtype=torch.int32, device=a.device),
+                lengths,
+                output_size=m,
+            )
+            output = torch.empty((m, n), dtype=torch.bfloat16, device=a.device)
+            self.hygon_native = HygonLightOpReference(
+                row["stage"], a, b, sa, sb, output, indices
+            )
+            return a, sa[:, None], b, sb[:, :, None], output, indices, lengths
         self.native_config = {"n_group": g}
         if dtype != torch.int8:
             self.native_config.update(
@@ -254,6 +350,10 @@ class GroupedGEMMW8A8Benchmark(base.Benchmark):
             torch.arange(g, dtype=torch.int32, device="cuda"), lengths, output_size=m
         )
         return a, sa[:, None], b, sb[:, :, None], scratch, indices, lengths
+
+    def hygon_reference(self, a, sa, b, sb, output, indices, lengths):
+        self.hygon_native.run()
+        return output
 
     def deepgemm_reference(self, a, sa, b, sb, output, indices, lengths):
         # Preserve the installed public wrapper and explicitly select native INT8.
@@ -414,7 +514,7 @@ def aten_int8_grouped_gemm_baseline(A, As, B, Bs, C, m_indices, m_rows):
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
     not (
-        flag_gems.vendor_name in ("ascend", "enflame", "metax", "thead")
+        flag_gems.vendor_name in ("ascend", "enflame", "hygon", "metax", "thead")
         and "grouped_gemm_w8a8" in vars(flag_gems)
         or flag_gems.vendor_name == "nvidia"
         and "grouped_gemm_w8a8_fp8" in vars(flag_gems)
@@ -422,7 +522,14 @@ def aten_int8_grouped_gemm_baseline(A, As, B, Bs, C, m_indices, m_rows):
     reason="requires a registered grouped GEMM implementation",
 )
 def test_grouped_gemm_w8a8():
-    if flag_gems.vendor_name == "metax":
+    if flag_gems.vendor_name == "hygon":
+        bench = GroupedGEMMW8A8Benchmark(
+            op_name="grouped_gemm_w8a8",
+            torch_op=None,
+            gems_op=flag_gems.grouped_gemm_w8a8,
+            dtypes=[torch.int8],
+        )
+    elif flag_gems.vendor_name == "metax":
         bench = GroupedGEMMW8A8Benchmark(
             op_name="grouped_gemm_w8a8",
             torch_op=None,

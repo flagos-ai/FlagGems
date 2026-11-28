@@ -9938,7 +9938,7 @@ ops:
   - stable: '3.0'
 - id: grouped_gemm_w8a8
   description: 'Grouped NT GEMM with unpadded expert rows, FP32 scales and caller-owned
-    BF16 output. Supports per-row/per-channel INT8 scales on Ascend, PPU, and
+    BF16 output. Supports per-row/per-channel INT8 scales on Ascend, Hygon, PPU, and
     MetaX, E4M3FN/FNUZ per-row/per-channel scales on MetaX, and E4M3FN block
     scales on NVIDIA Hopper through grouped_gemm_w8a8_fp8.'
   for:

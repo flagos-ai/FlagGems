@@ -270,6 +270,7 @@ from .gcd_ import gcd_
 from .gelu import gelu, gelu_, gelu_backward
 from .greater_ import greater_
 from .grid_sampler_3d import grid_sampler_3d
+from .grouped_gemm_w8a8 import grouped_gemm_w8a8
 from .hadamard_transform import hadamard_transform
 from .hardsigmoid_backward import hardsigmoid_backward
 from .hash_tensor import hash_tensor
@@ -649,6 +650,7 @@ __all__ = [
     "gelu_backward",
     "greater_",
     "grid_sampler_3d",
+    "grouped_gemm_w8a8",
     "hadamard_transform",
     "hardsigmoid_backward",
     "hash_tensor",
