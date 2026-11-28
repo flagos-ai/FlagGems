@@ -21,6 +21,11 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.layernorm import layer_norm_loop_kernel as _precise_loop
+from flag_gems.ops.layernorm import layer_norm_persistent_kernel as _precise_persistent
+from flag_gems.ops.layernorm import (
+    layer_norm_persistent_kernel_multiline as _precise_multiline,
+)
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -466,6 +471,20 @@ def _ln_bwd_fused_columns(
 def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     logger.debug("GEMS_HYGON LAYERNORM_FORWARD")
 
+    normalized_shape = tuple(normalized_shape)
+    if not normalized_shape:
+        raise RuntimeError("Expected normalized_shape to be at least 1-dimensional")
+    if (
+        len(normalized_shape) > input.ndim
+        or input.shape[-len(normalized_shape) :] != normalized_shape
+    ):
+        raise RuntimeError(
+            "Expected input with trailing dimensions matching normalized_shape"
+        )
+    for name, affine in (("weight", weight), ("bias", bias)):
+        if affine is not None and affine.shape != normalized_shape:
+            raise RuntimeError(f"Expected {name} shape to match normalized_shape")
+
     N = math.prod(normalized_shape)
     M = input.numel() // N
 
@@ -479,12 +498,30 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
     mean = torch.empty(M, dtype=torch.float32, device=input.device)
     rstd = torch.empty_like(mean)
 
+    multiline = layer_norm_persistent_kernel_multiline
+    persistent = layer_norm_persistent_kernel
+    loop = layer_norm_loop_kernel
+    moments = {}
+    if input.dtype == torch.float32:
+        multiline, persistent, loop = (
+            _precise_multiline,
+            _precise_persistent,
+            _precise_loop,
+        )
+        depth = max(1, (triton.cdiv(N // 8, 16) - 1).bit_length())
+        moments = dict(
+            USE_CASCADE=True,
+            MOMENTS_N=N,
+            MOMENTS_DEPTH=depth,
+            MOMENTS_STACK=triton.next_power_of_2(depth),
+            enable_fp_fusion=False,
+        )
     with torch_device_fn.device(input.device):
         if N <= 128:
             TILE_N = triton.next_power_of_2(N)
             TILE_M = triton.cdiv(1024, TILE_N)
             grid = (triton.cdiv(M, TILE_M), 1, 1)
-            layer_norm_persistent_kernel_multiline[grid](
+            multiline[grid](
                 input,
                 y,
                 weight,
@@ -496,11 +533,12 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 eps,
                 TILE_M,
                 TILE_N,
+                **moments,
             )
         elif N <= 4096:
             TILE_N = triton.next_power_of_2(N)
             grid = (M, 1, 1)
-            layer_norm_persistent_kernel[grid](
+            persistent[grid](
                 input,
                 y,
                 weight,
@@ -511,10 +549,11 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 N,
                 eps,
                 TILE_N,
+                **moments,
             )
         else:
             grid = (M, 1, 1)
-            layer_norm_loop_kernel[grid](
+            loop[grid](
                 input,
                 y,
                 weight,
@@ -524,6 +563,7 @@ def layer_norm(input, normalized_shape, weight=None, bias=None, eps=1e-5):
                 M,
                 N,
                 eps,
+                **moments,
             )
     return y, mean, rstd
 
