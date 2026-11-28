@@ -41,6 +41,21 @@ try:
     }
 except ImportError:
     HAS_TE = False
+except RuntimeError as te_import_error:
+    # The installed transformer-engine here is only the PyPI metapackage, so
+    # transformer_engine.common aborts while importing and turns the whole
+    # module uncollectable.  The TE reference op has no GCU implementation
+    # (torch aten/TE not supported on this backend), so skip the module on
+    # enflame with the real cause instead of failing collection for every
+    # operator of the run.
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame GCU: transformer-engine metapackage has no framework "
+            f"extension ({te_import_error}); the TE reference op is not "
+            "supported on this backend (torch aten/TE not supported on GCU)",
+            allow_module_level=True,
+        )
+    raise
 
 
 # =============================================================================

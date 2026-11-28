@@ -260,6 +260,28 @@ def adopt_per_tensor_qparams(dst, src):
     dst._q_zero_point = int(src.q_zero_point())
 
 
+def set_per_tensor_qparams(dst, scale, zero_point):
+    """Overwrite ``dst``'s per-tensor quantizer in place, GCU-safely.
+
+    ``dst`` is either a :class:`QuantizedGcuTensor`, whose quantizer is the
+    Python-side ``_q_scale`` / ``_q_zero_point`` pair, or a natively quantized
+    tensor, whose quantizer lives in C++ and cannot be reassigned from Python.
+    GCU also refuses ``set_`` / ``resize_`` on quantized tensors (both lower to
+    ``_copy_from_and_resize``, which answers ``device side quantized resize_ is
+    not implemented``), so the native case re-labels ``dst``'s own bytes with
+    the target quantizer and swaps the two implementations: storage, offset,
+    sizes, strides and the caller's tensor object all survive, and only the
+    quantizer changes.
+    """
+    if isinstance(dst, QuantizedGcuTensor):
+        dst._q_scale = float(scale)
+        dst._q_zero_point = int(zero_point)
+        return dst
+    alias = wrap_int_tensor(int_view(dst), scale, zero_point)
+    torch.utils.swap_tensors(dst, alias)
+    return dst
+
+
 def _suggest_memory_format(a):
     """Mirror of ``TensorImpl::suggest_memory_format`` for the dense cases."""
     if (
@@ -344,7 +366,7 @@ _SHARED_ATTRS = (
     "wrap_int_tensor",
     "wrap_per_channel_int_tensor",
     "adopt_per_tensor_qparams",
-    "register_quantized_aten_kernels",
+    "set_per_tensor_qparams",
 )
 
 
@@ -375,38 +397,4 @@ def _alias_to_first_copy():
             return
 
 
-def register_quantized_aten_kernels():
-    """Register the quantized factories for the current backend's device key.
-
-    Imported automatically with the enflame ops package; runs once. A kernel
-    already registered for the same schema and key (e.g. by an earlier
-    ``flag_gems.enable()``) is left in place.
-    """
-    global _LIB, _REGISTERED_SCHEMAS
-    if _LIB is not None:
-        return _REGISTERED_SCHEMAS
-    from flag_gems import runtime
-
-    dispatch_key = runtime.device.dispatch_key
-    lib = torch.library.Library("aten", "IMPL")
-    registered = []
-    for schema, impl in (
-        ("quantize_per_tensor", _aten_quantize_per_tensor),
-        ("quantize_per_channel", _aten_quantize_per_channel),
-    ):
-        try:
-            lib.impl(schema, impl, dispatch_key)
-            registered.append(schema)
-        except RuntimeError as exc:
-            logger.debug(
-                "skip registering aten::%s at %s: %s", schema, dispatch_key, exc
-            )
-    _LIB = lib
-    _REGISTERED_SCHEMAS = tuple(registered)
-    if registered:
-        logger.debug("registered GCU quantized factories: %s", registered)
-    return _REGISTERED_SCHEMAS
-
-
 _alias_to_first_copy()
-register_quantized_aten_kernels()

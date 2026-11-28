@@ -31,5 +31,5 @@ def ior_scalar(self, other):
     which wraps the scalar into a 0-dim device tensor whose stride-0 broadcast
     is materialized per tile and rides the bool i1 lowering.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 IOR_SCALAR")
+    logger.debug("GEMS_ENFLAME IOR_SCALAR")
     return bitwise_or_scalar_(self, other)

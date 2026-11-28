@@ -186,6 +186,249 @@ def conv_transpose1d_forward_kernel(
     )
 
 
+# ---------------------------------------------------------------------------
+# Fast paths (2026-11-18 perf round).  Both keep the residue-phase subgrid
+# decomposition (grid z = groups * stride) that makes the input index affine
+# per tap, and share these backend-proven rules (see
+# knowledge/family_cases/flaggems_slow_conv2d_forward.md):
+#   * masked operands are re-zeroed with an explicit ``tl.where`` before the
+#     ieee dot -- on this backend that selects the fast dot lowering, and the
+#     fp32 path collapses ~15x without it;
+#   * fp16/bf16 are upcast to fp32 and run an ieee dot (raw low-precision
+#     dots are intermittently wrong here; the upcast measured within noise);
+#   * masked-load addresses are clamped into the tensor (GCU touches the
+#     address of a masked lane);
+#   * num_warps stays 4 (nw < 4 is a silent-wrong-value domain for fp32
+#     dots, P07).
+# The per-tap kernel widens the tiles of the original residue kernel
+# (BLOCK_M=128, BLOCK_CI/BLOCK_CO up to 64).  The kflat kernel flattens
+# (input_channel, tap) onto the dot's K axis so a small-channel, many-tap
+# layer collapses KW tap chains into ceil(CI*KW / BLOCK_K) dot chains;
+# divisibility stays a 1-D ``kw_ok`` broadcast (never a per-lane mask).
+# ---------------------------------------------------------------------------
+
+
+@libentry()
+@triton.jit
+def conv_transpose1d_pertap_fast_kernel(
+    input_pointer,
+    weight_pointer,
+    bias_pointer,
+    output_pointer,
+    batch_size: tl.constexpr,
+    input_channels: tl.constexpr,
+    input_width: tl.constexpr,
+    output_channels: tl.constexpr,
+    output_width: tl.constexpr,
+    weight_width: tl.constexpr,
+    output_channels_per_group: tl.constexpr,
+    input_channels_per_group: tl.constexpr,
+    stride_width: tl.constexpr,
+    padding_width: tl.constexpr,
+    dilation_width: tl.constexpr,
+    compact_width: tl.constexpr,
+    has_bias: tl.constexpr,
+    upcast: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_co_in_group = tl.program_id(1)
+    pid_phase_group = tl.program_id(2)
+    phase = pid_phase_group % stride_width
+    group = pid_phase_group // stride_width
+
+    idx = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    total: tl.constexpr = batch_size * compact_width
+    valid = idx < total
+    compact_w = idx % compact_width
+    n = idx // compact_width
+    ow = compact_w * stride_width + phase
+
+    co_in_offsets = pid_co_in_group * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    co_offsets = group * output_channels_per_group + co_in_offsets
+    vco = co_in_offsets < output_channels_per_group
+
+    accum = tl.zeros((BLOCK_M, BLOCK_CO), dtype=tl.float32)
+    if has_bias:
+        bias_values = tl.load(bias_pointer + co_offsets, mask=vco, other=0.0).to(
+            tl.float32
+        )
+        accum += bias_values[None, :]
+
+    width_residue = (phase + padding_width) % stride_width
+    ci_blocks: tl.constexpr = (input_channels_per_group + BLOCK_CI - 1) // BLOCK_CI
+    x_group_base = group * (input_channels_per_group * input_width)
+    w_group_base = group * (
+        input_channels_per_group * output_channels_per_group * weight_width
+    )
+    for kw in tl.static_range(0, weight_width):
+        if (kw * dilation_width) % stride_width == width_residue:
+            iw = (
+                compact_w
+                + (phase + padding_width - kw * dilation_width) // stride_width
+            )
+            vm = valid & (iw >= 0) & (iw < input_width) & (ow < output_width)
+            iwc = tl.minimum(tl.maximum(iw, 0), input_width - 1)
+            xrow = n * (input_channels * input_width) + x_group_base + iwc
+            for ci_base in tl.static_range(0, ci_blocks):
+                ci_in_offsets = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
+                vci = ci_in_offsets < input_channels_per_group
+                m2 = vm[:, None] & vci[None, :]
+                input_block = tl.load(
+                    input_pointer
+                    + xrow[:, None]
+                    + (ci_in_offsets * input_width)[None, :],
+                    mask=m2,
+                    other=0.0,
+                )
+                weight_block = tl.load(
+                    weight_pointer
+                    + w_group_base
+                    + (ci_in_offsets * (output_channels_per_group * weight_width))[
+                        :, None
+                    ]
+                    + (co_in_offsets * weight_width + kw)[None, :],
+                    mask=vci[:, None] & vco[None, :],
+                    other=0.0,
+                )
+                input_block = tl.where(m2, input_block, 0.0)
+                wm = vci[:, None] & vco[None, :]
+                weight_block = tl.where(wm, weight_block, 0.0)
+                if upcast:
+                    accum = accum + tl.dot(
+                        input_block.to(tl.float32),
+                        weight_block.to(tl.float32),
+                        input_precision=_DOT_PRECISION,
+                    )
+                else:
+                    accum = tl.dot(
+                        input_block,
+                        weight_block,
+                        accum,
+                        input_precision=_DOT_PRECISION,
+                    )
+
+    output_offsets = (
+        n * output_channels + group * output_channels_per_group
+    ) * output_width + ow
+    tl.store(
+        output_pointer
+        + output_offsets[:, None]
+        + (co_in_offsets * output_width)[None, :],
+        accum.to(output_pointer.dtype.element_ty),
+        mask=valid[:, None] & (ow[:, None] < output_width) & vco[None, :],
+    )
+
+
+@libentry()
+@triton.jit
+def conv_transpose1d_kflat_kernel(
+    input_pointer,
+    weight_pointer,
+    bias_pointer,
+    output_pointer,
+    batch_size: tl.constexpr,
+    input_channels: tl.constexpr,
+    input_width: tl.constexpr,
+    output_channels: tl.constexpr,
+    output_width: tl.constexpr,
+    weight_width: tl.constexpr,
+    output_channels_per_group: tl.constexpr,
+    input_channels_per_group: tl.constexpr,
+    stride_width: tl.constexpr,
+    padding_width: tl.constexpr,
+    dilation_width: tl.constexpr,
+    compact_width: tl.constexpr,
+    has_bias: tl.constexpr,
+    upcast: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_co_in_group = tl.program_id(1)
+    pid_phase_group = tl.program_id(2)
+    phase = pid_phase_group % stride_width
+    group = pid_phase_group // stride_width
+
+    idx = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    total: tl.constexpr = batch_size * compact_width
+    valid = idx < total
+    compact_w = idx % compact_width
+    n = idx // compact_width
+    ow = compact_w * stride_width + phase
+
+    co_in_offsets = pid_co_in_group * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    vco = co_in_offsets < output_channels_per_group
+
+    accum = tl.zeros((BLOCK_M, BLOCK_CO), dtype=tl.float32)
+    if has_bias:
+        bias_values = tl.load(
+            bias_pointer + group * output_channels_per_group + co_in_offsets,
+            mask=vco,
+            other=0.0,
+        ).to(tl.float32)
+        accum += bias_values[None, :]
+
+    kdim: tl.constexpr = input_channels_per_group * weight_width
+    width_residue = (phase + padding_width) % stride_width
+    xrow_base = n * (input_channels * input_width) + group * (
+        input_channels_per_group * input_width
+    )
+    w_group_base = group * (
+        input_channels_per_group * output_channels_per_group * weight_width
+    )
+    vm = valid & (ow < output_width)
+    for k_base in range(0, kdim, BLOCK_K):
+        k_off = k_base + tl.arange(0, BLOCK_K)
+        ci_k = k_off // weight_width
+        kw_k = k_off % weight_width
+        col_ok = (
+            (k_off < kdim)
+            & (ci_k < input_channels_per_group)
+            & ((kw_k * dilation_width) % stride_width == width_residue)
+        )
+        iw = (
+            ow[:, None] + padding_width - kw_k[None, :] * dilation_width
+        ) // stride_width
+        iwc = tl.minimum(tl.maximum(iw, 0), input_width - 1)
+        a_off = xrow_base[:, None] + (ci_k * input_width)[None, :] + iwc
+        amask = vm[:, None] & (iw >= 0) & (iw < input_width) & col_ok[None, :]
+        input_block = tl.load(input_pointer + a_off, mask=amask, other=0.0)
+        w_off = (
+            w_group_base
+            + (ci_k * (output_channels_per_group * weight_width) + kw_k)[:, None]
+            + (co_in_offsets * weight_width)[None, :]
+        )
+        wmask = col_ok[:, None] & vco[None, :]
+        weight_block = tl.load(weight_pointer + w_off, mask=wmask, other=0.0)
+        input_block = tl.where(amask, input_block, 0.0)
+        weight_block = tl.where(wmask, weight_block, 0.0)
+        if upcast:
+            accum = accum + tl.dot(
+                input_block.to(tl.float32),
+                weight_block.to(tl.float32),
+                input_precision=_DOT_PRECISION,
+            )
+        else:
+            accum = tl.dot(
+                input_block, weight_block, accum, input_precision=_DOT_PRECISION
+            )
+
+    output_offsets = (
+        n * output_channels + group * output_channels_per_group
+    ) * output_width + ow
+    tl.store(
+        output_pointer
+        + output_offsets[:, None]
+        + (co_in_offsets * output_width)[None, :],
+        accum.to(output_pointer.dtype.element_ty),
+        mask=valid[:, None] & (ow[:, None] < output_width) & vco[None, :],
+    )
+
+
 def conv_transpose1d(
     input,
     weight,
@@ -203,7 +446,7 @@ def conv_transpose1d(
         input: Input tensor of shape (N, in_channels, L_in)
         weight: Filters of shape (in_channels, out_channels/groups, kernel_width)
         bias: Optional bias of shape (out_channels). Default: None
-        stride: Stride of the convolution. Default: 1
+        stride: The stride of the convolution. Default: 1
         padding: Zero-padding added to both sides. Default: 0
         output_padding: Additional size added to output shape. Default: 0
         groups: Number of blocked connections. Default: 1
@@ -212,7 +455,7 @@ def conv_transpose1d(
     Returns:
         Output tensor of shape (N, out_channels, L_out)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CONV_TRANSPOSE1D")
+    logger.debug("GEMS_ENFLAME CONV_TRANSPOSE1D")
 
     assert input.ndim == 3, f"Input must be 3D, received shape {input.shape}"
     assert weight.ndim == 3, f"Weights must be 3D, received shape {weight.shape}"
@@ -280,12 +523,102 @@ def conv_transpose1d(
     # Ensure contiguous tensors
     input_contig = input.contiguous()
     weight_contig = weight.contiguous()
+    bias_contig = bias.contiguous() if bias is not None else bias
 
     in_channels_per_group = in_channels // groups
 
-    # Tile heuristic mirroring the conv_transpose2d residue path on this
-    # backend: fp32 prefers narrower channel tiles; small channel counts
-    # clamp BLOCK_CI/BLOCK_CO to 16 (tl.dot minimum).
+    # Fast-path selection.  Both fast kernels keep the residue-phase subgrid
+    # decomposition of the original kernel; guards (int32 offset range, tile
+    # budgets) fall back to the original residue kernel unchanged.
+    np2 = triton.next_power_of_2
+    compact_width = triton.cdiv(out_width, stride_width)
+    int32_safe = (
+        max(input_contig.numel(), weight_contig.numel(), output.numel())
+        < (1 << 31) - 65536
+    )
+    upcast = input_contig.dtype is not torch.float32
+    bias_pointer = bias_contig if bias_contig is not None else input_contig
+    grid_z = groups * stride_width
+
+    block_ci = max(16, min(64, np2(max(in_channels_per_group, 1))))
+    block_co = max(16, min(64, np2(max(out_channels_per_group, 1))))
+    ci_blocks = triton.cdiv(in_channels_per_group, block_ci)
+    unroll_budget = kernel_width * ci_blocks
+    kdim = in_channels_per_group * kernel_width
+
+    if int32_safe and grid_z <= 65535:
+        if in_channels_per_group <= 32 and kernel_width >= 5:
+            # kflat: collapse the KW taps onto the dot's K axis.
+            block_k = 64 if kdim > 32 else 32
+            kflat_co = max(16, min(128, np2(max(out_channels_per_group, 1))))
+            kflat_m = 64 if kflat_co >= 128 else 128
+            conv_transpose1d_kflat_kernel[
+                (
+                    triton.cdiv(batch_size * compact_width, kflat_m),
+                    triton.cdiv(out_channels_per_group, kflat_co),
+                    grid_z,
+                )
+            ](
+                input_contig,
+                weight_contig,
+                bias_pointer,
+                output,
+                batch_size,
+                in_channels,
+                input_width,
+                out_channels,
+                out_width,
+                kernel_width,
+                out_channels_per_group,
+                in_channels_per_group,
+                stride_width,
+                padding_width,
+                dilation_width,
+                compact_width,
+                bias is not None,
+                upcast,
+                BLOCK_M=kflat_m,
+                BLOCK_K=block_k,
+                BLOCK_CO=kflat_co,
+                num_warps=4,
+                num_stages=2,
+            )
+            return output
+        if unroll_budget <= 64:
+            conv_transpose1d_pertap_fast_kernel[
+                (
+                    triton.cdiv(batch_size * compact_width, 128),
+                    triton.cdiv(out_channels_per_group, block_co),
+                    grid_z,
+                )
+            ](
+                input_contig,
+                weight_contig,
+                bias_pointer,
+                output,
+                batch_size,
+                in_channels,
+                input_width,
+                out_channels,
+                out_width,
+                kernel_width,
+                out_channels_per_group,
+                in_channels_per_group,
+                stride_width,
+                padding_width,
+                dilation_width,
+                compact_width,
+                bias is not None,
+                upcast,
+                BLOCK_M=128,
+                BLOCK_CI=block_ci,
+                BLOCK_CO=block_co,
+                num_warps=4,
+                num_stages=2,
+            )
+            return output
+
+    # Fallback: the original residue kernel with its original tile heuristic.
     block_nc = 64
     block_ci = 32
     block_co = 32
@@ -297,14 +630,11 @@ def conv_transpose1d(
     if out_channels_per_group <= 16:
         block_co = 16
 
-    # Grid: (batch * compact-width tiles, output-channel tiles, groups * stride)
-    compact_width = triton.cdiv(out_width, stride_width)
     grid = (
         triton.cdiv(batch_size * compact_width, block_nc),
         triton.cdiv(out_channels_per_group, block_co),
-        groups * stride_width,
+        grid_z,
     )
-    bias_pointer = bias if bias is not None else input_contig
 
     conv_transpose1d_forward_kernel[grid](
         input_contig,

@@ -244,6 +244,13 @@ def test_dimI_compressed_layouts_raise(layout):
 
 @pytest.mark.dimI
 @pytest.mark.underscore_dimI
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_dimI"
+    ),
+)
 def test_dimI_dispatch_stability():
     # The registration is on the Sparse dispatch key; exercise the
     # dispatcher-routed path repeatedly (a recursion bug or stale state would

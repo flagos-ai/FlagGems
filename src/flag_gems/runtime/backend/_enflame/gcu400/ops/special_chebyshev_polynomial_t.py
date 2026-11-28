@@ -510,7 +510,7 @@ def _chebyshev_polynomial_t(x, n, out=None):
 
 
 def special_chebyshev_polynomial_t(x, n):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_CHEBYSHEV_POLYNOMIAL_T")
+    logger.debug("GEMS_ENFLAME SPECIAL_CHEBYSHEV_POLYNOMIAL_T")
     return _chebyshev_polynomial_t(x, n)
 
 
@@ -519,5 +519,5 @@ def special_chebyshev_polynomial_t_out(x, n, out):
 
     ATen wrapper: special_chebyshev_polynomial_t.out(Tensor x, Scalar n, *, Tensor(a!) out) -> Tensor(a!)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_CHEBYSHEV_POLYNOMIAL_T_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_CHEBYSHEV_POLYNOMIAL_T_OUT")
     return _chebyshev_polynomial_t(x, n, out=out)

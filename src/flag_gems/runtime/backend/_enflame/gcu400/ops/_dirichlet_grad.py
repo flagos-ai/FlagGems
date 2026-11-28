@@ -140,12 +140,18 @@ C1_223 = tl.constexpr(-1.650969693e-06)
 # (digamma reflection/series state, the Taylor/saddle-point/rational
 # sub-branches, many coefficient tables), and the eager ``tl.where`` form keeps
 # every branch alive, so register pressure grows with the tile size.
-# A 12-round CodeGenConfig sweep on gcu400 (2026-11-11) showed that a
-# 512-element 1-D tile passes all 48 correctness cases and doubles the mean
-# speedup versus the former 128-element tile (23.87x vs 11.21x).
+#
+# A 512-element 1-D tile silently miscomputes on the current gcu400 toolchain:
+# the same element yields a different (wrong) value once the tile holds 512
+# lanes, e.g. ``dirichlet_grad`` on (20, 15) diverges by 5.2e-1 while the
+# identical values evaluated with a 64/128/256-lane tile stay within 3.3e-5 of
+# the float64 CPU reference (2026-11-18 A/B sweep on A098Q50610092: tiles
+# 64/128/256 -> 0/25600 mismatching elements on (20, 320, 4), tile 512 ->
+# 23899/25600 with max error 1.6e7).  Keep the tile at 256, which keeps every
+# measured shape exact.
 # Non-power-of-two tiles (96/160/192) regress accuracy and must be avoided.
 _DIRICHLET_GRAD_CONFIG = CodeGenConfig(
-    512,
+    256,
     (65536, 65536, 65536),
     32,
     True,
@@ -477,7 +483,7 @@ def _dirichlet_grad_func(x, alpha, total):
 
 
 def _dirichlet_grad(x, alpha, total):
-    logger.debug("GEMS_ENFLAME_GCU400 DIRICHLET_GRAD")
+    logger.debug("GEMS_ENFLAME DIRICHLET_GRAD")
     # The ATen reference only implements the AT_DISPATCH_FLOATING_TYPES path
     # (float32 / float64); reject other dtypes explicitly to match the CUDA
     # dispatcher behaviour.
@@ -495,7 +501,7 @@ def _dirichlet_grad(x, alpha, total):
 
 
 def _dirichlet_grad_into(x, alpha, total, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 DIRICHLET_GRAD_OUT")
+    logger.debug("GEMS_ENFLAME DIRICHLET_GRAD_OUT")
     assert x.dtype in (
         torch.float32,
         torch.float64,

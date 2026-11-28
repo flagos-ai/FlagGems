@@ -57,22 +57,38 @@ logger = logging.getLogger("flag_gems.ops.prod")
 _min = builtins.min
 _max = builtins.max
 
-# GCU400 has 48 compute units; a fixed grid + in-kernel stride keeps SPs saturated.
+# GCU400 has 48 compute units; a fixed grid plus in-kernel striding can keep the SPs fully occupied.
 MAX_GRID = 48
 
-# Global reduction: small scale uses one program in one pass (matching sum.py's measured threshold).
+# Global reduction: for small scales, a single program produces the result in one pass (aligned with the measured
+# threshold in sum.py).
 GLOBAL_TILE_ELEMS = 65536
 
-# Tile / accumulator shape of persistent global reduction: elementwise acc multiplies across tiles,
-# with the reduction tree run only once at the finish.
-GLOBAL_R = 8
-GLOBAL_W = 1024
+# Hyperparameters for the two-stage (partial + merge) global reduction, bucketed by element width:
+# For 2-byte (fp16/bf16) partials, use [1,W] element-wise accumulation; W=8192 is measured optimal
+# (8.9µs@1M fp16); for 4-byte (fp32 and above) partials, use a per-tile 1D tree +
+# scalar accumulation, W=16384 is measured optimal (9.8µs@1M fp32; under fp32 the DSM
+# RMW of [1,W] is actually more expensive than the tree).
+GLOBAL_PART_W_2B = 8192
+GLOBAL_PART_GRID_2B = 48
+GLOBAL_PART_W_4B = 16384
+GLOBAL_PART_GRID_4B = 32
 
-# Element budget of row-reduction acc2d: 128KB under fp32, controlling DSM usage (measured optimum).
+# Element budget for acc2d in row reduction: 128KB under fp32, to control DSM usage (measured optimal setting).
 INNER_ACC_ELEMS = 32768
 INNER_MAX_BN = 4096
 
-# Non-row-reduction tile: BI along the reduced dimension (tree depth), BK along the contiguous memory dimension.
+# Wide-row tree path (N > 2048): the mul tree is on the fast path only when width >= 4096
+# (BN=2048 measured +40%, and 1024 or below degrades by orders of magnitude), so BN is pinned to 4096;
+# BM is bucketed by element width — for 2-byte tiles after fp32 promotion, BM=16 sits exactly within the DSM concurrency
+# line
+# and is 8% faster than BM=8; 4-byte tiles are already fp32, so BM=8 (128KB) is actually optimal.
+INNER_TREE_BN = 4096
+INNER_TREE_BM_2B = 16
+INNER_TREE_BM_4B = 8
+INNER_TREE_MIN_N = 2048
+
+# Non-row-reduction tiles: BI runs along the reduced dimension (tree depth), BK along the memory-contiguous dimension.
 NON_INNER_BI = 128
 NON_INNER_BK = 512
 NON_INNER_ACC_ELEMS = 65536
@@ -122,23 +138,18 @@ def prod_global_single_kernel(X, Out, n_elem, BLOCK: tl.constexpr):
 
 @libentry()
 @triton.jit(do_not_specialize=["n_elem"])
-def prod_global_kernel(
+def prod_global_partial_kernel(
     X,
     Part,
-    Counter,
-    Out,
     n_elem,
-    R: tl.constexpr,
     W: tl.constexpr,
-    NP_BLOCK: tl.constexpr,
 ):
-    """Persistent streaming global product: elementwise acc [R, W] multiplies across tiles, one final tree;
-    last-block (acq_rel barrier) merges all partials within the same launch.
+    """Partial stage of the persistent streaming global product (measured best form for 2-byte types):
 
-    Counter is an fp32 scalar (the tail element of the same buffer as Part), exact in fp32 up to 48;
-    Out is written exclusively by the last program.
+    Element-level acc [1, W] multiplies across tiles (reshape after a flat load, no cross-lane
+    movement), with a single closing tree; each program writes one fp32 partial and the merge is
+    done by a second launch (prod_global_merge_kernel), needing no counters and no per-call zeros.
     """
-    BLOCK: tl.constexpr = R * W
     if (
         tl.constexpr(X.dtype.element_ty == tl.float16)
         | tl.constexpr(X.dtype.element_ty == tl.bfloat16)
@@ -150,20 +161,60 @@ def prod_global_kernel(
 
     pid = tl.program_id(0)
     step = tl.num_programs(0)
-    num_tile = (n_elem + BLOCK - 1) // BLOCK
-    acc = tl.full([R, W], 1, cdtype)
+    num_tile = (n_elem + W - 1) // W
+    acc = tl.full([1, W], 1, cdtype)
     for tile_id in tl.range(pid, num_tile, step, num_stages=1):
-        offset = tile_id * BLOCK + tl.arange(0, BLOCK)
+        offset = tile_id * W + tl.arange(0, W)
         x = tl.load(X + offset, mask=offset < n_elem, other=1).to(cdtype)
-        acc *= tl.reshape(x, (R, W))
+        acc *= tl.reshape(x, (1, W))
     tl.store(Part + pid, tl.reduce(tl.reduce(acc, 1, _reduce_mul), 0, _reduce_mul))
-    barrier = tl.atomic_add(Counter, 1.0, sem="acq_rel")
-    if barrier == (tl.num_programs(0) - 1).to(tl.float32):
-        offs = tl.arange(0, NP_BLOCK)
-        part = tl.load(Part + offs, mask=offs < tl.num_programs(0), other=1.0).to(
-            tl.float32
-        )
-        tl.store(Out, tl.reduce(part, 0, _reduce_mul).to(Out.dtype.element_ty))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elem"])
+def prod_global_scalar_partial_kernel(
+    X,
+    Part,
+    n_elem,
+    W: tl.constexpr,
+):
+    """Partial stage of the persistent streaming global product (measured best form for 4-byte types):
+
+    Each tile is collapsed to a scalar by a 1-D mul tree and the scalar acc multiplies across
+    tiles -- for fp32 input the [1, W] element-level acc DSM RMW costs more than a per-tile tree.
+    """
+    if (
+        tl.constexpr(X.dtype.element_ty == tl.float16)
+        | tl.constexpr(X.dtype.element_ty == tl.bfloat16)
+        | tl.constexpr(X.dtype.element_ty == tl.float64)
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = X.dtype.element_ty
+
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_tile = (n_elem + W - 1) // W
+    acc = tl.full([], 1, cdtype)
+    for tile_id in tl.range(pid, num_tile, step, num_stages=1):
+        offset = tile_id * W + tl.arange(0, W)
+        x = tl.load(X + offset, mask=offset < n_elem, other=1).to(cdtype)
+        acc *= tl.reduce(x, 0, _reduce_mul)
+    tl.store(Part + pid, acc.to(Part.dtype.element_ty))
+
+
+@libentry()
+@triton.jit(do_not_specialize=["n_part"])
+def prod_global_merge_kernel(
+    Part,
+    Out,
+    n_part,
+    NP_BLOCK: tl.constexpr,
+):
+    """Merge stage of the global product: one program multiplies the [n_part] fp32 partials into one value."""
+    offs = tl.arange(0, NP_BLOCK)
+    part = tl.load(Part + offs, mask=offs < n_part, other=1.0).to(tl.float32)
+    tl.store(Out, tl.reduce(part, 0, _reduce_mul).to(Out.dtype.element_ty))
 
 
 @libentry()
@@ -229,6 +280,76 @@ def prod_dim_inner_kernel(
             tl.store(Out + m_offset, out.to(Out.dtype.element_ty))
         else:
             tl.store(Out + m_offset, out.to(Out.dtype.element_ty), mask=m_offset < M)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["M", "N"])
+def prod_dim_inner_tree_kernel(
+    X,
+    Out,
+    M,
+    N,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    EVEN_M: tl.constexpr,
+    EVEN_N: tl.constexpr,
+):
+    """Row reduction for wide rows (N > 2048): each tile [BM, BN] runs a mul tree per reduction chunk,
+    so acc degrades to scalar-level [BM].
+
+    Key gain over the acc2d form: with a single block (N <= BN) acc2d's first multiply is a
+    full-tile no-op multiply (acc filled with 1 then multiplied by x), while the tree form
+    collapses each block into [BM] directly. A mul tree only lands on the fast path when the width
+    is >= 4096 (2048 is +40%, 1024 and below are an order of magnitude worse), so BN is pinned at
+    4096 and narrow rows skip this path. Tile fp32 footprint = BM*BN*4B, with BM tiered by
+    element width to stay inside the DSM concurrency line (448KB)."""
+    if (
+        tl.constexpr(X.dtype.element_ty == tl.float16)
+        | tl.constexpr(X.dtype.element_ty == tl.bfloat16)
+        | tl.constexpr(X.dtype.element_ty == tl.float64)
+    ):
+        cdtype = tl.float32
+    else:
+        cdtype = X.dtype.element_ty
+
+    pid = tl.program_id(0)
+    step = tl.num_programs(0)
+    num_tile = (M + BM - 1) // BM
+    for tile_id in tl.range(pid, num_tile, step, num_stages=1):
+        m_offset = tile_id * BM + tl.arange(0, BM)
+        acc = tl.full([BM], 1, cdtype)
+        n_floor = (N // BN) * BN
+        for n_start in tl.range(0, n_floor, BN, num_stages=1):
+            n_offset = n_start + tl.arange(0, BN)
+            if EVEN_M:
+                x = tl.load(X + m_offset[:, None] * N + n_offset[None, :])
+            else:
+                x = tl.load(
+                    X + m_offset[:, None] * N + n_offset[None, :],
+                    mask=m_offset[:, None] < M,
+                    other=1,
+                )
+            acc *= tl.reduce(x.to(cdtype), 1, _reduce_mul)
+        if not EVEN_N:
+            n_offset = n_floor + tl.arange(0, BN)
+            tail_mask = n_offset[None, :] < N
+            if EVEN_M:
+                x = tl.load(
+                    X + m_offset[:, None] * N + n_offset[None, :],
+                    mask=tail_mask,
+                    other=1,
+                )
+            else:
+                x = tl.load(
+                    X + m_offset[:, None] * N + n_offset[None, :],
+                    mask=tail_mask & (m_offset[:, None] < M),
+                    other=1,
+                )
+            acc *= tl.reduce(x.to(cdtype), 1, _reduce_mul)
+        if EVEN_M:
+            tl.store(Out + m_offset, acc.to(Out.dtype.element_ty))
+        else:
+            tl.store(Out + m_offset, acc.to(Out.dtype.element_ty), mask=m_offset < M)
 
 
 @libentry()
@@ -382,18 +503,22 @@ def _launch_global_prod(inp, out, n_elem):
             prod_global_single_kernel[(1,)](inp, out, n_elem, BLOCK=block, num_warps=2)
             return
 
-        block = GLOBAL_R * GLOBAL_W
-        num_tile = triton.cdiv(n_elem, block)
-        grid = _min(MAX_GRID, num_tile)
-        buf = torch.zeros(grid + 1, dtype=torch.float32, device=inp.device)
-        prod_global_kernel[(grid,)](
-            inp,
-            buf[:grid],
-            buf[grid:],
+        if inp.element_size() <= 2:
+            part_w = GLOBAL_PART_W_2B
+            grid_cap = GLOBAL_PART_GRID_2B
+            partial_kernel = prod_global_partial_kernel
+        else:
+            part_w = GLOBAL_PART_W_4B
+            grid_cap = GLOBAL_PART_GRID_4B
+            partial_kernel = prod_global_scalar_partial_kernel
+        num_tile = triton.cdiv(n_elem, part_w)
+        grid = _min(grid_cap, num_tile)
+        part = torch.empty([grid], dtype=torch.float32, device=inp.device)
+        partial_kernel[(grid,)](inp, part, n_elem, W=part_w, num_warps=2)
+        prod_global_merge_kernel[(1,)](
+            part,
             out,
-            n_elem,
-            R=GLOBAL_R,
-            W=GLOBAL_W,
+            grid,
             NP_BLOCK=triton.next_power_of_2(grid),
             num_warps=1,
         )
@@ -452,7 +577,38 @@ def _launch_dim_prod(inp, out, M, N, K):
                 )
                 return
 
-            # Row reduction: acc2d element budget capped, row batches spread across 48 programs by row count.
+            if N > INNER_TREE_MIN_N:
+                # Wide-row tree path: the mul tree is on the fast path only when width >= 4096, BN pinned to 4096;
+                # BM is bucketed by element width (for 2-byte after fp32 promotion, BM=16 sits exactly within the DSM
+                # line,
+                # 4-byte tiles are already fp32, so BM=8 is better).
+                if inp.element_size() <= 2:
+                    tree_bm = INNER_TREE_BM_2B
+                else:
+                    tree_bm = INNER_TREE_BM_4B
+                block_m = _max(
+                    1,
+                    _min(
+                        tree_bm,
+                        triton.next_power_of_2(triton.cdiv(M, MAX_GRID)),
+                    ),
+                )
+                grid = _min(MAX_GRID, triton.cdiv(M, block_m))
+                prod_dim_inner_tree_kernel[(grid,)](
+                    inp,
+                    out,
+                    M,
+                    N,
+                    BM=block_m,
+                    BN=INNER_TREE_BN,
+                    EVEN_M=(M % block_m == 0),
+                    EVEN_N=(N % INNER_TREE_BN == 0),
+                    num_warps=4,
+                )
+                return
+
+            # Row reduction: cap the acc2d element budget, and spread row batches across 48 programs according to the
+            # number of rows.
             block_n = _min(triton.next_power_of_2(N), INNER_MAX_BN)
             block_m = _max(
                 1,

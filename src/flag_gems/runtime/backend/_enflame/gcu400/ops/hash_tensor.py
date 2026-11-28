@@ -203,7 +203,7 @@ def hash_tensor(x, dim, keepdim=False, mode=0):
     Returns:
         Tensor with dtype uint64 containing XOR hash values
     """
-    logger.debug("GEMS_ENFLAME_GCU400 HASH_TENSOR")
+    logger.debug("GEMS_ENFLAME HASH_TENSOR")
 
     dtype = x.dtype
     device = x.device

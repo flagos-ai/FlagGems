@@ -104,6 +104,27 @@ def _ger_kernel(
 
 
 @triton.jit
+def _ger_scale_kernel(
+    src_ptr, scalar_ptr, o_ptr, total, s_src, s_dst, BLOCK: tl.constexpr
+):
+    """ger when one operand is a single element: out = other * scalar.
+
+    Used for N == 1 (out[i, 0] = a[i] * b[0]) and for M == 1 (out[0, j] =
+    b[j] * a[0]). Both degenerate 2-D layouts pay for a full BLOCK_M x BLOCK_N
+    tile with one live row/column: the single-column form stores BLOCK_M elements
+    with a row stride (0.0069 ms for 4096 rows) and the single-row form wastes
+    BLOCK_M rows per program (0.0066 ms for 4096 columns). A flat 1-D stream
+    reaches 0.0040 ms on both, so both are served by this kernel instead.
+    """
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    src = tl.load(src_ptr + offs * s_src, mask=mask, other=0.0)
+    scalar = tl.load(scalar_ptr)
+    tl.store(o_ptr + offs * s_dst, src * scalar, mask=mask, cache_modifier=".cs")
+
+
+@triton.jit
 def _ger_complex64_kernel(
     a_ptr,
     b_ptr,
@@ -281,19 +302,50 @@ def _ger_bwd_b_c64(
     tl.store(o_ptr + offs_n * 2 + 1, acc_im, mask=mask_n)
 
 
+# Elements per program for the full-row forward tile.
+_ROW_TILE_ELEMS = 16384
+# Widest row block: wider full-row tiles only grow the register tile without
+# improving the store pattern.
+_MAX_ROW_BLOCK = 1024
+# Hardware limit of the second grid axis used by the swizzled launch.
+_SWIZZLE_GRID_Y = 255
+# Element count from which a narrow-row tile pays for more rows per program
+# (bigger contiguous span per program outweighs the shorter grid).
+_LARGE_NUMEL = 1 << 22
+
+
 def _forward_config(itemsize, M, N):
     """Shape-aware tile geometry for the real-dtype forward kernel.
 
-    Large shapes are memory-bound and their 64x64 grid leaves a partial wave, so
-    they get more work per program (and no mask when the shape divides exactly).
-    Small and lopsided shapes stay on the 64x64 / 4-warp configuration, where
-    the launch is already dominated by host-side dispatch.
+    `out` is contiguous, so a [BLOCK_M, BLOCK_N] tile whose BLOCK_N equals the
+    padded row length is written as BLOCK_M contiguous row spans instead of the
+    64-wide column strips the old 64x64 layout paid for. Kernel-only medians on
+    gc400 fp16 (100 reps), old 64x64 tile -> full-row tile:
+
+      (1024, 1024) 0.0124 -> 0.0060 ms   (64x1024)
+      (2048, 2048) 0.1095 -> 0.0112 ms   (64x1024)
+      (4096, 4096) 0.0452 -> 0.0280 ms   (64x1024)
+      (1024,16384) 0.0817 -> 0.0279 ms   (64x1024)
+      (65536, 256) 0.4377 -> 0.0518 ms   (256x256)
+      (4096,   64) 0.0116 -> 0.0073 ms   (256x64)
+      (4096,   16) 0.0108 -> 0.0076 ms   (256x16)
+
+    So BLOCK_N is the padded row (capped at 1024) and BLOCK_M keeps the tile near
+    _ROW_TILE_ELEMS, with a 64-row floor: tall narrow outputs need the extra rows
+    to reach one contiguous 64 KB span per program, while wide rows already have
+    long spans and prefer more programs.
     """
-    if M * N >= (1 << 22):
-        if itemsize <= 2:
-            return 128, 128, 8
-        return 128, 64, 8
-    return _BLOCK_M, _BLOCK_N, 4
+    del itemsize  # tile geometry is dtype agnostic (measured for 2- and 4-byte)
+    row_pad = triton.next_power_of_2(N)
+    columns = min(row_pad, _MAX_ROW_BLOCK)
+    rows = max(64, min(256, _ROW_TILE_ELEMS // columns))
+    if columns < _MAX_ROW_BLOCK and M * N >= _LARGE_NUMEL:
+        rows = 256
+    # A short operand pair must not pay for lanes that no row uses: M == 1 keeps
+    # one row, M == 64 keeps 64 (both measured faster than the 64-row floor).
+    rows = max(1, min(rows, triton.next_power_of_2(M)))
+    warps = 8 if columns >= _MAX_ROW_BLOCK else 4
+    return rows, columns, warps
 
 
 def _launch(a, b, out):
@@ -317,10 +369,34 @@ def _launch(a, b, out):
             BLOCK_M=_BLOCK_M,
             BLOCK_N=_BLOCK_N,
         )
+    elif N == 1 or M == 1:
+        # Repetition of one operand over a single row/column: a flat stream beats
+        # any 2-D tile (see _ger_scale_kernel).
+        if N == 1:
+            src, scalar, total = a, b, M
+            s_src, s_dst = a.stride(0), out.stride(0)
+        else:
+            src, scalar, total = b, a, N
+            s_src, s_dst = b.stride(0), out.stride(1)
+        block = 8192
+        _ger_scale_kernel[(max(1, triton.cdiv(total, block)),)](
+            src,
+            scalar,
+            out,
+            total,
+            s_src,
+            s_dst,
+            BLOCK=block,
+            num_warps=4,
+        )
     else:
         bm, bn, nw = _forward_config(a.element_size(), M, N)
         no_mask = (M % bm == 0) and (N % bn == 0)
-        swizzle = M * N >= (1 << 22)
+        # The swizzled order moves the row blocks to grid.y, whose hardware limit
+        # is 255. A tall M with the capped 64-row tile exceeds it (16384 rows give
+        # 256 blocks), so those shapes keep the plain grid.x order instead of
+        # aborting the launch with an out-of-resource error.
+        swizzle = M * N >= _LARGE_NUMEL and triton.cdiv(M, bm) <= _SWIZZLE_GRID_Y
         if swizzle:
             grid = (triton.cdiv(N, bn), triton.cdiv(M, bm))
         else:
@@ -431,7 +507,7 @@ class _Ger(torch.autograd.Function):
 
 
 def run(self, vec2, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 GER")
+    logger.debug("GEMS_ENFLAME GER")
     if not isinstance(self, torch.Tensor) or not isinstance(vec2, torch.Tensor):
         raise TypeError("ger: expected Tensor arguments")
     if self.dim() != 1:

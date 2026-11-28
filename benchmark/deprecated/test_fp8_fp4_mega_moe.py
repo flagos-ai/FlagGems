@@ -28,7 +28,7 @@ except ImportError:
     VLLM_AVAILABLE = False
     SM100_AVAILABLE = False
 
-from flag_gems.fused.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
+from flag_gems.deprecated.fp8_fp4_mega_moe import fp8_fp4_mega_moe_torch_ref
 
 from .. import base
 
@@ -45,6 +45,8 @@ pytestmark = pytest.mark.skipif(
 # FP8/FP4 input builders, kept local so the benchmark does not depend on the
 # tests package. Mirrors the helpers in tests/test_fp8_fp4_mega_moe.py.
 def _has_native_fp8():
+    if flag_gems.vendor_name == "enflame":
+        return hasattr(torch, "float8_e4m3fn")
     return torch.cuda.is_available() and torch.cuda.get_device_capability()[0] >= 9
 
 

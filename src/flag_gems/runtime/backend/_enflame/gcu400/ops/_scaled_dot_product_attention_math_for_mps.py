@@ -205,7 +205,7 @@ def _scaled_dot_product_attention_math_for_mps(
         softmax attention-weight matrix of shape (batch, num_heads, seq_len_q,
         seq_len_kv).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _SCALED_DOT_PRODUCT_ATTENTION_MATH_FOR_MPS")
+    logger.debug("GEMS_ENFLAME _SCALED_DOT_PRODUCT_ATTENTION_MATH_FOR_MPS")
 
     assert dropout_p == 0.0, "Only dropout_p=0.0 is supported"
     assert attn_mask is None, "attn_mask is not supported"
@@ -238,11 +238,25 @@ def _scaled_dot_product_attention_math_for_mps(
 
     BD = triton.next_power_of_2(D)
     BDV = triton.next_power_of_2(Dv)
-    # 64x64 tiles with 4 warps / 2 stages are near-optimal for these attention
-    # shapes (small head_dim, few batch*head groups) where SM occupancy is the
-    # binding constraint; larger BM/BN regressed timing in tuning.
-    BM = 64
-    BN = 64
+    # Tile choice measured on GCU400 (2026-11-18, min-of-N sweep over 8
+    # candidates).  This op materialises the full S_q x S_k weight matrix, so
+    # which resource binds depends on head_dim and masking:
+    #   * tiny query extents (S_q <= 16) are launch bound: a narrow BM plus a
+    #     wide BN keeps every SIP busy without spending rows on padding;
+    #   * HEAD_DIM=128 without masking is bound by the weight write, and the
+    #     square 64x64 / 4-warp tile wins;
+    #   * HEAD_DIM=128 causal throws away ~half of each diagonal tile, so the
+    #     smaller 32x32 / 2-warp tile recovers the wasted work;
+    #   * HEAD_DIM=64 prefers the widest tile (128x128 / 4 warps).
+    # Per-shape best-of-sweep comparison: within 1.2% everywhere.
+    if Sq <= 16:
+        BM, BN, num_warps = 16, 64, 2
+    elif D >= 128 and is_causal:
+        BM, BN, num_warps = 32, 32, 2
+    elif D >= 128:
+        BM, BN, num_warps = 64, 64, 4
+    else:
+        BM, BN, num_warps = 128, 128, 4
 
     grid = (BH, triton.cdiv(Sq, BM))
     _fused_attn_kernel[grid](
@@ -276,7 +290,7 @@ def _scaled_dot_product_attention_math_for_mps(
         BN=BN,
         BD=BD,
         BDV=BDV,
-        num_warps=4,
+        num_warps=num_warps,
         num_stages=2,
     )
 

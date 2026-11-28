@@ -20,10 +20,8 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, libtuner
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -86,13 +84,26 @@ def _reflect_coord(coord, n, align_corners: tl.constexpr):
     return tl.minimum(tl.maximum(ref, 0.0), n - 1)
 
 
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("grid_sampler_2d"),
-    key=["N", "C", "OH", "OW"],
-)
+# GCU400 notes (2026-11-16 perf pass, bench shapes N*C*H*W in
+# {(1,3,112,112), (2,64,32,32), (4,256,16,16), (8,3,64,64)}):
+# - the old launch (i64 program_id -> whole idx chain in i64 arithmetic,
+#   BLOCK=128, full cdiv grid) lost 2.0-4.7x to the i64 index chain alone
+#   (triu-style ext.program_id tax) and paid the >48-program wave tax
+#   (null-kernel at grid=2048 costs 104.7us vs 2.5us at grid=48);
+# - the per-lane // / % decode costs another 12-22% when N/C/OH/OW are
+#   powers of two (shift/mask decode, channel_shuffle-style, safe in this
+#   flat stream form);
+# - fixed recipe: i32 pid, grid-stride loop capped at 48 programs,
+#   BLOCK=1024, num_warps=4, with a pow2 shift arm ladder
+#   (SHIFT_MODE 2 = all dims pow2, 1 = spatial dims pow2, 0 = plain div);
+# - a wide fallback kernel keeps int64 indexing for tensors whose flat
+#   extents do not fit in int32 (it also grid-strides so grids never
+#   exceed the launch limit).
+
+
 @triton.jit
-def grid_sampler_2d_kernel(
+def _grid_sampler_body(
+    idx,
     output_ptr,
     input_ptr,
     grid_ptr,
@@ -102,20 +113,37 @@ def grid_sampler_2d_kernel(
     IW,
     OH,
     OW,
+    TOTAL,
     interpolation_mode: tl.constexpr,
     padding_mode: tl.constexpr,
     align_corners: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
+    LOG_OW: tl.constexpr,
+    LOG_OH: tl.constexpr,
+    LOG_C: tl.constexpr,
+    LOG_N: tl.constexpr,
+    SHIFT_MODE: tl.constexpr,
 ):
-    pid = tle.program_id(axis=0)
-    idx = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    # Decode the flat output index into (n, c, oh, ow). When a dimension is
+    # a power of two the // / % pair becomes a shift/mask pair, which is
+    # measurably cheaper per lane on this backend (probe: -12..-22%).
+    if SHIFT_MODE == 2:  # N, C, OH, OW are all powers of two
+        ow = idx & (OW - 1)
+        oh = (idx >> LOG_OW) & (OH - 1)
+        c = (idx >> (LOG_OW + LOG_OH)) & (C - 1)
+        n = (idx >> (LOG_OW + LOG_OH + LOG_C)) & (N - 1)
+    elif SHIFT_MODE == 1:  # OH, OW are powers of two; C, N arbitrary
+        ow = idx & (OW - 1)
+        oh = (idx >> LOG_OW) & (OH - 1)
+        rem = idx >> (LOG_OW + LOG_OH)
+        c = rem % C
+        n = rem // C
+    else:  # generic decode
+        ow = idx % OW
+        oh = idx // OW % OH
+        c = idx // OW // OH % C
+        n = idx // OW // OH // C % N
 
-    ow = idx % OW
-    oh = idx // OW % OH
-    c = idx // OW // OH % C
-    n = idx // OW // OH // C % N
-
-    mask = idx < (N * C * OH * OW)
+    mask = idx < TOTAL
 
     grid_offset = ((n * OH + oh) * OW + ow) * 2
     gx = tl.load(grid_ptr + grid_offset, mask=mask)
@@ -340,85 +368,85 @@ def grid_sampler_2d_kernel(
             iy2_v = True
             iy3_v = True
 
-        # 4x4 pixel loads. Use int64 strides to avoid overflow on large tensors.
-        nc_off = (n * C + c).to(tl.int64) * IH * IW
+        # 4x4 pixel loads.
+        nc_off = (n * C + c) * IH * IW
         p00 = tl.load(
-            input_ptr + nc_off + iy0_c.to(tl.int64) * IW + ix0_c,
+            input_ptr + nc_off + iy0_c * IW + ix0_c,
             mask=mask & ix0_v & iy0_v,
             other=0.0,
         )
         p01 = tl.load(
-            input_ptr + nc_off + iy0_c.to(tl.int64) * IW + ix1_c,
+            input_ptr + nc_off + iy0_c * IW + ix1_c,
             mask=mask & ix1_v & iy0_v,
             other=0.0,
         )
         p02 = tl.load(
-            input_ptr + nc_off + iy0_c.to(tl.int64) * IW + ix2_c,
+            input_ptr + nc_off + iy0_c * IW + ix2_c,
             mask=mask & ix2_v & iy0_v,
             other=0.0,
         )
         p03 = tl.load(
-            input_ptr + nc_off + iy0_c.to(tl.int64) * IW + ix3_c,
+            input_ptr + nc_off + iy0_c * IW + ix3_c,
             mask=mask & ix3_v & iy0_v,
             other=0.0,
         )
         p10 = tl.load(
-            input_ptr + nc_off + iy1_c.to(tl.int64) * IW + ix0_c,
+            input_ptr + nc_off + iy1_c * IW + ix0_c,
             mask=mask & ix0_v & iy1_v,
             other=0.0,
         )
         p11 = tl.load(
-            input_ptr + nc_off + iy1_c.to(tl.int64) * IW + ix1_c,
+            input_ptr + nc_off + iy1_c * IW + ix1_c,
             mask=mask & ix1_v & iy1_v,
             other=0.0,
         )
         p12 = tl.load(
-            input_ptr + nc_off + iy1_c.to(tl.int64) * IW + ix2_c,
+            input_ptr + nc_off + iy1_c * IW + ix2_c,
             mask=mask & ix2_v & iy1_v,
             other=0.0,
         )
         p13 = tl.load(
-            input_ptr + nc_off + iy1_c.to(tl.int64) * IW + ix3_c,
+            input_ptr + nc_off + iy1_c * IW + ix3_c,
             mask=mask & ix3_v & iy1_v,
             other=0.0,
         )
         p20 = tl.load(
-            input_ptr + nc_off + iy2_c.to(tl.int64) * IW + ix0_c,
+            input_ptr + nc_off + iy2_c * IW + ix0_c,
             mask=mask & ix0_v & iy2_v,
             other=0.0,
         )
         p21 = tl.load(
-            input_ptr + nc_off + iy2_c.to(tl.int64) * IW + ix1_c,
+            input_ptr + nc_off + iy2_c * IW + ix1_c,
             mask=mask & ix1_v & iy2_v,
             other=0.0,
         )
         p22 = tl.load(
-            input_ptr + nc_off + iy2_c.to(tl.int64) * IW + ix2_c,
+            input_ptr + nc_off + iy2_c * IW + ix2_c,
             mask=mask & ix2_v & iy2_v,
             other=0.0,
         )
         p23 = tl.load(
-            input_ptr + nc_off + iy2_c.to(tl.int64) * IW + ix3_c,
+            input_ptr + nc_off + iy2_c * IW + ix3_c,
             mask=mask & ix3_v & iy2_v,
             other=0.0,
         )
         p30 = tl.load(
-            input_ptr + nc_off + iy3_c.to(tl.int64) * IW + ix0_c,
+            input_ptr + nc_off + iy3_c * IW + ix0_c,
             mask=mask & ix0_v & iy3_v,
             other=0.0,
         )
         p31 = tl.load(
-            input_ptr + nc_off + iy3_c.to(tl.int64) * IW + ix1_c,
+            input_ptr + nc_off + iy3_c * IW + ix1_c,
             mask=mask & ix1_v & iy3_v,
             other=0.0,
         )
         p32 = tl.load(
-            input_ptr + nc_off + iy3_c.to(tl.int64) * IW + ix2_c,
+            input_ptr + nc_off + iy3_c * IW + ix2_c,
             mask=mask & ix2_v & iy3_v,
             other=0.0,
         )
         p33 = tl.load(
-            input_ptr + nc_off + iy3_c.to(tl.int64) * IW + ix3_c,
+            input_ptr + nc_off + iy3_c * IW + ix3_c,
             mask=mask & ix3_v & iy3_v,
             other=0.0,
         )
@@ -432,6 +460,122 @@ def grid_sampler_2d_kernel(
 
     out_offset = ((n * C + c) * OH + oh) * OW + ow
     tl.store(output_ptr + out_offset, result, mask=mask)
+
+
+@libentry()
+@triton.jit
+def grid_sampler_2d_kernel(
+    output_ptr,
+    input_ptr,
+    grid_ptr,
+    N,
+    C,
+    IH,
+    IW,
+    OH,
+    OW,
+    TOTAL,
+    interpolation_mode: tl.constexpr,
+    padding_mode: tl.constexpr,
+    align_corners: tl.constexpr,
+    LOG_OW: tl.constexpr,
+    LOG_OH: tl.constexpr,
+    LOG_C: tl.constexpr,
+    LOG_N: tl.constexpr,
+    SHIFT_MODE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # int32 fast path: caller guarantees every flat extent fits in int32.
+    pid = tl.program_id(axis=0)
+    num_pids = tl.num_programs(axis=0)
+    arange = tl.arange(0, BLOCK_SIZE)
+    num_blocks = (TOTAL + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        idx = block_id * BLOCK_SIZE + arange
+        _grid_sampler_body(
+            idx,
+            output_ptr,
+            input_ptr,
+            grid_ptr,
+            N,
+            C,
+            IH,
+            IW,
+            OH,
+            OW,
+            TOTAL,
+            interpolation_mode,
+            padding_mode,
+            align_corners,
+            LOG_OW,
+            LOG_OH,
+            LOG_C,
+            LOG_N,
+            SHIFT_MODE,
+        )
+
+
+@libentry()
+@triton.jit
+def grid_sampler_2d_kernel_wide(
+    output_ptr,
+    input_ptr,
+    grid_ptr,
+    N,
+    C,
+    IH,
+    IW,
+    OH,
+    OW,
+    TOTAL,
+    interpolation_mode: tl.constexpr,
+    padding_mode: tl.constexpr,
+    align_corners: tl.constexpr,
+    LOG_OW: tl.constexpr,
+    LOG_OH: tl.constexpr,
+    LOG_C: tl.constexpr,
+    LOG_N: tl.constexpr,
+    SHIFT_MODE: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # int64 fallback for flat extents beyond int32; grid-strided so the
+    # launch never exceeds the grid-dimension limit for huge tensors.
+    pid = tl.program_id(axis=0)
+    num_pids = tl.num_programs(axis=0)
+    arange = tl.arange(0, BLOCK_SIZE)
+    num_blocks = (TOTAL + (BLOCK_SIZE - 1)) // BLOCK_SIZE
+    pid_w = pid.to(tl.int64)
+    for block_id in tl.range(pid_w, num_blocks, num_pids.to(tl.int64)):
+        idx = block_id * BLOCK_SIZE + arange
+        _grid_sampler_body(
+            idx,
+            output_ptr,
+            input_ptr,
+            grid_ptr,
+            N,
+            C,
+            IH,
+            IW,
+            OH,
+            OW,
+            TOTAL,
+            interpolation_mode,
+            padding_mode,
+            align_corners,
+            LOG_OW,
+            LOG_OH,
+            LOG_C,
+            LOG_N,
+            SHIFT_MODE,
+        )
+
+
+def _is_pow2(v):
+    return v > 0 and (v & (v - 1)) == 0
+
+
+def _log2(v):
+    return v.bit_length() - 1
 
 
 def grid_sampler_2d(
@@ -453,7 +597,7 @@ def grid_sampler_2d(
         padding_mode: 0=Zeros, 1=Border, 2=Reflection.
         align_corners: If True, corner pixels are aligned.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 GRID_SAMPLER_2D")
+    logger.debug("GEMS_ENFLAME GRID_SAMPLER_2D")
 
     assert input.ndim == 4, "Input must be 4D"
     assert grid.ndim == 4, "Grid must be 4D"
@@ -472,11 +616,33 @@ def grid_sampler_2d(
     input = input.contiguous()
     grid = grid.contiguous()
 
-    total_threads = N * C * OH * OW
-    grid_fn = lambda meta: (triton.cdiv(total_threads, meta["BLOCK_SIZE"]),)
+    total = N * C * OH * OW
+    BLOCK_SIZE = 1024
+    num_blocks = (total + BLOCK_SIZE - 1) // BLOCK_SIZE
+    # Cap the launch at 48 programs (GCU400 SPC count): more programs only
+    # add wave/dispatch tax for this gather-shaped kernel (probe: null
+    # kernel at grid=2048 costs 104.7us vs 2.5us at grid=48).
+    nprog = min(num_blocks, 48)
+
+    # int32 fast path guards: every flat element offset computed by the
+    # kernel (input pixels, grid pairs x2, output pixels, and the padded
+    # block_id * BLOCK + arange tail) must stay below 2^31.
+    grid_elems = 2 * N * OH * OW
+    in_elems = N * C * IH * IW
+    if max(total, grid_elems, in_elems, num_blocks * BLOCK_SIZE) < (1 << 31):
+        if _is_pow2(OW) and _is_pow2(OH) and _is_pow2(C) and _is_pow2(N):
+            shift_mode = 2
+        elif _is_pow2(OW) and _is_pow2(OH):
+            shift_mode = 1
+        else:
+            shift_mode = 0
+        kernel = grid_sampler_2d_kernel
+    else:
+        shift_mode = 0
+        kernel = grid_sampler_2d_kernel_wide
 
     with torch_device_fn.device(input.device):
-        grid_sampler_2d_kernel[grid_fn](
+        kernel[(nprog,)](
             output,
             input,
             grid,
@@ -486,11 +652,17 @@ def grid_sampler_2d(
             IW,
             OH,
             OW,
+            total,
             interpolation_mode,
             padding_mode,
             align_corners,
-            # BLOCK_SIZE=1024 balances occupancy and register pressure for typical grid sizes
-            BLOCK_SIZE=128,
+            _log2(OW) if _is_pow2(OW) else 0,
+            _log2(OH) if _is_pow2(OH) else 0,
+            _log2(C) if _is_pow2(C) else 0,
+            _log2(N) if _is_pow2(N) else 0,
+            shift_mode,
+            BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=4,
         )
 
     return output

@@ -18,7 +18,10 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.runtime import torch_device_fn
+from flag_gems.runtime.backend._enflame.gcu400.ops.addmm import addmm
+from flag_gems.runtime.backend._enflame.gcu400.ops.mm import mm
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -68,19 +71,29 @@ _CONFIG_32BIT_EVEN256 = (128, 256, 128, 4, 2, 8)
 _CONFIG_32BIT_MID = (128, 128, 256, 2, 1, 8)
 _CONFIG_SAFE = (128, 128, 64, 4, 3, 8)
 
-# 16-bit size boundary: at 1024^2 (1M) the medium-shape config is faster, at 1536^2 (2.36M) the huge-shape config is
-# faster,
-# so 2M is the boundary. fp32 keeps 16M (4096^2).
+# 16-bit size-tier boundary: the mid-shape configuration is faster at 1024² (1M), the huge-shape configuration is faster
+# at 1536² (2.36M),
+# so take 2M as the boundary. The fp32 boundary stays at 16M (4096²).
 _BIG16_SHAPE_ELEMENTS = 1 << 21
 _HUGE_SHAPE_ELEMENTS = 1 << 24  # 16777216 == 4096²
 
+# ---- Hybrid dispatch (2026-11-16 perf round; rationale and precedents at the top of the file) ----
+# The saturated segment (M*N*K >= 2^31, including 2048³/4096³ for all dtypes and cases like (1024,1024,2048)) and
+# the long-K skinny segment (K >= 2^15, mirroring mm/addmm) are routed to this backend's FlagGems
+# addmm / mm; at 1024³ (=2^30) 16-bit Triton still beats native, so the dispatch line is higher than mm/addmm's
+# 2^29. For the 16-bit single-launch small band, see _compose_linear.
+_COMPOSE_WORK_THRESHOLD = 1 << 31
+_COMPOSE_LONG_K_THRESHOLD = 1 << 15
+_COMPOSE_FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+_COMPOSE_SMALL_BAND_DTYPES = (torch.float16, torch.bfloat16)
+
 
 def _select_config(M, N, K, dtype):
-    """Determine (BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages, GROUP_M) by dtype, divisibility and scale.
+    """Picks (BLOCK_M, BLOCK_N, BLOCK_K, num_warps, num_stages, GROUP_M) from dtype, divisibility and size.
 
-    Decision order: first check the "large tile safety prerequisite" (dimension divisibility), then scale.
-    Each tier's EVEN_* prerequisite corresponds one-to-one with the kernel-side mask elimination:
-    BM=256 requires M%256==0, BM=128 requires M%128==0, BM=64 requires M%64==0.
+    Order: first check the large-tile safety preconditions (dimension divisibility), then size.
+    The EVEN_* precondition of each tier maps one-to-one to mask elimination in the kernel:
+    BM=256 needs M%256==0, BM=128 needs M%128==0, BM=64 needs M%64==0.
     """
     is_16bit = dtype in (torch.float16, torch.bfloat16)
     even_m64 = M % 64 == 0
@@ -228,6 +241,42 @@ def linear_kernel(
         )
 
 
+def _compose_linear(input_flat, weight, bias, M, N, K):
+    """Hybrid dispatch: compose the winnable segments onto this backend FlagGems addmm / mm
+    (host convention (2) composition reuse; linalg_matmul composing bmm is the same precedent).
+    Returns the (M, N) output, or None when the preconditions fail, letting the caller fall back.
+
+    Two winnable segments (rationale in the file header):
+    - saturated M*N*K >= 2^31 or long-K K >= 2^15: add/mm internally delegates to the captured
+      native kernel (bit-exact; 1024^3 and below stay in Triton).
+    - 16-bit single-shot small band M%128==0 and N%128==0 and K<=512 and M*N<2M: lands on
+      add/mm's Triton arm (128,128,512,w2,s2) as a single K-shot (384^3 -10%).
+    """
+    if input_flat.dtype not in _COMPOSE_FLOAT_DTYPES:
+        return None
+    if weight.dtype != input_flat.dtype:
+        return None
+    if bias is not None and bias.dtype != input_flat.dtype:
+        return None
+    if input_flat.device.type != runtime.device.name:
+        return None
+    saturated = M * N * K >= _COMPOSE_WORK_THRESHOLD or K >= _COMPOSE_LONG_K_THRESHOLD
+    small_band = (
+        not saturated
+        and input_flat.dtype in _COMPOSE_SMALL_BAND_DTYPES
+        and M % 128 == 0
+        and N % 128 == 0
+        and K <= 512
+        and M * N < _BIG16_SHAPE_ELEMENTS
+    )
+    if not (saturated or small_band):
+        return None
+    weight_t = weight.t()
+    if bias is None:
+        return mm(input_flat, weight_t)
+    return addmm(bias, input_flat, weight_t)
+
+
 def linear(input, weight, bias=None):
     """
     Applies a linear transformation to the incoming data: y = xA^T + b
@@ -256,9 +305,19 @@ def linear(input, weight, bias=None):
     N = weight.shape[0]  # out_features
 
     input_flat = input.reshape(M, K)
-    # Only when both dimensions are non-contiguous is one explicit copy needed; normal row-major inputs are zero-copy
+    # An explicit copy is needed only when both dimensions are non-contiguous; ordinary row-major inputs are zero-copy
     if input_flat.stride(0) > 1 and input_flat.stride(1) > 1:
         input_flat = input_flat.contiguous()
+
+    # Hybrid dispatch (2026-11-16): the saturated segment / long-K segment / 16-bit single-launch small band are routed
+    # to backend
+    # add/mm; everything else (1024³ and below, odd shapes, small fp32 tiers) falls back to this file's Triton kernel.
+    if M > 0 and N > 0 and K > 0:
+        composed = _compose_linear(input_flat, weight, bias, M, N, K)
+        if composed is not None:
+            output = composed.view(*batch_dims, N)
+            return output.squeeze(0) if single_1d else output
+
     weight_mat = weight
     if weight_mat.stride(0) > 1 and weight_mat.stride(1) > 1:
         weight_mat = weight_mat.contiguous()
