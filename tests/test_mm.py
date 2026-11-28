@@ -494,3 +494,36 @@ def test_mm_ascend_review_out_validation(invalid):
     with pytest.raises(RuntimeError, match=invalid):
         flag_gems.mm_out(a, b, out=out)
     assert out.shape == (0,)
+
+
+@pytest.mark.mm
+@pytest.mark.skipif(flag_gems.vendor_name != "hygon", reason="Hygon mm")
+@pytest.mark.parametrize("M,N,K", [(2, 5, 0), (0, 5, 0), (2, 0, 7), (0, 0, 0)])
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.float64]
+)
+@pytest.mark.parametrize("use_out", [False, True])
+def test_mm_hygon_empty_dimensions(monkeypatch, M, N, K, dtype, use_out):
+    from flag_gems.runtime.backend._hygon.ops.mm import mm, mm_out
+
+    class NoMatmulLaunch:
+        def __getitem__(self, grid):
+            pytest.fail("empty Hygon mm launched the matmul kernel")
+
+    monkeypatch.setitem(mm.__globals__, "mm_kernel", NoMatmulLaunch())
+    a = torch.empty((M, K), device=flag_gems.device, dtype=dtype)
+    b = torch.empty((K, N), device=a.device, dtype=dtype)
+    if use_out:
+        storage = torch.full((2 * M + 1, 2 * N + 1), -7, device=a.device, dtype=dtype)
+        expected_storage = storage.cpu()
+        out = storage[1::2, 1::2]
+        expected = torch.mm(a.cpu(), b.cpu(), out=expected_storage[1::2, 1::2])
+        stride, offset = out.stride(), out.storage_offset()
+        result = mm_out(a, b, out=out)
+        assert result is out
+        assert (out.stride(), out.storage_offset()) == (stride, offset)
+        torch.testing.assert_close(storage.cpu(), expected_storage, atol=0, rtol=0)
+    else:
+        expected = torch.mm(a.cpu(), b.cpu())
+        result = mm(a, b)
+    torch.testing.assert_close(result.cpu(), expected, atol=0, rtol=0)
