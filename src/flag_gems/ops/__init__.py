@@ -1471,7 +1471,7 @@ from flag_gems.ops.rnn_relu_cell import rnn_relu_cell
 from flag_gems.ops.rnn_tanh import rnn_tanh, rnn_tanh_data
 from flag_gems.ops.rnn_tanh_cell import rnn_tanh_cell
 from flag_gems.ops.roll import roll
-from flag_gems.ops.rot90 import rot90
+from flag_gems.ops.rot90 import rot90, rot90_backward
 from flag_gems.ops.round import round, round_, round_out
 from flag_gems.ops.row_indices_copy import row_indices_copy, row_indices_copy_out
 from flag_gems.ops.row_stack import row_stack, row_stack_out
@@ -3255,6 +3255,7 @@ __all__ = [
     "rnn_tanh_data",
     "roll",
     "rot90",
+    "rot90_backward",
     "round",
     "round_",
     "round_out",

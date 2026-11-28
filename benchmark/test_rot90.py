@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 # rot90 only supports 2D tensors, use square and rectangular shapes for benchmarking
@@ -47,5 +49,17 @@ def test_rot90():
         op_name="rot90",
         torch_op=torch.rot90,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.rot90_backward
+def test_rot90_backward():
+    bench = Rot90Benchmark(
+        op_name="rot90_backward",
+        torch_op=torch.rot90,
+        gems_op=flag_gems.rot90,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
