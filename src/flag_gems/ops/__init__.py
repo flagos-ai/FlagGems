@@ -834,6 +834,7 @@ from flag_gems.ops.div import (
 )
 from flag_gems.ops.divide import divide
 from flag_gems.ops.dot import dot
+from flag_gems.ops.dot_backward import dot_backward
 from flag_gems.ops.dropout import dropout, dropout_backward
 from flag_gems.ops.dropout_ import dropout_
 from flag_gems.ops.dstack import run as dstack
@@ -2585,6 +2586,7 @@ __all__ = [
     "div_mode_",
     "divide",
     "dot",
+    "dot_backward",
     "dropout",
     "dropout_",
     "dropout_backward",
