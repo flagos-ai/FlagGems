@@ -56,3 +56,15 @@ def test_renorm():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.renorm_backward
+def test_renorm_backward():
+    bench = RenormBenchmark(
+        op_name="renorm_backward",
+        torch_op=torch.renorm,
+        gems_op=flag_gems.renorm,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

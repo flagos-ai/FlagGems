@@ -115,9 +115,129 @@ def renorm_kernel_scale(
             tl.store(y_ptr_row + cols, y_vals.to(X.dtype.element_ty), mask=mask)
 
 
-def renorm(input, p, dim, maxnorm):
-    logger.debug("GEMS RENORM")
+@libentry()
+@triton.jit
+def renorm_backward_kernel(
+    grad,
+    self,
+    grad_input,
+    N,
+    p_val,
+    maxnorm,
+    SHAPE: tl.constexpr,
+    SELF_STRIDES: tl.constexpr,
+    GRAD_STRIDES: tl.constexpr,
+    OUT_STRIDES: tl.constexpr,
+    DIM: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
+):
+    pid = tle.program_id(0)
+    self_base = pid * SELF_STRIDES.value[DIM.value]
+    grad_base = pid * GRAD_STRIDES.value[DIM.value]
+    out_base = pid * OUT_STRIDES.value[DIM.value]
 
+    norm_parts = tl.zeros([BLOCK_SIZE], tl.float32)
+    dot_parts = tl.zeros([BLOCK_SIZE], tl.float32)
+    for start in range(0, N, BLOCK_SIZE):
+        linear = start + tl.arange(0, BLOCK_SIZE)
+        mask = linear < N
+        remainder = linear
+        self_offset = tl.full([BLOCK_SIZE], self_base, tl.int64)
+        grad_offset = tl.full([BLOCK_SIZE], grad_base, tl.int64)
+        for axis in tl.static_range(len(SHAPE.value) - 1, -1, -1):
+            if axis != DIM.value:
+                coordinate = remainder % SHAPE.value[axis]
+                remainder //= SHAPE.value[axis]
+                self_offset += coordinate * SELF_STRIDES.value[axis]
+                grad_offset += coordinate * GRAD_STRIDES.value[axis]
+        x = tl.load(self + self_offset, mask=mask, other=0.0).to(tl.float32)
+        g = tl.load(grad + grad_offset, mask=mask, other=0.0).to(tl.float32)
+        abs_x = tl.abs(x)
+        if p_val == 1.0:
+            norm_parts += abs_x
+        elif p_val == 2.0:
+            norm_parts += x * x
+        else:
+            norm_parts += tl_extra_shim.pow(abs_x, p_val)
+        # ATen multiplies in the input dtype, then sums in the accumulation
+        # dtype. Keep that first rounding, including for nearly canceled grads.
+        dot_parts += (x * g).to(self.dtype.element_ty).to(tl.float32)
+
+    norm_sum = tl.sum(norm_parts)
+    if p_val == 1.0:
+        norm = norm_sum
+    elif p_val == 2.0:
+        norm = tl_extra_shim.sqrt(norm_sum)
+    else:
+        norm = tl_extra_shim.pow(norm_sum, 1.0 / p_val)
+    dot = tl.sum(dot_parts)
+    invnorm = 1.0 / (norm + 1.0e-7)
+
+    for start in range(0, N, BLOCK_SIZE):
+        linear = start + tl.arange(0, BLOCK_SIZE)
+        mask = linear < N
+        remainder = linear
+        self_offset = tl.full([BLOCK_SIZE], self_base, tl.int64)
+        grad_offset = tl.full([BLOCK_SIZE], grad_base, tl.int64)
+        out_offset = tl.full([BLOCK_SIZE], out_base, tl.int64)
+        for axis in tl.static_range(len(SHAPE.value) - 1, -1, -1):
+            if axis != DIM.value:
+                coordinate = remainder % SHAPE.value[axis]
+                remainder //= SHAPE.value[axis]
+                self_offset += coordinate * SELF_STRIDES.value[axis]
+                grad_offset += coordinate * GRAD_STRIDES.value[axis]
+                out_offset += coordinate * OUT_STRIDES.value[axis]
+        x = tl.load(self + self_offset, mask=mask, other=0.0).to(tl.float32)
+        g = tl.load(grad + grad_offset, mask=mask, other=0.0).to(tl.float32)
+        if p_val == 1.0:
+            norm_grad = tl.where(x > 0, 1.0, tl.where(x < 0, -1.0, 0.0))
+        elif p_val == 2.0:
+            norm_grad = x / norm
+        else:
+            if p_val > 2.0:
+                power = tl_extra_shim.pow(tl.abs(x), p_val - 2.0)
+                power = power.to(self.dtype.element_ty).to(tl.float32)
+                scaled_self = (x * power).to(self.dtype.element_ty).to(tl.float32)
+            else:
+                sign = tl.where(x > 0, 1.0, tl.where(x < 0, -1.0, 0.0))
+                scaled_self = sign * tl_extra_shim.pow(tl.abs(x), p_val - 1.0)
+                scaled_self = scaled_self.to(self.dtype.element_ty).to(tl.float32)
+            norm_grad = scaled_self / tl_extra_shim.pow(norm, p_val - 1.0)
+        clipped = maxnorm * invnorm * (g - invnorm * dot * norm_grad)
+        result = tl.where(norm > maxnorm, clipped, g)
+        tl.store(grad_input + out_offset, result, mask=mask)
+
+
+def renorm_backward(grad, self, p, dim, maxnorm):
+    """Compute the renorm gradient with one fused Triton kernel launch."""
+    logger.debug("GEMS RENORM_BACKWARD")
+    if dim < 0:
+        dim += self.ndim
+    grad_input = torch.empty(self.shape, dtype=self.dtype, device=self.device)
+    if self.numel() == 0:
+        return grad_input
+    M = self.shape[dim]
+    N = self.numel() // M
+    block = min(triton.next_power_of_2(N), 128)
+    with torch_device_fn.device(self.device):
+        renorm_backward_kernel[(M,)](
+            grad,
+            self,
+            grad_input,
+            N,
+            p,
+            maxnorm,
+            SHAPE=tuple(self.shape),
+            SELF_STRIDES=tuple(self.stride()),
+            GRAD_STRIDES=tuple(grad.stride()),
+            OUT_STRIDES=tuple(grad_input.stride()),
+            DIM=dim,
+            BLOCK_SIZE=block,
+        )
+    return grad_input
+
+
+def _renorm_impl(input, p, dim, maxnorm):
     if dim < 0:
         dim = input.ndim + dim
 
@@ -166,8 +286,35 @@ def renorm(input, p, dim, maxnorm):
         inv_perm = [perm.index(i) for i in range(ndim)]
 
         x_perm = input.permute(perm)
-        result = renorm(x_perm, p, 0, maxnorm)
+        result = _renorm_impl(x_perm, p, 0, maxnorm)
         return result.permute(inv_perm)
+
+
+class RenormFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, p, dim, maxnorm):
+        ctx.save_for_backward(input)
+        ctx.p = p
+        ctx.dim = dim
+        ctx.maxnorm = maxnorm
+        return _renorm_impl(input, p, dim, maxnorm)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        (input,) = ctx.saved_tensors
+        return (
+            renorm_backward(grad_output, input, ctx.p, ctx.dim, ctx.maxnorm),
+            None,
+            None,
+            None,
+        )
+
+
+def renorm(input, p, dim, maxnorm):
+    logger.debug("GEMS RENORM")
+    if torch.is_grad_enabled() and input.requires_grad:
+        return RenormFunction.apply(input, p, dim, maxnorm)
+    return _renorm_impl(input, p, dim, maxnorm)
 
 
 def renorm_(input, p, dim, maxnorm):
