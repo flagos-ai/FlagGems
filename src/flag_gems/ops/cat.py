@@ -19,6 +19,8 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.clone import clone
+
 logger = logging.getLogger(__name__)
 
 
@@ -316,6 +318,13 @@ def cat_out(
     return out
 
 
+def _copy_single_input(inp: torch.Tensor) -> torch.Tensor:
+    # These tensors need a logical copy rather than a raw copy of their storage.
+    if inp._is_zerotensor() or inp.is_neg():
+        return torch.empty_like(inp).copy_(inp)
+    return clone(inp)
+
+
 def cat(
     A: Union[Tuple[torch.Tensor, ...], List[torch.Tensor]], dim: int = 0
 ) -> torch.Tensor:
@@ -324,7 +333,7 @@ def cat(
     if _should_use_uint8_view_path(A):
         mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
         if mode == "single":
-            return payload.view(original_dtype)
+            return _copy_single_input(payload).view(original_dtype)
         if mode == "empty":
             return payload.view(original_dtype)
 
@@ -335,7 +344,7 @@ def cat(
 
     mode, payload = _cat_build_working_list(A, dim)
     if mode == "single":
-        return payload
+        return _copy_single_input(payload)
     if mode == "empty":
         return payload
 

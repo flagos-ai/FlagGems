@@ -130,6 +130,31 @@ TEST(TritonCatTest, EmptyTensorConcatenation) {
   EXPECT_EQ(out_gems_both_empty.numel(), 0);
 }
 
+TEST(TritonCatTest, SingleInputDoesNotAlias) {
+  const torch::Device device = flag_gems::test::default_device();
+  auto input = torch::randn({2, 3}, device);
+  auto expected = torch::cat({flag_gems::accuracy_utils::to_reference(input)}, 0);
+  auto output = flag_gems::cat({input}, 0);
+
+  auto result = flag_gems::accuracy_utils::gems_assert_equal(output, expected);
+  EXPECT_TRUE(result.ok) << result.message;
+  EXPECT_FALSE(output.is_alias_of(input));
+}
+
+TEST(TritonCatTest, SingleInputWithEmptyTensorsDoesNotAlias) {
+  const torch::Device device = flag_gems::test::default_device();
+  auto input = torch::randn({2, 3}, device).transpose(0, 1);
+  auto empty = torch::empty({0}, input.options());
+  auto ref_input = flag_gems::accuracy_utils::to_reference(input);
+  auto ref_empty = flag_gems::accuracy_utils::to_reference(empty);
+  auto expected = torch::cat({ref_empty, ref_input, ref_empty}, 0);
+  auto output = flag_gems::cat({empty, input, empty}, 0);
+
+  auto result = flag_gems::accuracy_utils::gems_assert_equal(output, expected);
+  EXPECT_TRUE(result.ok) << result.message;
+  EXPECT_FALSE(output.is_alias_of(input));
+}
+
 TEST(TritonCatTest, 3tensorcat) {
   const torch::Device device = flag_gems::test::default_device();
   auto options = torch::TensorOptions().device(device).dtype(torch::kFloat32);
