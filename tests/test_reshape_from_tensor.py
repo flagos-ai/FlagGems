@@ -29,6 +29,15 @@ from . import accuracy_utils as utils
     "layout", ["view", "transpose", "offset", "empty", "high_rank"]
 )
 def test_reshape_from_tensor(dtype, layout):
+    if layout == "high_rank" and flag_gems.vendor_name == "enflame":
+        # The rank-9 operand cannot be viewed as 1-D, so both the CPU-side
+        # aten reference and the on-device aten native call must materialize a
+        # contiguous copy. topsaten contiguous only supports rank 1..8 and
+        # aborts the process instead of raising, so this case cannot run here.
+        pytest.skip(
+            "enflame: topsaten contiguous supports rank 1..8 only, the rank-9 "
+            "aten copy aborts on GCU"
+        )
     inp = torch.randn((4, 6), dtype=dtype, device=flag_gems.device)
     if layout == "transpose":
         inp = inp.t()

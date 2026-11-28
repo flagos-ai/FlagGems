@@ -163,6 +163,11 @@ class ConvDoubleBackwardBenchmark(base.Benchmark):
             )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="torch_gcu has no PrivateUse1 kernel for aten::convolution_double_backward; "
+    "its CPU fallback cannot run on device tensors",
+)
 @pytest.mark.convolution_double_backward
 def test_convolution_double_backward():
     torch.backends.cudnn.allow_tf32 = False

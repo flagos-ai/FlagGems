@@ -534,7 +534,7 @@ def _check_same_device(self, index, source, out=None):
 
 
 def put(self, index, source, accumulate=False):
-    logger.debug("GEMS_ENFLAME_GCU400 PUT")
+    logger.debug("GEMS_ENFLAME PUT")
     _check_same_device(self, index, source)
 
     # `empty_like` mirrors `self`'s layout when `self` is dense and falls back to
@@ -547,7 +547,7 @@ def put(self, index, source, accumulate=False):
 
 
 def put_out(self, index, source, accumulate=False, *, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 PUT_OUT")
+    logger.debug("GEMS_ENFLAME PUT_OUT")
 
     if out is None:
         return put(self, index, source, accumulate)

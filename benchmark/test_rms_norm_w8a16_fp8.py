@@ -30,7 +30,7 @@ def _fp8_available():
         return False
     if flag_gems.vendor_name == "mthreads":
         return torch_device_fn.get_device_capability()[0] >= 3
-    if flag_gems.vendor_name in ("thead", "metax", "hygon"):
+    if flag_gems.vendor_name in ("thead", "metax", "hygon", "enflame"):
         return True
     return (
         flag_gems.vendor_name == "nvidia" and torch.cuda.get_device_capability()[0] >= 9

@@ -47,6 +47,14 @@ class SparseCsrSumBenchmark(base.Benchmark):
 
 
 @pytest.mark.sparse_csr_sum
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend has no kernel for "
+        "aten::_sparse_csr_sum.dim_dtype, so the torch baseline cannot be "
+        "timed"
+    ),
+)
 def test_sparse_csr_sum():
     bench = SparseCsrSumBenchmark(
         op_name="sparse_csr_sum",

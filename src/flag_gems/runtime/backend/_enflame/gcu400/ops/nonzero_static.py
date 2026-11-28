@@ -654,12 +654,12 @@ def _nonzero_static_impl(
 
 
 def nonzero_static(input: torch.Tensor, *, size: int, fill_value: int = -1):
-    logger.debug("GEMS_ENFLAME_GCU400 NONZERO_STATIC")
+    logger.debug("GEMS_ENFLAME NONZERO_STATIC")
     return _nonzero_static_impl(input, size=size, fill_value=fill_value)
 
 
 def nonzero_static_out(
     input: torch.Tensor, *, size: int, fill_value: int = -1, out: torch.Tensor
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 NONZERO_STATIC_OUT")
+    logger.debug("GEMS_ENFLAME NONZERO_STATIC_OUT")
     return _nonzero_static_impl(input, size=size, fill_value=fill_value, out=out)

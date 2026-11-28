@@ -62,7 +62,7 @@ def _fill_strided(inp, fill_value, main_size, wrap_size, wrap_offset, diagonal_s
 
 
 def fill_diagonal_(self, fill_value, wrap=False):
-    logger.debug("GEMS_ENFLAME_GCU400 FILL_DIAGONAL_")
+    logger.debug("GEMS_ENFLAME FILL_DIAGONAL_")
 
     n_dims = self.ndim
     if n_dims < 2:

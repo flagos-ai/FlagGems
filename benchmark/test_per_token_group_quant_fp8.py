@@ -21,6 +21,17 @@ import flag_gems
 
 from . import base
 
+# The latency baseline below calls ``x_.abs().max(dim=-1)`` on a bf16 device
+# tensor, which topsaten cannot serve on Enflame GCU: the int64 index output is
+# rejected ("int64 idx requires gcu400+ with int64/fp32/int32 data type") and
+# the uncaught C++ error aborts the benchmark process. The FlagGems kernel
+# itself matches a CPU-computed reference, so only the baseline is blocked.
+ENFLAME_SKIP_REASON = (
+    "baseline aten::max.dim is unimplemented for bf16 on the GCU backend "
+    "(topsaten aborts: 'int64 idx requires gcu400+ with int64/fp32/int32 "
+    "data type')"
+)
+
 
 class PerTokenGroupQuantFp8Benchmark(base.GenericBenchmark):
     def set_more_shapes(self):
@@ -59,6 +70,7 @@ def torch_per_token_group_quant_fp8_ref(x, group_size, scale_ue8m0):
     return x_q, x_s
 
 
+@pytest.mark.skip_native(vendors=["enflame"], reason=ENFLAME_SKIP_REASON)
 @pytest.mark.per_token_group_quant_fp8
 def test_per_token_group_quant_fp8():
     bench = PerTokenGroupQuantFp8Benchmark(

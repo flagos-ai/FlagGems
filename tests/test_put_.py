@@ -258,9 +258,12 @@ def _gen_typed(shape, dtype, device):
     if dtype is torch.bool:
         return torch.randint(0, 2, shape, dtype=torch.bool, device=device)
     if dtype.is_complex:
-        real = torch.randn(shape, device=device)
-        imag = torch.randn(shape, device=device)
-        return (real + 1j * imag).to(dtype)
+        if flag_gems.vendor_name == "kunlunxin" and dtype == torch.complex128:
+            pytest.skip("Kunlunxin target storage does not retain complex128 dtype")
+        factory_device = "cpu" if flag_gems.vendor_name == "kunlunxin" else device
+        real = torch.randn(shape, device=factory_device)
+        imag = torch.randn(shape, device=factory_device)
+        return (real + 1j * imag).to(dtype).to(device)
     if dtype.is_floating_point:
         return torch.randn(shape, dtype=dtype, device=device)
     info = torch.iinfo(dtype)
@@ -421,6 +424,11 @@ def test_put__index_out_of_range(bad):
     # the failure is exercised in an isolated subprocess.
     if flag_gems.vendor_name in {"mthreads", "metax", "iluvatar"}:
         pytest.skip("native put_ does not enforce device-side index bounds")
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame native aten::put_ rejects an out-of-range index with a "
+            "host-side IndexError instead of a device-side assert/trap"
+        )
     code = textwrap.dedent(f"""
         import torch
         import flag_gems
@@ -695,9 +703,14 @@ def test_put__view_of_larger_storage(make_view, base_numel, index_vals):
 def test_put__complex32_rejected():
     # Native CUDA `put_` has no ComplexHalf kernel; `complex32` used to fall
     # through to the FP16 real-view path, silently succeeding where ATen raises.
-    inp = torch.zeros(4, dtype=torch.complex32, device=flag_gems.device)
+    factory_device = "cpu" if flag_gems.vendor_name == "kunlunxin" else flag_gems.device
+    inp = torch.zeros(4, dtype=torch.complex32, device=factory_device).to(
+        flag_gems.device
+    )
     index = torch.tensor([0], dtype=torch.int64, device=flag_gems.device)
-    source = torch.ones(1, dtype=torch.complex32, device=flag_gems.device)
+    source = torch.ones(1, dtype=torch.complex32, device=factory_device).to(
+        flag_gems.device
+    )
 
     with pytest.raises(NotImplementedError) as ref_err:
         inp.clone().put_(index, source)

@@ -60,19 +60,34 @@ def sinh_flat_kernel(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
 
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
-def sinh_rcp_flat_kernel(x_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
+def sinh_twoexp16_flat_kernel(
+    x_ptr, out_ptr, N_total, BLOCK: tl.constexpr, EXACT: tl.constexpr
+):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK)
 
-    num_blocks = (N_total + BLOCK - 1) // BLOCK
-    for block_id in tl.range(pid, num_blocks, num_pids):
-        off = block_id * BLOCK + arange
-        mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        t = tl.exp(x)
-        out = 0.5 * t - 0.5 / t
-        tl.store(out_ptr + off, out, mask=mask)
+    if EXACT:
+        # Full-block path, dispatched when N_total % BLOCK == 0: dropping the
+        # boundary mask/predication shaves ~3% at 2^22 and is required for the
+        # 2^24 win (44.2us vs 44.6 masked @32768 / 44.4 @65536); numerically
+        # bit-identical to the masked body (verified on the boundary battery).
+        num_blocks = N_total // BLOCK
+        for block_id in tl.range(pid, num_blocks, num_pids):
+            off = block_id * BLOCK + arange
+            x = tl.load(x_ptr + off).to(tl.float32)
+            # Distributed multiplies: the (exp(x)-exp(-x))*0.5 grouping compiles
+            # ~28% slower on 16-bit element streams (GCU codegen quirk).
+            out = tl.exp(x) * 0.5 - tl.exp(-x) * 0.5
+            tl.store(out_ptr + off, out)
+    else:
+        num_blocks = (N_total + BLOCK - 1) // BLOCK
+        for block_id in tl.range(pid, num_blocks, num_pids):
+            off = block_id * BLOCK + arange
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
+            out = tl.exp(x) * 0.5 - tl.exp(-x) * 0.5
+            tl.store(out_ptr + off, out, mask=mask)
 
 
 @pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
@@ -84,19 +99,29 @@ def sinh_kernel(x):
 
 
 def _choose_block(N_total, itemsize):
-    # do_bench(median) sweep, kernel mode, vs torch.sinh on GCU400: tiny
-    # shapes want the exact next_pow2 tile; 16.7M peaks at 65536 (fp16
-    # 51.2 vs 52.4us @32768); the 512M bucket splits by dtype -- 2-byte
-    # elements gain ~3% from 131072 (1287 vs 1325us @65536) while fp32 is
-    # fastest at 65536 (1349 vs 1386us @32768).
+    # do_bench(median) sweep, kernel mode.  The fp32 branch keeps the original
+    # ladder (fp32 runs at the copy floor everywhere).  The 16-bit ladder was
+    # re-swept with the twoexp16 body + EXACT path (round-3 probes, in-place):
+    # tiny shapes want the exact next_pow2 tile; 2^17/2^18 want 8192 (4.1/4.8us
+    # vs 5.8 @32768), 2^19-2^21 want 16384 (2^21: 10.5 vs 13.2us @65536),
+    # 2^22-2^24 want 32768 (2^22: 15.4 vs 17.4us), 2^26-2^28 keep 65536
+    # (151.8 vs 156.5us @2^26), and 512M gains from 131072.
     if N_total <= 8192:
         return triton.next_power_of_2(N_total)
+    if itemsize <= 2:
+        if N_total <= (1 << 18):
+            return 8192
+        if N_total <= (1 << 21):
+            return 16384
+        if N_total <= (1 << 24):
+            return 32768
+        if N_total > (1 << 28):
+            return 131072
+        return 65536
     if N_total <= 65536:
         return 8192
     if N_total <= 524288:
         return 32768
-    if N_total > (1 << 28) and itemsize <= 2:
-        return 131072
     return 65536
 
 
@@ -104,9 +129,10 @@ def _launch_sinh_flat(inp, out, N_total, itemsize, dtype):
     BLOCK = _choose_block(N_total, itemsize)
     grid_size = min(triton.cdiv(N_total, BLOCK), NUM_SIPS * 2)
     if dtype == torch.float32:
-        kernel, num_warps = sinh_flat_kernel, 4
+        kernel, num_warps, extra = sinh_flat_kernel, 4, {}
     else:
-        kernel, num_warps = sinh_rcp_flat_kernel, 2
+        kernel, num_warps = sinh_twoexp16_flat_kernel, 2
+        extra = {"EXACT": N_total % BLOCK == 0}
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic; observed as converterResult=-2 and a misresolved
     # converter helper script during a host-level userland flake window);
@@ -117,7 +143,7 @@ def _launch_sinh_flat(inp, out, N_total, itemsize, dtype):
         try:
             with torch_device_fn.device(inp.device):
                 kernel[(grid_size,)](
-                    inp, out, N_total, BLOCK=BLOCK, num_warps=num_warps
+                    inp, out, N_total, BLOCK=BLOCK, num_warps=num_warps, **extra
                 )
             return out
         except Exception as exc:

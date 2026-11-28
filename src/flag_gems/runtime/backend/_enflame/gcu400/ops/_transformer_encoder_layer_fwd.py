@@ -47,7 +47,7 @@ def _transformer_encoder_layer_fwd(
     Implements: Self-Attention + LayerNorm + FFN + LayerNorm with residual connections.
     Optimized with FlagGems kernels for better performance.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _TRANSFORMER_ENCODER_LAYER_FWD")
+    logger.debug("GEMS_ENFLAME _TRANSFORMER_ENCODER_LAYER_FWD")
 
     batch_size, seq_len, _ = src.shape
     head_dim = embed_dim // num_heads

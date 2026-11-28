@@ -175,7 +175,7 @@ def _kernel_func() -> "GatherSparseBackwardFunction":
 
 
 def _gather_sparse_backward(self, dim, index, grad):
-    logger.debug("GEMS_ENFLAME_GCU400 _GATHER_SPARSE_BACKWARD")
+    logger.debug("GEMS_ENFLAME _GATHER_SPARSE_BACKWARD")
 
     ndim = self.ndim
 

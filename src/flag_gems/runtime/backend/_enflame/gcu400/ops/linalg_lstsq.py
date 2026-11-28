@@ -1248,7 +1248,7 @@ def _lstsq_gels_wide_blocked(A, B, rcond=None):
 def _fallback(A, b, rcond, driver):
     """Reference path for cases outside the fast-path scope. Routed through CPU
     so it does not re-enter our overridden device kernel."""
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LSTSQ")
+    logger.debug("GEMS_ENFLAME LINALG_LSTSQ")
     res = torch.linalg.lstsq(A.cpu(), b.cpu(), rcond=rcond, driver=driver)
     dev = A.device
     return (
@@ -1422,7 +1422,7 @@ def _empty_rank_sv(A):
 
 
 def linalg_lstsq(A, b, rcond=None, driver=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LSTSQ")
+    logger.debug("GEMS_ENFLAME LINALG_LSTSQ")
 
     # non-gels driver: torch's CUDA gels backend rejects it -> raise likewise
     # (do NOT silently CPU-fall-back and compute a result torch would refuse).

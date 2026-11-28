@@ -238,7 +238,7 @@ def _cslt_sparse_mm(
     Only correct on architectures whose cuSPARSELt metadata swizzle this
     decoder implements. See the module docstring.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _CSLT_SPARSE_MM")
+    logger.debug("GEMS_ENFLAME _CSLT_SPARSE_MM")
 
     K, N = dense_B.shape
     # ``torch._cslt_compress`` returns a 2-D blob whose leading dimension is the

@@ -205,7 +205,7 @@ def upsample_nearest3d_backward(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_NEAREST3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_NEAREST3D_BACKWARD")
     return _upsample_nearest3d_backward_impl(
         grad_output, output_size, input_size, scales_d, scales_h, scales_w
     )
@@ -220,7 +220,7 @@ def upsample_nearest3d_backward_grad_input(
     scales_w: Optional[float] = None,
     grad_input: torch.Tensor = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_NEAREST3D_BACKWARD_GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_NEAREST3D_BACKWARD_GRAD_INPUT")
     return _upsample_nearest3d_backward_impl(
         grad_output,
         output_size,

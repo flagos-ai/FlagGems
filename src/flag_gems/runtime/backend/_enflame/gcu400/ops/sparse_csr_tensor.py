@@ -124,7 +124,7 @@ def sparse_csr_tensor(
     never inferred from ``values`` (the ATen factory defaults it to float32
     and rejects a mismatch), and ``values`` is retained by reference.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_CSR_TENSOR")
+    logger.debug("GEMS_ENFLAME SPARSE_CSR_TENSOR")
     # dtype is never inferred from values: the factory defaults to float32 and
     # requires values.dtype to match the requested dtype exactly.
     requested = _FLOAT32 if dtype is None else dtype
@@ -157,16 +157,14 @@ def sparse_csr_tensor(
     # omitted for its default, which the constructor itself treats as False.
     if device is None:
         device = values.device
-    if pin_memory is False:
-        return _FACTORY(
-            crow_indices, col_indices, values, size, dtype=requested, device=device
-        )
-    return _FACTORY(
-        crow_indices,
-        col_indices,
-        values,
-        size,
-        dtype=requested,
-        device=device,
-        pin_memory=pin_memory,
-    )
+    kwargs = {"dtype": requested, "device": device}
+    if pin_memory is not False:
+        kwargs["pin_memory"] = pin_memory
+    if size is None:
+        # Edge case: the size-less overload is used when device-side inference is unavailable
+        # (empty crow_indices / non-contiguous col_indices); ``crow_col_value`` is that overload.
+        # Passing None explicitly as the 4th positional argument is rejected by ATen as an
+        #  (TypeError: sparse_csr_tensor() received an invalid combination of
+        # invalid combination rather than "reusing the constructor's own inference".
+        return _FACTORY(crow_indices, col_indices, values, **kwargs)
+    return _FACTORY(crow_indices, col_indices, values, size, **kwargs)

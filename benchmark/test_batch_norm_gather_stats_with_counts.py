@@ -20,6 +20,7 @@ import flag_gems
 from . import base, consts
 
 IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
 
 
 # substituted / non-contract baseline: the native aten op has no device kernel
@@ -84,7 +85,7 @@ def test_batch_norm_gather_stats_with_counts():
         op_name="batch_norm_gather_stats_with_counts",
         torch_op=(
             _substituted_batch_norm_gather_stats_with_counts
-            if IS_KUNLUNXIN
+            if IS_KUNLUNXIN or IS_ENFLAME
             else torch.batch_norm_gather_stats_with_counts
         ),
         dtypes=consts.FLOAT_DTYPES,

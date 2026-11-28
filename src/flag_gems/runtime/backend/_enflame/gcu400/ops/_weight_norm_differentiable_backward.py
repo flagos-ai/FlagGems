@@ -25,6 +25,27 @@ from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
 
+# GCU400 has 24 SIPs. Both kernels below run a persistent grid of at most one
+# program per SIP and walk the remaining group blocks with a grid-stride loop,
+# which is markedly faster than one program per block for the large shapes.
+_NUM_SIPS = 24
+# Target number of tensor elements per program tile, split between the group
+# and reduce axes. The reduce axis is capped so the accumulator stays in
+# registers.
+_TILE_ELEMENTS_FIRST = 16384
+_TILE_ELEMENTS_LAST = 32768
+_MAX_BLOCK_REDUCE_FIRST = 512
+_MAX_BLOCK_REDUCE_LAST = 256
+# When the whole reduction fits in one tile the kernel keeps ``v`` and
+# ``grad_w`` live across the projection and writes ``grad_v`` from registers,
+# which removes the second read pass (half the traffic). The cap keeps the
+# live tile small enough to stay in the data scratchpad. For a trailing-``dim``
+# reduction the tile is oriented as (reduce, group), so a long reduce axis
+# narrows the memory-contiguous group axis and the two-pass kernel wins.
+_MAX_ONEPASS_ELEMENTS = 32768
+_MAX_ONEPASS_REDUCE = 1024
+_MAX_NONCONTIG_ONEPASS_REDUCE = 128
+
 
 @libentry()
 @triton.jit
@@ -39,32 +60,66 @@ def _weight_norm_backward_first_kernel(
     N,
     BLOCK_GROUP: tl.constexpr,
     BLOCK_REDUCE: tl.constexpr,
+    ONEPASS: tl.constexpr,
 ):
-    groups = ext.program_id(0) * BLOCK_GROUP + tl.arange(0, BLOCK_GROUP)[:, None]
-    group_mask = groups < M
+    # dim == 0: one group per leading index, reduction over the contiguous
+    # trailing elements. Tile is (GROUP rows, REDUCE cols), so the innermost
+    # tile axis is the memory-contiguous axis.
+    pid = ext.program_id(0)
+    npids = tl.num_programs(0)
+    group_offsets = tl.arange(0, BLOCK_GROUP)
     cols = tl.arange(0, BLOCK_REDUCE)[None, :]
+    num_group_blocks = (M + BLOCK_GROUP - 1) // BLOCK_GROUP
 
-    products = tl.zeros((BLOCK_GROUP, BLOCK_REDUCE), dtype=tl.float32)
-    for start in range(0, N, BLOCK_REDUCE):
-        offsets = groups * N + start + cols
-        mask = group_mask & (start + cols < N)
-        v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
-        w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
-        products += v * w
-    dot = tl.sum(products, axis=1)[:, None]
+    for block_id in tl.range(pid, num_group_blocks, npids):
+        group_index = block_id * BLOCK_GROUP + group_offsets
+        group_mask = group_index < M
+        groups = group_index[:, None]
 
-    g = tl.load(saved_g + groups, mask=group_mask, other=0.0).to(tl.float32)
-    norm = tl.load(saved_norms + groups, mask=group_mask, other=1.0).to(tl.float32)
-    scale = g / norm
-    projection = dot / (norm * norm)
+        if ONEPASS:
+            # The whole reduction is resident, so the projection and the
+            # `grad_v` write reuse the already loaded tiles.
+            offsets = groups * N + cols
+            mask = group_mask[:, None] & (cols < N)
+            v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
+            w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
+            dot = tl.sum(v * w, axis=1)
+            g = tl.load(saved_g + group_index, mask=group_mask, other=0.0).to(
+                tl.float32
+            )
+            norm = tl.load(saved_norms + group_index, mask=group_mask, other=1.0).to(
+                tl.float32
+            )
+            scale = (g / norm)[:, None]
+            projection = (dot / (norm * norm))[:, None]
+            tl.store(grad_v + offsets, scale * (w - v * projection), mask=mask)
+            tl.store(grad_g + group_index, dot / norm, mask=group_mask)
+        else:
+            products = tl.zeros((BLOCK_GROUP, BLOCK_REDUCE), dtype=tl.float32)
+            for start in range(0, N, BLOCK_REDUCE):
+                offsets = groups * N + start + cols
+                mask = group_mask[:, None] & (start + cols < N)
+                v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
+                w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
+                products += v * w
+            dot = tl.sum(products, axis=1)
 
-    for start in range(0, N, BLOCK_REDUCE):
-        offsets = groups * N + start + cols
-        mask = group_mask & (start + cols < N)
-        v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
-        w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
-        tl.store(grad_v + offsets, scale * (w - v * projection), mask=mask)
-    tl.store(grad_g + groups, dot / norm, mask=group_mask)
+            g = tl.load(saved_g + group_index, mask=group_mask, other=0.0).to(
+                tl.float32
+            )
+            norm = tl.load(saved_norms + group_index, mask=group_mask, other=1.0).to(
+                tl.float32
+            )
+            scale = (g / norm)[:, None]
+            projection = (dot / (norm * norm))[:, None]
+
+            for start in range(0, N, BLOCK_REDUCE):
+                offsets = groups * N + start + cols
+                mask = group_mask[:, None] & (start + cols < N)
+                v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
+                w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
+                tl.store(grad_v + offsets, scale * (w - v * projection), mask=mask)
+            tl.store(grad_g + group_index, dot / norm, mask=group_mask)
 
 
 @libentry()
@@ -80,32 +135,66 @@ def _weight_norm_backward_last_kernel(
     N,
     BLOCK_GROUP: tl.constexpr,
     BLOCK_REDUCE: tl.constexpr,
+    ONEPASS: tl.constexpr,
 ):
-    groups = ext.program_id(0) * BLOCK_GROUP + tl.arange(0, BLOCK_GROUP)[:, None]
-    group_mask = groups < N
-    rows = tl.arange(0, BLOCK_REDUCE)[None, :]
+    # dim == last: one group per trailing index, reduction over the leading
+    # rows. Tile is (REDUCE rows, GROUP cols) so the innermost tile axis is the
+    # memory-contiguous group axis. A masked tile store whose innermost axis is
+    # not the contiguous axis is miscompiled on GCU (it silently writes wrong
+    # offsets), so this orientation is mandatory.
+    pid = ext.program_id(0)
+    npids = tl.num_programs(0)
+    group_offsets = tl.arange(0, BLOCK_GROUP)
+    rows = tl.arange(0, BLOCK_REDUCE)[:, None]
+    num_group_blocks = (N + BLOCK_GROUP - 1) // BLOCK_GROUP
 
-    products = tl.zeros((BLOCK_GROUP, BLOCK_REDUCE), dtype=tl.float32)
-    for start in range(0, M, BLOCK_REDUCE):
-        offsets = (start + rows) * N + groups
-        mask = group_mask & (start + rows < M)
-        v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
-        w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
-        products += v * w
-    dot = tl.sum(products, axis=1)[:, None]
+    for block_id in tl.range(pid, num_group_blocks, npids):
+        group_index = block_id * BLOCK_GROUP + group_offsets
+        group_mask = group_index < N
+        groups = group_index[None, :]
 
-    g = tl.load(saved_g + groups, mask=group_mask, other=0.0).to(tl.float32)
-    norm = tl.load(saved_norms + groups, mask=group_mask, other=1.0).to(tl.float32)
-    scale = g / norm
-    projection = dot / (norm * norm)
+        if ONEPASS:
+            offsets = rows * N + groups
+            mask = (rows < M) & group_mask[None, :]
+            v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
+            w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
+            dot = tl.sum(v * w, axis=0)
+            g = tl.load(saved_g + group_index, mask=group_mask, other=0.0).to(
+                tl.float32
+            )
+            norm = tl.load(saved_norms + group_index, mask=group_mask, other=1.0).to(
+                tl.float32
+            )
+            scale = (g / norm)[None, :]
+            projection = (dot / (norm * norm))[None, :]
+            tl.store(grad_v + offsets, scale * (w - v * projection), mask=mask)
+            tl.store(grad_g + group_index, dot / norm, mask=group_mask)
+        else:
+            products = tl.zeros((BLOCK_REDUCE, BLOCK_GROUP), dtype=tl.float32)
+            for start in range(0, M, BLOCK_REDUCE):
+                offsets = (start + rows) * N + groups
+                mask = (start + rows < M) & group_mask[None, :]
+                v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
+                w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
+                products += v * w
+            dot = tl.sum(products, axis=0)
 
-    for start in range(0, M, BLOCK_REDUCE):
-        offsets = (start + rows) * N + groups
-        mask = group_mask & (start + rows < M)
-        v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
-        w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
-        tl.store(grad_v + offsets, scale * (w - v * projection), mask=mask)
-    tl.store(grad_g + groups, dot / norm, mask=group_mask)
+            g = tl.load(saved_g + group_index, mask=group_mask, other=0.0).to(
+                tl.float32
+            )
+            norm = tl.load(saved_norms + group_index, mask=group_mask, other=1.0).to(
+                tl.float32
+            )
+            scale = (g / norm)[None, :]
+            projection = (dot / (norm * norm))[None, :]
+
+            for start in range(0, M, BLOCK_REDUCE):
+                offsets = (start + rows) * N + groups
+                mask = (start + rows < M) & group_mask[None, :]
+                v = tl.load(saved_v + offsets, mask=mask, other=0.0).to(tl.float32)
+                w = tl.load(grad_w + offsets, mask=mask, other=0.0).to(tl.float32)
+                tl.store(grad_v + offsets, scale * (w - v * projection), mask=mask)
+            tl.store(grad_g + group_index, dot / norm, mask=group_mask)
 
 
 def _composite_backward(grad_w, saved_v, saved_g, saved_norms, dim):
@@ -124,19 +213,49 @@ def _composite_backward(grad_w, saved_v, saved_g, saved_norms, dim):
     return grad_v, grad_g
 
 
-def _block_sizes(reduce_size):
-    block_reduce = min(1024, triton.next_power_of_2(max(1, reduce_size)))
-    if block_reduce <= 64:
-        block_group = 16
-    elif block_reduce <= 512:
-        block_group = 8
+def _launch_plan(groups, reduce_size, reduce_is_contiguous):
+    """Pick tile shape, persistent grid and warp count for one launch.
+
+    The tile is sized so a program holds roughly ``_TILE_ELEMENTS_*`` elements,
+    then shrunk when the group count is small so that the grid still spreads
+    work over the SIPs (capped at one program per SIP). When the whole reduce
+    axis fits in one tile the plan switches to the single-pass kernel, which
+    touches ``saved_v`` and ``grad_w`` once instead of twice.
+    """
+    if reduce_is_contiguous:
+        max_block_reduce = _MAX_BLOCK_REDUCE_FIRST
+        tile_elements = _TILE_ELEMENTS_FIRST
     else:
-        block_group = 2
-    return block_group, block_reduce
+        max_block_reduce = _MAX_BLOCK_REDUCE_LAST
+        tile_elements = _TILE_ELEMENTS_LAST
+    pow2_reduce = triton.next_power_of_2(max(1, reduce_size))
+    onepass_groups = _MAX_ONEPASS_ELEMENTS // pow2_reduce
+    onepass_reduce_cap = (
+        _MAX_ONEPASS_REDUCE if reduce_is_contiguous else _MAX_NONCONTIG_ONEPASS_REDUCE
+    )
+    onepass = pow2_reduce <= onepass_reduce_cap and onepass_groups >= 1
+    if onepass:
+        block_reduce = pow2_reduce
+        tile_block_group = onepass_groups
+    else:
+        block_reduce = min(max_block_reduce, pow2_reduce)
+        tile_block_group = max(1, tile_elements // block_reduce)
+    # Never use more groups than exist; keep at least ~2 groups per SIP so the
+    # grid can fill the machine when the group count is small.
+    parallel_block_group = 2 * max(
+        1, triton.next_power_of_2(triton.cdiv(groups, _NUM_SIPS))
+    )
+    block_group = max(
+        1,
+        min(tile_block_group, triton.next_power_of_2(groups), parallel_block_group),
+    )
+    grid = min(triton.cdiv(groups, block_group), _NUM_SIPS)
+    num_warps = max(1, min(32, (block_group * block_reduce) // 512))
+    return block_group, block_reduce, grid, num_warps, onepass
 
 
 def weight_norm_differentiable_backward(grad_w, saved_v, saved_g, saved_norms, dim):
-    logger.debug("GEMS_ENFLAME_GCU400 _WEIGHT_NORM_DIFFERENTIABLE_BACKWARD")
+    logger.debug("GEMS_ENFLAME _WEIGHT_NORM_DIFFERENTIABLE_BACKWARD")
 
     for name, tensor in (
         ("grad_w", grad_w),
@@ -185,15 +304,18 @@ def weight_norm_differentiable_backward(grad_w, saved_v, saved_g, saved_norms, d
         groups = saved_v.shape[0]
         reduce_size = math.prod(saved_v.shape[1:])
         kernel = _weight_norm_backward_first_kernel
+        block_group, block_reduce, grid, num_warps, onepass = _launch_plan(
+            groups, reduce_size, True
+        )
     else:
         groups = saved_v.shape[-1]
         reduce_size = math.prod(saved_v.shape[:-1])
         kernel = _weight_norm_backward_last_kernel
-    block_group, block_reduce = _block_sizes(reduce_size)
-    grid = (triton.cdiv(groups, block_group),)
-    num_warps = 8 if block_group * block_reduce >= 4096 else 4
+        block_group, block_reduce, grid, num_warps, onepass = _launch_plan(
+            groups, reduce_size, False
+        )
     with torch_device_fn.device(saved_v.device):
-        kernel[grid](
+        kernel[(grid,)](
             grad_v,
             grad_g,
             grad_w,
@@ -204,6 +326,7 @@ def weight_norm_differentiable_backward(grad_w, saved_v, saved_g, saved_norms, d
             saved_v.shape[-1] if dim != 0 else math.prod(saved_v.shape[1:]),
             BLOCK_GROUP=block_group,
             BLOCK_REDUCE=block_reduce,
+            ONEPASS=onepass,
             num_warps=num_warps,
         )
     return grad_v, grad_g

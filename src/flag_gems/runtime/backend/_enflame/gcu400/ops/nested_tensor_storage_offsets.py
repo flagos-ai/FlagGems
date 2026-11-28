@@ -86,7 +86,7 @@ def nested_tensor_storage_offsets(self: torch.Tensor) -> torch.Tensor:
     Only the default overload is registered here; the package implemented only
     the default overload, and the ``.out`` overload is left native.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_TENSOR_STORAGE_OFFSETS")
+    logger.debug("GEMS_ENFLAME _NESTED_TENSOR_STORAGE_OFFSETS")
     if not self.is_nested:
         # The registrar always also registers the impl on the backend device
         # key, so dense CUDA tensors (whose key set contains AutogradCUDA)

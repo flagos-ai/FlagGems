@@ -299,7 +299,7 @@ def mrope(
     is_neox_style=True,
     axis_map=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 MROPE")
+    logger.debug("GEMS_ENFLAME MROPE")
     n_tokens = query.shape[0]
     q_heads = query.shape[1] // head_size
     k_heads = key.shape[1] // head_size

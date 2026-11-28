@@ -11,38 +11,53 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""GCU400-specific ``_foreach_sign`` / ``_foreach_sign_``: len==1 flat arm + delegated executor.
 
-"""GCU400-specific ``_foreach_sign``: per-tensor 1D flat kernel.
+The historical implementation launched one 1-D flat kernel per tensor: a 16-tensor list cost 16
+``@libentry`` host dispatches (~15us each), pinning candidate latency at 150-247us under the
+official bench core 9 cells regardless of shape/dtype (2026-11-18 re-measure: out-of-place mean
+0.307x, in-place mean 0.424x), with the 1024^2 tier at ~10x the 1R1W memory floor. Multi-tensor
+lists now go through this directory's ``_foreach_unary.py`` lean single-launch route (the shared
+bulk path costs ~55us host, lean ~8us; the table's ``_sign_func`` body ``(x > 0) - (x < 0)`` is
+bit-identical to the historical kernel's fp32-promoted three-way where semantics: NaN/+-0 -> 0,
++-inf -> +-1), and the single-kernel contract holds.
 
-The common ``foreach_unary`` executor relies on a device-side chunk table and a 2D grid, which on GCU400
-needs int64 pointer tables and easily exceeds the grid.y limit of 255. This uses a per-tensor
-1D fixed grid with in-kernel striding and fp32 computation for accuracy consistent with the common implementation.
+After the change, official bench core (kernel mode, three fresh rounds): out-of-place 9-cell mean
+0.307x -> 3.552/3.743x and in-place 0.424x -> 4.175/4.150x, with absolute latency
+240/151us -> 8-63us that now scales with shape (256^2 sits on the abs family floor at 8-11us,
+and 1024^2 fp16 at 48.1us beats abs at 62.3us); the len>=2 and len==1 arms are one launch each,
+so the single-kernel contract holds.
+
+A single-tensor list keeps the dedicated flat arm: the lean route scales BLOCK by dtype (16-bit
+131072 / 32-bit 65536), so at len==1 it only yields 1-8 CTAs, and on the list_length axis it
+measured worse than the flat kernel (BLOCK 2048 x grid<=48) at 4.7-12.2us (same table as the
+``_foreach_sin`` precedent, 2026-11-18).
+
+Non-float, non-contiguous, mixed dtype/device and complex inputs fall back from the local
+executor to the shared grouped path; dtype promotion and error semantics (empty lists /
+non-Tensor elements aligned with ATen) are unchanged.
 """
 
 import logging
-from contextlib import nullcontext
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._foreach_unary import apply_unary
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
+
+from ._foreach_unary import apply_unary
 
 logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
-
-
-# Generated per round by the optimization driver script; compile-time / launch-time config, semantics unchanged.
-FIXED_GRID = 48
-BLOCK_SIZE = 1024
-NUM_WARPS = 4
-NUM_STAGES = 1
-USE_DEVICE_CONTEXT = 1
-REVERSE_LAUNCH_ORDER = 0
-FALLBACK_TO_PUBLIC = 0
+# Best measured configuration for the single-tensor flat arm (same setting as _foreach_sin on 2026-11-18:
+# 256^2-1024^2 x fp16/fp32 len=1, all tiers 4.7-12.2us).
+FLAT_BLOCK = 2048
+FLAT_FIXED_GRID = 48
+FLAT_NUM_WARPS = 4
+FLAT_NUM_STAGES = 1
 # --- TUNING PARAMS END ---
 
 _FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
@@ -53,10 +68,10 @@ _FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 def _foreach_sign_flat_kernel(
     in_ptr, out_ptr, N, BLOCK: tl.constexpr, FIXED_GRID: tl.constexpr
 ):
-    """1D fixed grid with striding for elementwise sign.
+    """1-D fixed-grid stride computing sign per element (dedicated to the len==1 arm).
 
-    in_ptr and out_ptr differ only in the out-of-place variant; avoiding a host-side clone prevents
-    hitting the grid.x limit of the torch_gcu copy kernel on very large tensors.
+    in_ptr and out_ptr differ only on the out-of-place variant; after fp32 promotion the three-way
+    where is bit-identical to the executor table's ``_sign_func`` (both NaN comparisons false -> 0).
     """
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
@@ -69,70 +84,48 @@ def _foreach_sign_flat_kernel(
         tl.store(out_ptr + offs, result, mask=mask)
 
 
-def _can_use_flat_kernel(self):
-    """Accept only non-empty lists of contiguous float tensors."""
-    if len(self) == 0:
-        return False
-    try:
-        for tensor in self:
-            if tensor.dtype not in _FLOAT_DTYPES or tensor.dtype.is_complex:
-                return False
-            if not tensor.is_contiguous():
-                return False
-    except AttributeError:
-        # Non-Tensor elements: return False so the caller falls back to the common apply_unary for matching exceptions.
-        return False
-    return True
+def _single_tensor_ok(tensor):
+    """Entry condition for the len==1 flat arm: a non-empty contiguous float tensor.
 
-
-def _run_flat_kernel(self, inplace):
-    if FALLBACK_TO_PUBLIC or not _can_use_flat_kernel(self):
-        return apply_unary("sign", self, inplace)
-    tensors = list(self)
-    if not tensors:
-        return [] if not inplace else None
-
-    # Reversing only changes launch order; out-of-place outputs must keep the same order as the original list.
-    launch_indices = list(range(len(tensors)))
-    if REVERSE_LAUNCH_ORDER:
-        launch_indices.reverse()
-    outputs = [None] * len(tensors) if not inplace else None
-    device_context = (
-        torch_device_fn.device(tensors[0].device)
-        if USE_DEVICE_CONTEXT
-        else nullcontext()
+    All other forms (non-Tensor elements, integer/bool/complex, non-contiguous, empty tensors) go
+    to ``apply_unary``, which unifies exception translation and grouped fallback with ATen semantics.
+    """
+    return (
+        isinstance(tensor, torch.Tensor)
+        and tensor.dtype in _FLOAT_DTYPES
+        and not tensor.dtype.is_complex
+        and tensor.is_contiguous()
+        and tensor.numel() > 0
     )
-    with device_context:
-        for index in launch_indices:
-            tensor = tensors[index]
-            num_elems = tensor.numel()
-            out_tensor = tensor if inplace else torch.empty_like(tensor)
-            # Empty tensors have no elements, so skip the kernel launch; but the empty result must still be kept
-            # in the output list to stay one-to-one with the input (foreach returns as many tensors as it receives).
-            if num_elems == 0:
-                if not inplace:
-                    outputs[index] = out_tensor
-                continue
-            grid = (min(triton.cdiv(num_elems, BLOCK_SIZE), FIXED_GRID),)
-            _foreach_sign_flat_kernel[grid](
-                tensor,
-                out_tensor,
-                num_elems,
-                BLOCK_SIZE,
-                FIXED_GRID,
-                num_warps=NUM_WARPS,
-                num_stages=NUM_STAGES,
-            )
-            if not inplace:
-                outputs[index] = out_tensor
-    return None if inplace else outputs
+
+
+def _run_single_flat(tensor, inplace):
+    """One flat launch for a single tensor: in-place writes back, out-of-place allocates a new output."""
+    out_tensor = tensor if inplace else torch.empty_like(tensor)
+    num_elems = tensor.numel()
+    grid = (min(triton.cdiv(num_elems, FLAT_BLOCK), FLAT_FIXED_GRID),)
+    with torch_device_fn.device(tensor.device):
+        _foreach_sign_flat_kernel[grid](
+            tensor,
+            out_tensor,
+            num_elems,
+            FLAT_BLOCK,
+            FLAT_FIXED_GRID,
+            num_warps=FLAT_NUM_WARPS,
+            num_stages=FLAT_NUM_STAGES,
+        )
+    return None if inplace else [out_tensor]
 
 
 def _foreach_sign(self):
     logger.debug("GEMS_GCU400 _FOREACH_SIGN")
-    return _run_flat_kernel(self, inplace=False)
+    if len(self) == 1 and _single_tensor_ok(self[0]):
+        return _run_single_flat(self[0], inplace=False)
+    return apply_unary("sign", self, inplace=False)
 
 
 def _foreach_sign_(self):
     logger.debug("GEMS_GCU400 _FOREACH_SIGN_")
-    return _run_flat_kernel(self, inplace=True)
+    if len(self) == 1 and _single_tensor_ok(self[0]):
+        return _run_single_flat(self[0], inplace=True)
+    return apply_unary("sign", self, inplace=True)

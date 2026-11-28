@@ -234,7 +234,7 @@ def linalg_tensorinv(A, ind=2, *, out=None):
         Tensor X such that tensordot(A, X, ind) is the identity matrix, with
         shape A.shape[ind:] + A.shape[:ind].
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_TENSORINV")
+    logger.debug("GEMS_ENFLAME LINALG_TENSORINV")
     check_inv_input(A, ind)
 
     # tensorinv reduces to a single dense matrix inverse: flatten the first
@@ -307,5 +307,5 @@ def linalg_tensorinv(A, ind=2, *, out=None):
 def linalg_tensorinv_out(A, ind=2, *, out=None):
     """Out-of-place variant of linalg_tensorinv: computes the tensor inverse
     and writes the result into the provided ``out`` tensor."""
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_TENSORINV_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_TENSORINV_OUT")
     return linalg_tensorinv(A, ind=ind, out=out)

@@ -454,5 +454,5 @@ def _chunk_cat_impl(
 
 def chunk_cat(tensors: List[torch.Tensor], dim: int, num_chunks: int) -> torch.Tensor:
     """_chunk_cat operator."""
-    logger.debug("GEMS_ENFLAME_GCU400 _CHUNK_CAT")
+    logger.debug("GEMS_ENFLAME _CHUNK_CAT")
     return _chunk_cat_impl(tensors, dim, num_chunks)

@@ -506,6 +506,13 @@ def test_triangular_solve_out_rejects_autograd(requires_grad):
 @pytest.mark.parametrize("flags", FLAGS)
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("loss_output", ["solution", "clone", "both"])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::triangular_solve"
+    ),
+)
 def test_triangular_solve_autograd_broadcast(flags, dtype, loss_output):
     B, A = _inputs((2, 1), (3,), 7, 3, dtype, flags[2])
     ref_A = to_reference(A).detach().clone().requires_grad_()
