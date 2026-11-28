@@ -20,6 +20,8 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.embedding import embedding as generic_embedding
+from flag_gems.ops.embedding import embedding_backward as generic_embedding_backward
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -78,6 +80,109 @@ def test_embedding(EmbeddingSize, Batch, M, N, padding_idx, scale_grad_by_freq, 
         scale_grad_by_freq=scale_grad_by_freq,
     )
     utils.gems_assert_close(res_out, ref_out, dtype)
+
+
+@pytest.mark.embedding
+@pytest.mark.skipif(
+    flag_gems.embedding is not generic_embedding,
+    reason="Requires the generic embedding implementation",
+)
+@pytest.mark.parametrize(
+    "index_data,width,padding_idx",
+    [
+        pytest.param([0, 0, 2], 4, -1, id="duplicate-indices"),
+        pytest.param([[0, 5], [2, 0]], 33, 0, id="padding-lookup"),
+        pytest.param(2, 1, -1, id="scalar-index"),
+        pytest.param([], 7, -1, id="empty-indices"),
+        pytest.param([0, 2], 0, -1, id="zero-width"),
+    ],
+)
+def test_embedding_sparse_forward(index_data, width, padding_idx):
+    weight = torch.arange(6 * width, dtype=torch.float32).reshape(6, width)
+    indices = torch.tensor(index_data, dtype=torch.int64)
+    expected = torch.ops.aten.embedding.default(
+        weight, indices, padding_idx, False, True
+    )
+    actual = flag_gems.embedding(
+        weight.to(device), indices.to(device), padding_idx, sparse=True
+    )
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0, atol=0)
+
+
+def _check_sparse_embedding_backward(indices, width, padding_idx):
+    grad = torch.arange(indices.numel() * width, dtype=torch.float32).reshape(
+        *indices.shape, width
+    )
+    expected = torch.ops.aten.embedding_backward.default(
+        grad, indices, 6, padding_idx, False, True
+    )
+    actual = flag_gems.embedding_backward(
+        grad.to(device), indices.to(device), 6, padding_idx, sparse=True
+    )
+
+    assert actual.layout == torch.sparse_coo
+    assert actual.shape == expected.shape
+    assert actual.dtype == expected.dtype
+    assert actual.sparse_dim() == expected.sparse_dim()
+    assert actual.dense_dim() == expected.dense_dim()
+    assert actual._nnz() == expected._nnz()
+    # A dense comparison would miss zero-valued padding entries in the COO.
+    torch.testing.assert_close(
+        actual._indices().cpu(), expected._indices(), rtol=0, atol=0
+    )
+    torch.testing.assert_close(
+        actual._values().cpu(), expected._values(), rtol=0, atol=0
+    )
+
+
+@pytest.mark.embedding_backward
+@pytest.mark.skipif(
+    flag_gems.embedding_backward is not generic_embedding_backward,
+    reason="Requires the generic embedding backward implementation",
+)
+@pytest.mark.parametrize(
+    "index_data,index_dtype,width,padding_idx",
+    [
+        pytest.param([0, 0, 2], torch.int64, 4, -1, id="duplicate-indices"),
+        pytest.param([0, 2, 0, 2, 5, 0], torch.int32, 33, 0, id="mixed-padding"),
+        pytest.param([5, 5], torch.int64, 4, 5, id="all-padding"),
+        pytest.param([4, 1, 2, 1], torch.int64, 1, 0, id="padding-absent"),
+        pytest.param(2, torch.int64, 7, -1, id="scalar-index"),
+        pytest.param([], torch.int32, 4, 0, id="empty-indices"),
+        pytest.param([0, 5, 2], torch.int64, 0, 0, id="zero-width"),
+    ],
+)
+def test_embedding_sparse_gradient(index_data, index_dtype, width, padding_idx):
+    _check_sparse_embedding_backward(
+        torch.tensor(index_data, dtype=index_dtype), width, padding_idx
+    )
+
+
+@pytest.mark.embedding_backward
+@pytest.mark.skipif(
+    flag_gems.embedding_backward is not generic_embedding_backward,
+    reason="Requires the generic embedding backward implementation",
+)
+@pytest.mark.parametrize("rows", [255, 256, 257, 16385])
+def test_embedding_sparse_gradient_scan(rows):
+    _check_sparse_embedding_backward(torch.arange(rows, dtype=torch.int32) % 6, 9, 0)
+
+
+@pytest.mark.embedding_backward
+@pytest.mark.skipif(
+    flag_gems.embedding_backward is not generic_embedding_backward,
+    reason="Requires the generic embedding backward implementation",
+)
+def test_embedding_sparse_gradient_rejects_frequency_scaling():
+    grad = torch.ones(3, 4, dtype=torch.float32)
+    indices = torch.tensor([0, 0, 2], dtype=torch.int64)
+    message = "scale_grad_by_freq not supported with sparse gradients"
+    with pytest.raises(RuntimeError, match=message):
+        torch.ops.aten.embedding_backward.default(grad, indices, 6, -1, True, True)
+    with pytest.raises(RuntimeError, match=message):
+        flag_gems.embedding_backward(
+            grad.to(device), indices.to(device), 6, -1, True, True
+        )
 
 
 @pytest.mark.embedding_backward

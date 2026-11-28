@@ -18,6 +18,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
@@ -133,16 +134,17 @@ def embedding_grad_scale_kernel(
 
 def embedding(weight, indices, padding_idx=-1, scale_grad_by_freq=False, sparse=False):
     logger.debug("GEMS EMBEDDING_FORWARD")
-    assert not sparse, "Currently do not support sparse format"
-
+    # sparse selects the weight gradient layout, not the forward lookup.
     M = indices.numel()
     N = weight.shape[-1]
+    output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
+    if M == 0 or N == 0:
+        return output
 
     BLOCK_SIZE = triton.next_power_of_2(N)
     # TODO: remove contiguous enforcement
     indices = indices.contiguous()
     weight = weight.contiguous()
-    output = torch.empty((*indices.shape, N), device=indices.device, dtype=weight.dtype)
 
     with torch_device_fn.device(weight.device):
         embedding_kernel[M,](output, indices, weight, N, weight.shape[0], BLOCK_SIZE)
@@ -159,7 +161,10 @@ def embedding_backward(
     sparse=False,
 ):
     logger.debug("GEMS EMBEDDING_BACKWARD")
-    assert not sparse, "Currently do not support sparse format"
+    if sparse:
+        return embedding_sparse_backward(
+            grad_outputs, indices, num_weights, padding_idx, scale_grad_by_freq
+        )
 
     M = indices.numel()
     N = grad_outputs.shape[-1]

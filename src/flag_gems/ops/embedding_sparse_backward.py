@@ -21,36 +21,40 @@ import triton
 import triton.language as tl
 
 import flag_gems
+from flag_gems.ops.cumsum import cumsum
+from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
 
 @triton.jit
-def _masked_copy_rows_kernel(
-    grad_output_ptr,  # (N, D)
-    indices_ptr,  # (N,)
-    values_ptr,  # (N, D)
+def _mark_embedding_rows_kernel(
+    indices, keep, padding_idx, n_rows, BLOCK: tl.constexpr
+):
+    rows = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    idx = tl.load(indices + rows, mask=rows < n_rows, other=0)
+    tl.store(keep + rows, idx != padding_idx, mask=rows < n_rows)
+
+
+@triton.jit
+def _write_sparse_embedding_rows_kernel(
+    grad,
+    indices,
+    prefix,
+    out_indices,
+    out_values,
     padding_idx,
-    N,
-    EMBED_DIM: tl.constexpr,
+    D: tl.constexpr,
     BLOCK_D: tl.constexpr,
 ):
-    # One program handles one row. Every row is copied through, but rows whose
-    # index equals padding_idx are written as zeros. This keeps the launch grid
-    # static (N rows) so there is no data-dependent host synchronization, unlike
-    # a torch.nonzero() compaction — that sync is what tanked the padded shapes.
-    pid_n = tl.program_id(0)
-    if pid_n >= N:
-        return
-
-    offs_d = tl.arange(0, BLOCK_D)
-    mask_d = offs_d < EMBED_DIM
-
-    row_idx = tl.load(indices_ptr + pid_n)
-    go = tl.load(grad_output_ptr + pid_n * EMBED_DIM + offs_d, mask=mask_d, other=0)
-    keep = row_idx != padding_idx
-    go = tl.where(keep, go, 0.0)
-    tl.store(values_ptr + pid_n * EMBED_DIM + offs_d, go, mask=mask_d)
+    row = tl.program_id(0)
+    idx = tl.load(indices + row)
+    if idx != padding_idx:
+        dst = tl.load(prefix + row) - 1
+        cols = tl.arange(0, BLOCK_D)
+        values = tl.load(grad + row * D + cols, cols < D, other=0)
+        tl.store(out_indices + dst, idx)
+        tl.store(out_values + dst * D + cols, values, cols < D)
 
 
 def embedding_sparse_backward(
@@ -80,43 +84,41 @@ def embedding_sparse_backward(
         )
 
     device = grad_output.device
-    assert (
-        grad_output.dim() >= 2
-    ), "grad_output must have embedding dimension as the last dim."
-
+    n_rows = indices.numel()
     D = grad_output.shape[-1]
-    go = grad_output.contiguous().view(-1, D)  # (N, D)
-    idx = indices.contiguous().view(-1)  # (N,)
-    N = idx.numel()
-    assert go.shape[0] == N, "indices number must match grad_output rows."
-
-    # aten's sparse backward emits one COO entry per grad row, dropping the ones
-    # whose index equals padding_idx, and does NOT accumulate duplicates. The
-    # result is an uncoalesced sparse COO tensor of shape (num_weights, D).
-    if padding_idx is not None and padding_idx >= 0:
-        # Keep every row in place and zero the padding rows in a single Triton
-        # pass. A dropped row and an all-zero row densify identically, so this
-        # matches aten's dense-equivalent gradient while avoiding the host sync
-        # that a nonzero() compaction would force on every launch.
-        sparse_indices = idx.view(1, -1)
-        values = torch.empty((N, D), device=device, dtype=grad_output.dtype)
-        if N > 0:
-            BLOCK_D = triton.next_power_of_2(D)
-            _masked_copy_rows_kernel[(N,)](
-                go,
-                idx,
-                values,
-                padding_idx,
-                N,
-                EMBED_DIM=D,
-                BLOCK_D=BLOCK_D,
-            )
+    if grad_output.numel() == 0:
+        sparse_indices = torch.empty((1, 0), device=device, dtype=torch.int64)
+        values = torch.empty((0, D), device=device, dtype=grad_output.dtype)
     else:
-        # No padding: every grad row survives in order, so the flattened
-        # grad_output rows are exactly the COO values. Reuse them directly
-        # instead of copying into a fresh buffer.
-        sparse_indices = idx.view(1, -1)
-        values = go
+        go = grad_output.contiguous().view(n_rows, D)
+        idx = indices.contiguous().view(n_rows)
+        if padding_idx is None or padding_idx == -1:
+            # Preserve duplicate indices in their input order, as ATen does.
+            sparse_indices = idx.view(1, -1)
+            values = go
+        else:
+            # Read the final count once to allocate the exact COO shape. Zero
+            # padding entries are not equivalent to omitted entries for optimizers.
+            keep = torch.empty(n_rows, device=device, dtype=torch.int32)
+            with torch_device_fn.device(device):
+                _mark_embedding_rows_kernel[(triton.cdiv(n_rows, 256),)](
+                    idx, keep, padding_idx, n_rows, 256
+                )
+                prefix = cumsum(keep, 0)
+                nnz = prefix[-1].item()
+                sparse_indices = torch.empty((1, nnz), device=device, dtype=torch.int64)
+                values = torch.empty((nnz, D), device=device, dtype=grad_output.dtype)
+                if nnz:
+                    _write_sparse_embedding_rows_kernel[(n_rows,)](
+                        go,
+                        idx,
+                        prefix,
+                        sparse_indices,
+                        values,
+                        padding_idx,
+                        D,
+                        triton.next_power_of_2(D),
+                    )
 
     out = torch.sparse_coo_tensor(
         sparse_indices,
