@@ -350,6 +350,9 @@ def pairwise_distance(x1, x2, p=2.0, eps=1e-6, keepdim=False):
         x1 = x1.contiguous()
     if not x2.is_contiguous():
         x2 = x2.contiguous()
+    if not x1.dtype.is_floating_point or not x2.dtype.is_floating_point:
+        x1 = x1.to(torch.float32)
+        x2 = x2.to(torch.float32)
     D = x1.shape[-1]
 
     # Empty feature dim: torch returns 0 for finite p; inf/-inf have no identity
