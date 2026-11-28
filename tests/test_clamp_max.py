@@ -64,7 +64,16 @@ def test_clamp_max_low_precision(shape, max, dtype):
         ref_inp = utils.to_reference(inp.float())
         ref_out = torch.clamp_max(ref_inp, max).to(dtype)
         res_out = flag_gems.clamp_max(inp, max)
-        utils.gems_assert_close(res_out, ref_out, dtype)
+        if flag_gems.vendor_name == "enflame":
+            # torch >= 2.10 rejects any non-zero rtol/atol on 1-byte floats
+            # ("not supported for bitwise comparison of low dimensional
+            # floats"), so the comparison would raise before checking the
+            # values.  An fp8 value is exactly representable in fp32, so
+            # promote both sides and compare there; other vendors keep their
+            # existing comparison.
+            utils.gems_assert_close(res_out.float(), ref_out.float(), torch.float32)
+        else:
+            utils.gems_assert_close(res_out, ref_out, dtype)
     else:
         # An integral tensor with a float scalar promotes the result to
         # float32, matching torch's type promotion rules.
@@ -101,6 +110,12 @@ def test_clamp_max_int8_overflow_scalar():
     # Values outside the dtype range are rejected before dispatch, matching
     # native "value cannot be converted to type int8_t without overflow".
     inp = torch.tensor([1, 2, 3], dtype=torch.int8, device=flag_gems.device)
+    if flag_gems.vendor_name == "enflame":
+        # torch_gcu's native clamp_max does not validate an integral scalar;
+        # only the FlagGems entry point raises the ATen error here.
+        with pytest.raises(RuntimeError):
+            flag_gems.clamp_max(inp, 200)
+        return
     with pytest.raises(RuntimeError):
         torch.clamp_max(inp, 200)
     with pytest.raises(RuntimeError):
@@ -111,6 +126,11 @@ def test_clamp_max_int8_overflow_scalar():
 def test_clamp_max_uint8_overflow_scalar():
     # Negative scalars outside [-255, 255] are rejected for uint8 as well.
     inp = torch.tensor([1, 2, 3], dtype=torch.uint8, device=flag_gems.device)
+    if flag_gems.vendor_name == "enflame":
+        # Same native validation gap as the int8 case above.
+        with pytest.raises(RuntimeError):
+            flag_gems.clamp_max(inp, -256)
+        return
     with pytest.raises(RuntimeError):
         torch.clamp_max(inp, -256)
     with pytest.raises(RuntimeError):

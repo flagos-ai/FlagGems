@@ -27,6 +27,9 @@ class RangeBenchmark(base.Benchmark):
         self.shapes = RANGE_SIZES
 
     def get_input_iter(self, cur_dtype):
+        # Keep the factory on the benchmark device: torch.range takes no tensor
+        # input, so without an explicit device both legs would run on CPU and
+        # the speedup would compare host code against the GCU kernel.
         for end in self.shapes:
             # Keep the native baseline on the benchmark device. Without
             # ``device`` torch.range allocates on CPU, so --kernel-check can

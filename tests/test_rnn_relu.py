@@ -42,7 +42,7 @@ def _metax_full_precision():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads"
+    flag_gems.vendor_name not in ("mthreads", "enflame")
     and (
         (cfg.TO_CPU and flag_gems.vendor_name != "metax")
         or flag_gems.device != "cuda"
@@ -100,7 +100,7 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads"
+    flag_gems.vendor_name not in ("mthreads", "enflame")
     and (
         (cfg.TO_CPU and flag_gems.vendor_name != "metax")
         or flag_gems.device != "cuda"
@@ -160,7 +160,7 @@ def test_rnn_relu_direct_wrapper(
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads"
+    flag_gems.vendor_name not in ("mthreads", "enflame")
     and (
         (cfg.TO_CPU and flag_gems.vendor_name != "metax")
         or flag_gems.device != "cuda"
@@ -221,7 +221,7 @@ def test_rnn_relu_direct_backward():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads"
+    flag_gems.vendor_name not in ("mthreads", "enflame")
     and (
         (cfg.TO_CPU and flag_gems.vendor_name != "metax")
         or flag_gems.device != "cuda"

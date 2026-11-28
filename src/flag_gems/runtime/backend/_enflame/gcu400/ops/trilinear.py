@@ -111,7 +111,7 @@ def _trilinear(i1, i2, i3, expand1, expand2, expand3, sumdim, unroll_dim=1):
     and sums over ``sumdim``. ``unroll_dim`` does not affect the mathematical
     result and is accepted for aten signature compatibility.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _TRILINEAR")
+    logger.debug("GEMS_ENFLAME _TRILINEAR")
     if not (
         isinstance(i1, torch.Tensor)
         and isinstance(i2, torch.Tensor)
@@ -125,7 +125,7 @@ def _trilinear(i1, i2, i3, expand1, expand2, expand3, sumdim, unroll_dim=1):
 
 def _trilinear_out(i1, i2, i3, expand1, expand2, expand3, sumdim, unroll_dim=1, *, out):
     """Out variant of :func:`_trilinear` writing the result into ``out``."""
-    logger.debug("GEMS_ENFLAME_GCU400 _TRILINEAR_OUT")
+    logger.debug("GEMS_ENFLAME _TRILINEAR_OUT")
     if not (
         isinstance(i1, torch.Tensor)
         and isinstance(i2, torch.Tensor)

@@ -906,7 +906,7 @@ _repeat_func = RepeatFunction()
 
 
 def repeat(inp: torch.Tensor, sizes) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 REPEAT")
+    logger.debug("GEMS_ENFLAME REPEAT")
 
     out = _repeat_func(inp, sizes)
     return out

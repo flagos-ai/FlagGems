@@ -125,7 +125,7 @@ def _masked_softmax_kernel_mt0_lastdim(
 
 
 def _masked_softmax(self, mask, dim=None, mask_type=None):
-    logger.debug("GEMS_ENFLAME_GCU400 _MASKED_SOFTMAX")
+    logger.debug("GEMS_ENFLAME _MASKED_SOFTMAX")
     assert mask.dtype == torch.bool, "Mask should be a boolean tensor"
     assert mask_type in (0, 1, 2), "mask_type should be 0, 1 or 2"
 

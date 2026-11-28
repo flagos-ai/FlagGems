@@ -28,6 +28,16 @@ from . import kernelgen_test_utils as tu
 
 _DEVICE = flag_gems.runtime.device
 
+_IS_ASCEND = flag_gems.vendor_name == "ascend"
+
+
+def _to_ref(inp):
+    """Move sparse tensor to CPU on ascend so the native ATen reference runs there."""
+    if _IS_ASCEND:
+        return inp.cpu()
+    return tu.to_reference(inp)
+
+
 # Measured on this NVIDIA target: the default half_to_float=False form has native
 # kernels for float32/float64 only, the .int dtype= form converts
 # int8/uint8/int32/int64/bfloat16/fp8 inputs to float32/float64, and float16 fails
@@ -322,7 +332,7 @@ _SPECIAL_CONVERT_SCENARIOS = tu.selected_cases(
 def test__sparse_softmax_default_form(case, value_range, dtype):
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_ref(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
@@ -340,7 +350,7 @@ def test__sparse_softmax_dtype_conversion(case, value_range, dtype):
     # runnable at all.
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_ref(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.int(ref_inp, dim, dtype=torch.float32)
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float32)
@@ -356,7 +366,7 @@ def test__sparse_softmax_dtype_conversion(case, value_range, dtype):
 def test__sparse_softmax_dtype_conversion_float64(case, value_range, dtype):
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_ref(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.int(ref_inp, dim, dtype=torch.float64)
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float64)
@@ -374,7 +384,7 @@ def test__sparse_softmax_int_overload_keeps_input_dtype(case, value_range, dtype
     # candidate's own default matches the schema instead of a hardcoded float32.
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_ref(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.int(ref_inp, dim)
     res_out = flag_gems._sparse_softmax(inp, dim)
@@ -390,7 +400,7 @@ def test__sparse_softmax_int_overload_keeps_input_dtype(case, value_range, dtype
 def test__sparse_softmax_hybrid(case, value_range, dtype):
     shape, sparse_dim, nnz, dim = case
     inp = _make_hybrid(shape, sparse_dim, nnz, dtype, value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_ref(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
@@ -406,7 +416,7 @@ def test__sparse_softmax_hybrid(case, value_range, dtype):
 def test__sparse_softmax_out(case, value_range, dtype):
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_ref(inp)
     out = _empty_out(shape, inp.dtype, inp.device)
     ref_out = _empty_out(shape, ref_inp.dtype, ref_inp.device)
 
@@ -431,8 +441,8 @@ def test__sparse_softmax_backward(case, value_range, dtype):
     inp = _make_sparse(shape, dim, support, dtype, value_range=value_range)
     inp.requires_grad_(True)
     upstream = _upstream_like(inp, shape)
-    ref_inp = tu.to_reference(inp)
-    ref_upstream = tu.to_reference(upstream)
+    ref_inp = _to_ref(inp)
+    ref_upstream = _to_ref(upstream)
 
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
@@ -462,8 +472,8 @@ def test__sparse_softmax_backward_hybrid(dtype):
         inp._indices(), upstream, shape, dtype=dtype, device=inp.device
     )
 
-    ref_inp = tu.to_reference(inp)
-    ref_upstream = tu.to_reference(upstream)
+    ref_inp = _to_ref(inp)
+    ref_upstream = _to_ref(upstream)
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
 
@@ -494,8 +504,8 @@ def test__sparse_softmax_backward_all_single(dtype):
         device=inp.device,
     )
 
-    ref_inp = tu.to_reference(inp)
-    ref_upstream = tu.to_reference(upstream)
+    ref_inp = _to_ref(inp)
+    ref_upstream = _to_ref(upstream)
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, 1, False)
     (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, grad_outputs=ref_upstream)
 
@@ -512,7 +522,7 @@ def test__sparse_softmax_backward_all_single(dtype):
 def test__sparse_softmax_special_values(case, dtype, scenario):
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, scenario=scenario)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_ref(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.default(ref_inp, dim, False)
     res_out = flag_gems._sparse_softmax(inp, dim, half_to_float=False)
@@ -529,7 +539,7 @@ def test__sparse_softmax_special_values_dtype_conversion(case, dtype, scenario):
     # converts them, so their NaN/Inf payloads still have a native result to match.
     shape, dim, support = case
     inp = _make_sparse(shape, dim, support, dtype, scenario=scenario)
-    ref_inp = tu.to_reference(inp)
+    ref_inp = _to_ref(inp)
 
     ref_out = torch.ops.aten._sparse_softmax.int(ref_inp, dim, dtype=torch.float32)
     res_out = flag_gems._sparse_softmax(inp, dim, dtype=torch.float32)
@@ -608,6 +618,11 @@ def test__sparse_softmax_rejects_dense_input():
         flag_gems._sparse_softmax(inp, 1, half_to_float=False)
 
 
+@pytest.mark.skipif(
+    _IS_ASCEND,
+    reason="aten::_sparse_softmax is not supported on the NPU backend; "
+    "accuracy tests use CPU reference instead",
+)
 def test_sparse_softmax_dispatch():
     """Smoke-test the dispatcher path (base, .int and .out overloads)."""
     inp = _make_sparse(

@@ -11,39 +11,47 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+"""GCU400-specific ``_foreach_sin`` (out-of-place): single-tensor flat arm + delegated executor.
 
-"""GCU400-specific ``_foreach_sin``: per-tensor 1D flat kernel.
+Multi-tensor lists delegate to this directory's ``_foreach_unary.py`` lean single-launch route:
+the older version ran a 1-D flat kernel per tensor at ~10us of host ``@libentry`` dispatch each,
+pinning candidate latency at a shape-independent ~240-260us under the official bench core (256^2
+only 0.31-0.34x, 9-cell mean 0.679x, re-anchored on the new stack 2026-11-18; the 0.28x in QA
+weekly 1114 is a stale old-stack value). The lean route scales BLOCK by powers of two to bring
+grid.y back under 255 and finishes all tensors in one launch (host ~8us, 2026-11-16 24-variant
+campaign; the same table's in-place ``sin_`` row measured 3.93x); the fp32 promotion semantics of
+``sin_func`` in the table are bit-identical to the historical kernel's ``.to(tl.float32)`` branch,
+so there is no new math risk.
 
-The common ``foreach_unary`` executor relies on a device-side chunk table and a 2D grid, which on GCU400
-needs int64 pointer tables and easily exceeds the grid.y limit of 255. This uses a per-tensor
-1D fixed grid with in-kernel striding and fp32 computation for accuracy consistent with the common implementation.
+A single-tensor list keeps the dedicated flat arm: the lean route's BLOCK (16-bit 65536/131072)
+only yields 1-8 CTAs at len=1, measured 11.6-20.9us on the list_length axis, worse than the old
+flat kernel (BLOCK 2048 x grid<=48) at 4.7-12.2us (2026-11-18, 256^2/512^2/1024^2 x fp16/fp32
+all tiers); both arms are one launch each, so the single-kernel contract holds.
+
+Non-float, non-contiguous, mixed dtype/device and complex inputs fall back to ``apply_unary``'s
+shared grouped path; dtype promotion and error semantics (int64 in-place raising RuntimeError,
+empty lists / non-Tensor elements aligned with ATen) are unchanged.
 """
 
 import logging
-from contextlib import nullcontext
 
 import torch
 import triton
 import triton.language as tl
 
-from flag_gems.ops._foreach_unary import apply_unary
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
+from ._foreach_unary import apply_unary
+
 logger = logging.getLogger(__name__)
 
-# --- TUNING PARAMS START ---
-
-
-# Generated per round by the optimization driver script; compile-time / launch-time config, semantics unchanged.
-FIXED_GRID = 48
-BLOCK_SIZE = 2048
-NUM_WARPS = 4
-NUM_STAGES = 1
-USE_DEVICE_CONTEXT = 1
-REVERSE_LAUNCH_ORDER = 0
-FALLBACK_TO_PUBLIC = 0
-# --- TUNING PARAMS END ---
+# Best measured configuration for the single-tensor flat arm (same as the historical per-tensor implementation):
+# BLOCK 2048 / grid limit 48 / num_warps 4, fastest across all tiers for small and medium single-tensor shapes.
+_FLAT_BLOCK = 2048
+_FLAT_FIXED_GRID = 48
+_FLAT_NUM_WARPS = 4
+_FLAT_NUM_STAGES = 1
 
 _FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 
@@ -53,11 +61,7 @@ _FLOAT_DTYPES = (torch.float16, torch.float32, torch.bfloat16)
 def _foreach_sin_flat_kernel(
     in_ptr, out_ptr, N, BLOCK: tl.constexpr, FIXED_GRID: tl.constexpr
 ):
-    """1D fixed grid with striding for elementwise sin.
-
-    in_ptr and out_ptr differ only in the out-of-place variant; avoiding a host-side clone prevents
-    hitting the grid.x limit of the torch_gcu copy kernel on very large tensors.
-    """
+    """1-D fixed-grid stride computing sin per element, bit-identical to the executor body after fp32 promotion."""
     arange = tl.arange(0, BLOCK)
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -69,65 +73,33 @@ def _foreach_sin_flat_kernel(
         tl.store(out_ptr + offs, result, mask=mask)
 
 
-def _can_use_flat_kernel(self):
-    """Accept only non-empty lists of contiguous float tensors."""
-    if len(self) == 0:
-        return False
-    try:
-        for tensor in self:
-            if tensor.dtype not in _FLOAT_DTYPES or tensor.dtype.is_complex:
-                return False
-            if not tensor.is_contiguous():
-                return False
-    except AttributeError:
-        # Non-Tensor elements: return False so the caller falls back to the common apply_unary for matching exceptions.
-        return False
-    return True
-
-
-def _run_flat_kernel(self, inplace):
-    if FALLBACK_TO_PUBLIC or not _can_use_flat_kernel(self):
-        return apply_unary("sin", self, inplace)
-    tensors = list(self)
-    if not tensors:
-        return [] if not inplace else None
-
-    # Reversing only changes launch order; out-of-place outputs must keep the same order as the original list.
-    launch_indices = list(range(len(tensors)))
-    if REVERSE_LAUNCH_ORDER:
-        launch_indices.reverse()
-    outputs = [None] * len(tensors) if not inplace else None
-    device_context = (
-        torch_device_fn.device(tensors[0].device)
-        if USE_DEVICE_CONTEXT
-        else nullcontext()
-    )
-    with device_context:
-        for index in launch_indices:
-            tensor = tensors[index]
-            num_elems = tensor.numel()
-            out_tensor = tensor if inplace else torch.empty_like(tensor)
-            # Empty tensors have no elements, so skip the kernel launch; but the empty result must still be kept
-            # in the output list to stay one-to-one with the input (foreach returns as many tensors as it receives).
-            if num_elems == 0:
-                if not inplace:
-                    outputs[index] = out_tensor
-                continue
-            grid = (min(triton.cdiv(num_elems, BLOCK_SIZE), FIXED_GRID),)
-            _foreach_sin_flat_kernel[grid](
-                tensor,
-                out_tensor,
-                num_elems,
-                BLOCK_SIZE,
-                FIXED_GRID,
-                num_warps=NUM_WARPS,
-                num_stages=NUM_STAGES,
-            )
-            if not inplace:
-                outputs[index] = out_tensor
-    return None if inplace else outputs
+def _run_single_flat(tensor):
+    out_tensor = torch.empty_like(tensor)
+    num_elems = tensor.numel()
+    grid = (min(triton.cdiv(num_elems, _FLAT_BLOCK), _FLAT_FIXED_GRID),)
+    with torch_device_fn.device(tensor.device):
+        _foreach_sin_flat_kernel[grid](
+            tensor,
+            out_tensor,
+            num_elems,
+            _FLAT_BLOCK,
+            _FLAT_FIXED_GRID,
+            num_warps=_FLAT_NUM_WARPS,
+            num_stages=_FLAT_NUM_STAGES,
+        )
+    return out_tensor
 
 
 def _foreach_sin(self):
     logger.debug("GEMS_GCU400 _FOREACH_SIN")
-    return _run_flat_kernel(self, inplace=False)
+    if len(self) == 1:
+        tensor = self[0]
+        if (
+            isinstance(tensor, torch.Tensor)
+            and tensor.dtype in _FLOAT_DTYPES
+            and not tensor.dtype.is_complex
+            and tensor.is_contiguous()
+            and tensor.numel() > 0
+        ):
+            return [_run_single_flat(tensor)]
+    return apply_unary("sin", self, inplace=False)

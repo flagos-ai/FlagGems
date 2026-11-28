@@ -46,9 +46,19 @@ def get_block_wise_smm_configs():
     # block and the b-scale base stays a scalar address (a per-lane
     # offs_bn // SCALE_BLOCK_N divide in a load address scalarizes the
     # whole loop on GCU). num_warps=4 is the GCU hard cap.
-    logger.debug("GEMS_ENFLAME_GCU400 GET_BLOCK_WISE_SMM_CONFIGS")
+    logger.debug("GEMS_ENFLAME GET_BLOCK_WISE_SMM_CONFIGS")
     tile_configs = [
         # (TILE_M, TILE_N, num_warps, num_stages)
+        # Narrow N tiles matter for small-M blocks: the grid is
+        # cdiv(M, TILE_M) * cdiv(N, TILE_N), so an M=16 tile with TILE_N=128
+        # only launches 2 CTAs on a 24-sip GCU400. Measured on
+        # m=16/k=496/n=256: (16,128) 829us, (16,64) 468us, (16,32) 290us,
+        # (32,128) 921us -> the narrow tiles are kept for that regime and the
+        # wide ones still win on large M where the grid is already saturated.
+        (16, 32, 4, 3),
+        (16, 64, 4, 3),
+        (32, 64, 4, 3),
+        (64, 64, 4, 3),
         (16, 128, 4, 3),
         (32, 128, 4, 3),
         (64, 128, 4, 3),
@@ -299,7 +309,17 @@ def _block_wise_128_smm_launcher(
     if K % SCALE_BLOCK_K != 0:
         # ragged K: fixed tile, tail block split out of the K loop
         tile_m = 16 if M <= 16 else 64
-        _block_wise_smm_kernel_ragged[(triton.cdiv(M, tile_m) * triton.cdiv(N, 128),)](
+        # The grid is cdiv(M, tile_m) * cdiv(N, TILE_N), so a small M with a
+        # 128-wide N tile barely fills the 24-sip device. Measured on
+        # m=16/k=496/n=256: TILE_N=128 -> 2 CTAs, 829us; TILE_N=64 -> 4 CTAs,
+        # 468us; TILE_N=32 -> 8 CTAs, 290us. Narrow N until the grid reaches
+        # 8 CTAs, which leaves large problems on the wide tile.
+        tile_n = 128
+        while tile_n > 32 and triton.cdiv(M, tile_m) * triton.cdiv(N, tile_n) < 8:
+            tile_n //= 2
+        _block_wise_smm_kernel_ragged[
+            (triton.cdiv(M, tile_m) * triton.cdiv(N, tile_n),)
+        ](
             a,
             b,
             c,
@@ -321,7 +341,7 @@ def _block_wise_128_smm_launcher(
             SCALE_BLOCK_N=SCALE_BLOCK_N,
             SCALE_BLOCK_K=SCALE_BLOCK_K,
             TILE_M=tile_m,
-            TILE_N=128,
+            TILE_N=tile_n,
             TILE_K=SCALE_BLOCK_K,
             num_warps=4,
             num_stages=3,
@@ -539,7 +559,7 @@ def dispatch_scaled_mm(
     int8_func: Optional[Callable],
     blockwise_func: Callable,
 ) -> None:
-    logger.debug("GEMS_ENFLAME_GCU400 DISPATCH_SCALED_MM")
+    logger.debug("GEMS_ENFLAME DISPATCH_SCALED_MM")
     assert a_scale.dtype == torch.float32, "a_scale must be float32"
     assert b_scale.dtype == torch.float32, "b_scale must be float32"
 
@@ -600,7 +620,7 @@ def cutlass_scaled_mm_sm90(
     b_scale: torch.Tensor,
     bias: Optional[torch.Tensor] = None,
 ) -> None:
-    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM90")
+    logger.debug("GEMS_ENFLAME CUTLASS_SCALED_MM_SM90")
     dispatch_scaled_mm(
         c=c,
         a=a,
@@ -615,27 +635,27 @@ def cutlass_scaled_mm_sm90(
 
 
 def cutlass_scaled_mm_sm120(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM120")
+    logger.debug("GEMS_ENFLAME CUTLASS_SCALED_MM_SM120")
     raise NotImplementedError("cutlass_scaled_mm_sm120 is not yet implemented. ")
 
 
 def cutlass_scaled_mm_sm100(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM100")
+    logger.debug("GEMS_ENFLAME CUTLASS_SCALED_MM_SM100")
     raise NotImplementedError("cutlass_scaled_mm_sm100 is not yet implemented. ")
 
 
 def cutlass_scaled_mm_sm89(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM89")
+    logger.debug("GEMS_ENFLAME CUTLASS_SCALED_MM_SM89")
     raise NotImplementedError("cutlass_scaled_mm_sm89 is not yet implemented. ")
 
 
 def cutlass_scaled_mm_sm80(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM80")
+    logger.debug("GEMS_ENFLAME CUTLASS_SCALED_MM_SM80")
     raise NotImplementedError("cutlass_scaled_mm_sm80 is not yet implemented. ")
 
 
 def cutlass_scaled_mm_sm75(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_SM75")
+    logger.debug("GEMS_ENFLAME CUTLASS_SCALED_MM_SM75")
     raise NotImplementedError("cutlass_scaled_mm_sm75 is not yet implemented. ")
 
 
@@ -647,7 +667,7 @@ def cutlass_scaled_mm(
     b_scale: torch.Tensor,
     bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM")
+    logger.debug("GEMS_ENFLAME CUTLASS_SCALED_MM")
     assert (
         a.dim() == 2 and b.dim() == 2 and c.dim() == 2
     ), "All inputs must be 2D tensors"
@@ -773,7 +793,7 @@ def cutlass_scaled_mm_fp8(c, a, b, scale_a, scale_b, bias):
     Unlike the general CUTLASS-compatible entry, the ATen caller has already
     validated metadata. Avoid repeating its dispatch and autotuning overhead.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CUTLASS_SCALED_MM_FP8")
+    logger.debug("GEMS_ENFLAME CUTLASS_SCALED_MM_FP8")
     m, k = a.shape
     n = b.shape[1]
     bm, bn, bk = (

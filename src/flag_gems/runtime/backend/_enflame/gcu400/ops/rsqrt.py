@@ -25,14 +25,23 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
+# int32 offset safe domain: the masked tail block evaluates
+# block_id * BLOCK + arange for masked lanes as well, reaching up to
+# num_blocks * BLOCK - 1; keep n_total <= 2^31 - 2^17 (BLOCK <= 131072)
+# so flat int32 offsets cannot wrap negative on the tail block.
+_INT32_SAFE_LIMIT = (1 << 31) - (1 << 17)
+
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
 
 @libentry()
-@triton.jit
+@triton.jit(do_not_specialize=["N_total"])
 def rsqrt_flat_kernel(
     x_ptr,
     out_ptr,
     N_total,
     BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
@@ -41,60 +50,100 @@ def rsqrt_flat_kernel(
     num_blocks = (N_total + BLOCK - 1) // BLOCK
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
-        mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        out = tl.math.rsqrt(x)
-        tl.store(out_ptr + off, out, mask=mask)
+        if EVEN:
+            x = tl.load(x_ptr + off).to(tl.float32)
+            out = tl.math.rsqrt(x)
+            tl.store(out_ptr + off, out)
+        else:
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
+            out = tl.math.rsqrt(x)
+            tl.store(out_ptr + off, out, mask=mask)
 
 
-def _choose_block(N_total):
-    if N_total <= 65536:
-        return 8192
-    if N_total <= 524288:
-        return 32768
-    return 65536
+# GCU400 retune (2026-11-16, interleaved do_bench(median) A/B, order-balanced
+# pairs): rsqrt is a hardware-free primitive (~0.03ns/elem), so the kernel is
+# memory-bound and only the launch shape matters. Measured per band:
+#   tiny <=8K: multi-CTA B1024/nw4 beats the old single-CTA B8192 on fp32
+#     (4.3 -> 3.5us; launch-floor regime, native 4.4us);
+#   16-bit mid/big: B65536/nw2/g48 (the old grid-96/nw4 was 13% off the
+#     copy floor at 512M: 786 -> 684us; floor 678, native 679);
+#   16-bit >2^28: B131072/nw2 (order-balanced 679.5 vs 685.6us at 512M);
+#   fp32 mid+big out-of-place: B32768/nw2 (47.7us @16.7M, 1353us @512M,
+#     native 49.4/1392 in the same window);
+#   fp32 big in-place: B65536/nw4 (1329 vs 1334us for B32768/nw2; the
+#     out-of-place arm must not share this - it is 1388us with nw4).
+# LibEntry's dispatch key is (dtype, alignment, BLOCK, EVEN) and does NOT
+# include num_warps, so each (dtype, BLOCK) pair must pin a single nw.
+def _choose_launch(n_total, itemsize, inplace):
+    if n_total <= 8192:
+        return 1024, 4
+    if n_total <= 65536:
+        return 8192, 2
+    if itemsize == 4:
+        if inplace and n_total > (1 << 28):
+            return 65536, 4
+        return 32768, 2
+    if n_total > (1 << 28):
+        return 131072, 2
+    return 65536, 2
+
+
+def _launch_rsqrt(inp, out, inplace):
+    n_total = inp.numel()
+    if n_total == 0:
+        return
+    block, num_warps = _choose_launch(n_total, inp.element_size(), inplace)
+    grid_size = min(triton.cdiv(n_total, block), NUM_SIPS * 2)
+    even = n_total % block == 0
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic, host-level userland flake windows on shared
+    # nodes); retrying the launch recompiles and succeeds (abs.py /
+    # neg.py / square.py precedents).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(inp.device):
+                rsqrt_flat_kernel[(grid_size,)](
+                    inp,
+                    out,
+                    n_total,
+                    BLOCK=block,
+                    EVEN=even,
+                    num_warps=num_warps,
+                )
+            return
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "rsqrt flat kernel launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
+            )
+
+
+def _flat_path_ok(A):
+    return (
+        A.is_contiguous() and A.dtype in _FLAT_DTYPES and A.numel() < _INT32_SAFE_LIMIT
+    )
 
 
 def rsqrt(A):
     logger.debug("GEMS_ENFLAME RSQRT")
-    inp = A.contiguous()
-    N_total = inp.numel()
-    out = torch.empty_like(inp)
+    if not _flat_path_ok(A):
+        from flag_gems.ops.rsqrt import rsqrt as _public
 
-    BLOCK = _choose_block(N_total)
-    NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 4)
-    nw = 2 if N_total <= 134217728 else 4
-
-    with torch_device_fn.device(inp.device):
-        rsqrt_flat_kernel[(grid_size,)](
-            inp,
-            out,
-            N_total,
-            BLOCK=BLOCK,
-            num_warps=nw,
-        )
-
+        return _public(A)
+    out = torch.empty_like(A)
+    _launch_rsqrt(A, out, False)
     return out
 
 
 def rsqrt_(A):
     logger.debug("GEMS_ENFLAME RSQRT_")
-    inp = A.contiguous()
-    N_total = inp.numel()
+    if not _flat_path_ok(A):
+        from flag_gems.ops.rsqrt import rsqrt_ as _public
 
-    BLOCK = _choose_block(N_total)
-    NUM_BLOCKS = triton.cdiv(N_total, BLOCK)
-    grid_size = min(NUM_BLOCKS, NUM_SIPS * 4)
-    nw = 2 if N_total <= 134217728 else 4
-
-    with torch_device_fn.device(inp.device):
-        rsqrt_flat_kernel[(grid_size,)](
-            inp,
-            A,
-            N_total,
-            BLOCK=BLOCK,
-            num_warps=nw,
-        )
-
+        return _public(A)
+    _launch_rsqrt(A, A, True)
     return A

@@ -77,13 +77,25 @@ def _int64_device_storage_is_trustworthy():
     return os.environ.get(_INT64_ENV, "0").strip().lower() not in ("", "0", "false")
 
 
-@triton.jit
-def _copy_1d_kernel(src, dst, n_elements, BLOCK: tl.constexpr):
+@triton.jit(do_not_specialize=["n_elements"])
+def _copy_1d_kernel(src, dst, n_elements, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    # Capped grid-stride copy: one CTA sweeps several BLOCK tiles, so the grid
+    # stays inside a single 24-SM wave on large payloads while small payloads
+    # still get one CTA per tile.  EVEN drops the bounds predicate whenever the
+    # element count is an exact multiple of BLOCK.
     pid = tl.program_id(0)
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offs < n_elements
-    x = tl.load(src + offs, mask=mask)
-    tl.store(dst + offs, x, mask=mask)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (n_elements + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        offs = block_id * BLOCK + arange
+        if EVEN:
+            x = tl.load(src + offs)
+            tl.store(dst + offs, x)
+        else:
+            mask = offs < n_elements
+            x = tl.load(src + offs, mask=mask)
+            tl.store(dst + offs, x, mask=mask)
 
 
 @triton.jit
@@ -129,11 +141,26 @@ def _gather_1d_kernel(
 
 
 def _copy_config(dtype, n):
-    if dtype == torch.int32:
-        return 1024, 8
-    if n < (1 << 21):
-        return 8192, 4
-    return 16384, 8
+    """tile / grid / num_warps / EVEN for the flat copy.
+
+    Tile is sized in bytes (128 KiB per CTA tile for 1-2 byte lanes, 128 KiB for
+    the 4-byte int32 lane as well); above 2**18 elements the grid is capped to a
+    single 24-SM wave, below it two waves are kept so small payloads still get
+    enough CTAs.
+    """
+    itemsize = dtype.itemsize
+    block = {1: 131072, 2: 65536}.get(itemsize, 32768)
+    num_warps = 8 if itemsize == 4 else 4
+    if n < (1 << 18):
+        block = min(block, max(1024, triton.next_power_of_2(max(1, n // 48))))
+    cap = 24 if n >= (1 << 18) else 48
+    grid = (min(triton.cdiv(n, block), cap),)
+    return block, grid, num_warps, n % block == 0
+
+
+def _copy_flat(src, dst, n, dtype):
+    block, grid, num_warps, even = _copy_config(dtype, n)
+    _copy_1d_kernel[grid](src, dst, n, BLOCK=block, EVEN=even, num_warps=num_warps)
 
 
 def _index_sidecars(self):
@@ -175,6 +202,33 @@ def _index_sidecars(self):
     return shape_t, stride_t
 
 
+def _fill_raw(self, raw, n):
+    """Copy ``self``'s logical values into the ``raw`` int view.
+
+    Contiguous inputs take the flat streaming copy; strided inputs gather
+    through the shape/stride sidecars.
+    """
+    if self.is_contiguous():
+        _copy_flat(self, raw, n, self.dtype)
+        return
+    shape_t, stride_t = _index_sidecars(self)
+    block = 1024
+    grid = (triton.cdiv(n, block),)
+    _gather_1d_kernel[grid](
+        self,
+        raw,
+        n,
+        shape_t,
+        stride_t,
+        self.dim(),
+        BLOCK=block,
+        # Unroll to the real rank: a fixed _MAXD drops any dimension past
+        # it, collapsing the leading slices of rank > _MAXD inputs.
+        MAXD=max(self.dim(), _MAXD),
+        num_warps=8,
+    )
+
+
 def _make_per_tensor_quantized_tensor(
     self: torch.Tensor, scale: float, zero_point: int
 ) -> torch.Tensor:
@@ -188,7 +242,7 @@ def _make_per_tensor_quantized_tensor(
     Returns:
         torch.Tensor: Quantized tensor whose ``int_repr()`` equals ``self``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MAKE_PER_TENSOR_QUANTIZED_TENSOR")
+    logger.debug("GEMS_ENFLAME MAKE_PER_TENSOR_QUANTIZED_TENSOR")
     qdtype = _QDTYPE[self.dtype]
     out = torch._empty_affine_quantized(
         self.shape,
@@ -206,27 +260,7 @@ def _make_per_tensor_quantized_tensor(
     raw = torch.empty(0, dtype=self.dtype, device=self.device).set_(
         out.untyped_storage(), 0, (n,)
     )
-    if self.is_contiguous():
-        block, num_warps = _copy_config(self.dtype, n)
-        grid = (triton.cdiv(n, block),)
-        _copy_1d_kernel[grid](self, raw, n, BLOCK=block, num_warps=num_warps)
-    else:
-        shape_t, stride_t = _index_sidecars(self)
-        block = 1024
-        grid = (triton.cdiv(n, block),)
-        _gather_1d_kernel[grid](
-            self,
-            raw,
-            n,
-            shape_t,
-            stride_t,
-            self.dim(),
-            BLOCK=block,
-            # Unroll to the real rank: a fixed _MAXD drops any dimension past
-            # it, collapsing the leading slices of rank > _MAXD inputs.
-            MAXD=max(self.dim(), _MAXD),
-            num_warps=8,
-        )
+    _fill_raw(self, raw, n)
     return out
 
 
@@ -248,32 +282,12 @@ def _make_per_tensor_quantized_tensor_out(
     Returns:
         torch.Tensor: ``out``, holding the values of ``self``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MAKE_PER_TENSOR_QUANTIZED_TENSOR_OUT")
+    logger.debug("GEMS_ENFLAME MAKE_PER_TENSOR_QUANTIZED_TENSOR_OUT")
     n = self.numel()
     if n == 0:
         return out
     raw = torch.empty(0, dtype=self.dtype, device=self.device).set_(
         out.untyped_storage(), 0, (n,)
     )
-    if self.is_contiguous():
-        block, num_warps = _copy_config(self.dtype, n)
-        grid = (triton.cdiv(n, block),)
-        _copy_1d_kernel[grid](self, raw, n, BLOCK=block, num_warps=num_warps)
-    else:
-        shape_t, stride_t = _index_sidecars(self)
-        block = 1024
-        grid = (triton.cdiv(n, block),)
-        _gather_1d_kernel[grid](
-            self,
-            raw,
-            n,
-            shape_t,
-            stride_t,
-            self.dim(),
-            BLOCK=block,
-            # Unroll to the real rank: a fixed _MAXD drops any dimension past
-            # it, collapsing the leading slices of rank > _MAXD inputs.
-            MAXD=max(self.dim(), _MAXD),
-            num_warps=8,
-        )
+    _fill_raw(self, raw, n)
     return out

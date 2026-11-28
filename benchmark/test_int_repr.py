@@ -135,6 +135,23 @@ def _view(inp, layout):
     raise ValueError(f"unknown layout {layout!r}")
 
 
+# enflame: the native aten::int_repr baseline (torch_gcu kernel, not the
+# flag_gems implementation) segfaults on views whose last dimension is stepped
+# (``inp[..., ::2]``), which kills the whole benchmark process; a zero-stride
+# ``expand`` view of a quantized tensor falls back to CPU memory on this
+# backend, so the device kernel cannot be exercised at all. Both layouts are
+# therefore excluded from the enflame benchmark runs only.
+_ENFLAME_UNMEASURABLE_LAYOUTS = frozenset({"strided_last", "expanded"})
+
+
+def _measurable_layouts(layouts):
+    if flag_gems.vendor_name == "enflame":
+        return [
+            layout for layout in layouts if layout not in _ENFLAME_UNMEASURABLE_LAYOUTS
+        ]
+    return layouts
+
+
 def _applicable_layouts(shape):
     layouts = ["contiguous"]
     if len(shape) >= 2 and shape[0] >= 1:
@@ -147,7 +164,7 @@ def _applicable_layouts(shape):
         layouts.append("channels_last")
     if _PER_CHANNEL_SUPPORTED and len(shape) >= 1 and all(dim > 0 for dim in shape):
         layouts.append("per_channel")
-    return layouts
+    return _measurable_layouts(layouts)
 
 
 def _validated_shape(shape):

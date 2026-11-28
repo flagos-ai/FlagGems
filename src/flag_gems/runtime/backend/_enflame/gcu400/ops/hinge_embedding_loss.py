@@ -20,71 +20,121 @@ import triton
 import triton.language as tl
 
 import flag_gems
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+NUM_SIPS = 24
+BLOCK = 32768
 
-@triton.jit
+
+@libentry()
+@triton.jit(do_not_specialize=["N_total"])
 def _hinge_embedding_loss_elementwise_kernel(
-    x_ptr, y_ptr, out_ptr, n_elements, margin, BLOCK_SIZE: tl.constexpr
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    N_total,
+    margin,
+    EVEN_N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    # reduction='none': persistent 2-read/1-write streaming kernel. The
+    # grid-stride loop keeps grid.x <= NUM_SIPS * 4, so the GCU 65535 grid.x
+    # limit can never be hit (the one-block-per-program KernelGen layout
+    # launched 131072 programs for 2**30 elements and raised OutOfResources).
+    # EVEN_N elides the per-element mask, which breaks 16-bit vectorized
+    # loads on this backend (soft_margin_loss / smooth_l1_loss precedents).
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK_SIZE)
+    num_blocks = (N_total + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK_SIZE + arange
+        if EVEN_N:
+            x = tl.load(x_ptr + off)
+            y = tl.load(y_ptr + off)
+        else:
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask, other=0.0)
+            y = tl.load(y_ptr + off, mask=mask, other=0.0)
+        xf = x.to(tl.float32)
+        yf = y.to(tl.float32)
+        # target == 1 -> x ; target == -1 -> max(0, margin - x)
+        is_neg = yf < 0.0
+        vals = tl.where(is_neg, tl.maximum(margin - xf, 0.0), xf)
+        if EVEN_N:
+            tl.store(out_ptr + off, vals)
+        else:
+            tl.store(out_ptr + off, vals, mask=mask)
 
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    y = tl.load(y_ptr + offsets, mask=mask, other=0.0)
 
-    xf = x.to(tl.float32)
-    yf = y.to(tl.float32)
-    # target == 1  -> x ; target == -1 -> max(0, margin - x)
-    is_neg = yf < 0.0
-    vals = tl.where(is_neg, tl.maximum(margin - xf, 0.0), xf)
-
-    tl.store(out_ptr + offsets, vals, mask=mask)
-
-
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["N_total"])
 def _hinge_embedding_loss_partial_sum_kernel(
-    x_ptr, y_ptr, mid_ptr, n_elements, margin, BLOCK_SIZE: tl.constexpr
+    x_ptr,
+    y_ptr,
+    mid_ptr,
+    N_total,
+    margin,
+    REDUCTION_MEAN: tl.constexpr,
+    EVEN_N: tl.constexpr,
+    BLOCK_SIZE: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    # Persistent stage 1 for reduction='mean'/'sum': each program grid-strides
+    # over BLOCK_SIZE tiles, accumulating the per-element losses into a [BLOCK]
+    # fp32 vector and reducing with ONE tl.sum tree at the end (the per-block
+    # tree of the previous layout was the measured bottleneck on this backend,
+    # smooth_l1_loss / soft_margin_loss precedents). The mean scaling is
+    # folded into the partial: each program divides its own partial by
+    # N_total, the finalize kernel just sums them.
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK_SIZE)
+    num_blocks = (N_total + BLOCK_SIZE - 1) // BLOCK_SIZE
+    acc = tl.zeros([BLOCK_SIZE], dtype=tl.float32)
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK_SIZE + arange
+        if EVEN_N:
+            x = tl.load(x_ptr + off)
+            y = tl.load(y_ptr + off)
+        else:
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask, other=0.0)
+            y = tl.load(y_ptr + off, mask=mask, other=0.0)
+        xf = x.to(tl.float32)
+        yf = y.to(tl.float32)
+        is_neg = yf < 0.0
+        vals = tl.where(is_neg, tl.maximum(margin - xf, 0.0), xf)
+        # aten computes the per-element loss in the input dtype and sums the
+        # already-rounded values; for half/bfloat16 that rounding is
+        # observable in the reduction result, so round each element before
+        # accumulating to match eager.
+        vals = vals.to(x_ptr.dtype.element_ty).to(tl.float32)
+        if EVEN_N:
+            acc += vals
+        else:
+            acc += tl.where(mask, vals, 0.0)
+    total = tl.sum(acc, axis=0)
+    if REDUCTION_MEAN:
+        total = total / N_total
+    tl.store(mid_ptr + pid, total)
 
-    x = tl.load(x_ptr + offsets, mask=mask, other=0.0)
-    y = tl.load(y_ptr + offsets, mask=mask, other=0.0)
 
-    xf = x.to(tl.float32)
-    yf = y.to(tl.float32)
-    is_neg = yf < 0.0
-    vals = tl.where(is_neg, tl.maximum(margin - xf, 0.0), xf)
-    vals = tl.where(mask, vals, 0.0)
-
-    # aten computes the per-element loss in the input dtype and sums those
-    # already-rounded values; for half/bfloat16 that rounding is observable in
-    # the reduction result (e.g. bf16 0.560546875 -> 0.5625 before the sum), so
-    # round each element before accumulating to match eager bit-for-bit.
-    vals = vals.to(x_ptr.dtype.element_ty).to(tl.float32)
-
-    acc = tl.sum(vals, axis=0)
-    tl.store(mid_ptr + pid, acc)
-
-
-@triton.jit
+@libentry()
+@triton.jit(do_not_specialize=["mid_size"])
 def _hinge_embedding_loss_final_reduce_kernel(
     mid_ptr, out_ptr, mid_size, BLOCK_MID: tl.constexpr
 ):
-    # Grid-stride reduction so a large partial-sum buffer does not require a
-    # single oversized block. Accumulate in float32.
-    offsets = tl.arange(0, BLOCK_MID)
-    acc = 0.0
-    for start in range(0, mid_size, BLOCK_MID):
-        idx = start + offsets
-        mask = idx < mid_size
-        vals = tl.load(mid_ptr + idx, mask=mask, other=0.0).to(tl.float32)
+    # Stage 2: single program reduces the mid partials to the scalar result,
+    # casting to the output dtype in-kernel.
+    acc = tl.zeros([], dtype=tl.float32)
+    num_blocks = (mid_size + BLOCK_MID - 1) // BLOCK_MID
+    for i in tl.range(0, num_blocks):
+        offset = i * BLOCK_MID + tl.arange(0, BLOCK_MID)
+        mask = offset < mid_size
+        vals = tl.load(mid_ptr + offset, mask=mask, other=0.0).to(tl.float32)
         acc += tl.sum(vals, axis=0)
     tl.store(out_ptr, acc)
 
@@ -127,60 +177,136 @@ def _check_tensors(input: torch.Tensor, target: torch.Tensor):
     return input, target
 
 
-def _reduce_sum(input, target, margin, n_elements):
-    # BLOCK_SIZE=8192 gave the best geomean speedup during KernelGen autotuning
-    # on the reduction workloads (fewer partial-sum blocks, better occupancy).
-    BLOCK_SIZE = 8192
-    mid_size = triton.cdiv(n_elements, BLOCK_SIZE)
-    # Cap the final-reduce block; the grid-stride loop handles mid_size > 1024.
-    block_mid = min(1024, triton.next_power_of_2(mid_size))
-    mid = torch.empty((mid_size,), device=input.device, dtype=torch.float32)
-    _hinge_embedding_loss_partial_sum_kernel[(mid_size,)](
-        input, target, mid, n_elements, margin, BLOCK_SIZE=BLOCK_SIZE
-    )
-    tmp_sum = torch.zeros((), device=input.device, dtype=torch.float32)
-    _hinge_embedding_loss_final_reduce_kernel[(1,)](
-        mid, tmp_sum, mid_size, BLOCK_MID=block_mid
-    )
-    return tmp_sum
+def _none_config(n_elements, itemsize):
+    """(BLOCK_SIZE, num_warps, grid) for the reduction='none' streaming kernel.
+
+    DSM per program: 3 * BLOCK * itemsize (2 read streams + 1 write stream),
+    every bucket stays under the 917504B dsm limit (max: 16-bit 65536 ->
+    384KB). Ladder from the soft_margin_loss / smooth_l1_loss sweeps on this
+    backend (do_bench median, GCU400).
+    """
+    if itemsize >= 4:
+        return 16384, 2, NUM_SIPS * 2
+    if n_elements <= (1 << 20):
+        return 8192, 2, NUM_SIPS * 2
+    return 65536, 2, NUM_SIPS * 4
+
+
+def _reduce_config(n_elements, itemsize):
+    """(BLOCK_SIZE, num_warps, grid) for the reduction='mean'/'sum' kernel.
+
+    The body carries a [BLOCK] fp32 vector accumulator across the persistent
+    loop, so its DSM footprint is 2 * itemsize * BLOCK (loads) + 4 * BLOCK
+    (accumulator); every bucket stays well under the 917504B dsm limit (max:
+    fp32 16384 -> 196KB, 16-bit 32768 -> 196KB). Ladder follows the measured
+    soft_margin_loss sweep on this backend; the hinge body has no exp/log
+    ALU, so it is re-validated by the hinge core benchmark.
+    """
+    if itemsize >= 4:
+        if n_elements <= 4096:
+            return triton.next_power_of_2(max(n_elements, 1)), 4, NUM_SIPS * 2
+        if n_elements <= (1 << 21):
+            return 4096, 4, NUM_SIPS * 2
+        return 16384, 2, NUM_SIPS * 2
+    if n_elements <= 4096:
+        return triton.next_power_of_2(max(n_elements, 1)), 4, NUM_SIPS * 2
+    if n_elements <= (1 << 23):
+        return 8192, 2, NUM_SIPS * 2
+    return 32768, 2, NUM_SIPS * 2
+
+
+def _hinge_embedding_loss_reduce(input, target, red, margin):
+    n_elements = input.numel()
+    block_size, num_warps, grid_cap = _reduce_config(n_elements, input.element_size())
+    grid = min(triton.cdiv(n_elements, block_size), grid_cap)
+    if grid == 0:
+        grid = 1
+
+    result = torch.empty((), device=input.device, dtype=input.dtype)
+    # With a single program the partial sum is already the final scalar, so
+    # the kernel can store straight into the 0-dim result and the mid buffer
+    # plus the second launch disappear.
+    if grid == 1:
+        mid = result
+    else:
+        mid = torch.empty((grid,), device=input.device, dtype=torch.float32)
+
+    # EVEN_N (mask-free) is a stable win on 16-bit and small/mid fp32, but was
+    # measured 1.35x SLOWER on large fp32 for smooth_l1_loss on this backend,
+    # so keep it off there.
+    even_n = n_elements % block_size == 0
+    if input.element_size() >= 4 and n_elements > (1 << 21):
+        even_n = False
+
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic; acosh.py / smooth_l1_loss.py precedent for this
+    # toolchain family); retrying the launch recompiles and succeeds.
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(input.device):
+                _hinge_embedding_loss_partial_sum_kernel[(grid,)](
+                    input,
+                    target,
+                    mid,
+                    n_elements,
+                    margin,
+                    REDUCTION_MEAN=red == 1,
+                    EVEN_N=even_n,
+                    BLOCK_SIZE=block_size,
+                    num_warps=num_warps,
+                )
+            break
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "hinge_embedding_loss partial sum launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
+            )
+
+    if mid is not result:
+        block_mid = min(triton.next_power_of_2(grid), BLOCK)
+        with torch_device_fn.device(input.device):
+            _hinge_embedding_loss_final_reduce_kernel[(1,)](
+                mid, result, grid, BLOCK_MID=block_mid, num_warps=4
+            )
+    return result
+
+
+def _hinge_embedding_loss_none(input, target, margin):
+    n_elements = input.numel()
+    out = torch.empty_like(input)
+    if n_elements > 0:
+        block_size, num_warps, grid = _none_config(n_elements, input.element_size())
+        grid = min(triton.cdiv(n_elements, block_size), grid)
+        with torch_device_fn.device(input.device):
+            _hinge_embedding_loss_elementwise_kernel[(grid,)](
+                input,
+                target,
+                out,
+                n_elements,
+                margin,
+                EVEN_N=n_elements % block_size == 0,
+                BLOCK_SIZE=block_size,
+                num_warps=num_warps,
+            )
+    return out
 
 
 def hinge_embedding_loss(
     input: torch.Tensor, target: torch.Tensor, margin: float = 1.0, reduction="mean"
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 HINGE_EMBEDDING_LOSS")
+    logger.debug("GEMS_ENFLAME HINGE_EMBEDDING_LOSS")
     input, target = _check_tensors(input, target)
     red = _normalize_reduction(reduction)
     margin = float(margin)
-    n_elements = input.numel()
-
     if red == 0:
-        # reduction = 'none'
-        out = torch.empty_like(input)
-        if n_elements == 0:
-            return out
-        # BLOCK_SIZE=8192: tuned for elementwise memory-bound throughput on H20.
-        BLOCK_SIZE = 8192
-        grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-        _hinge_embedding_loss_elementwise_kernel[grid](
-            input, target, out, n_elements, margin, BLOCK_SIZE=BLOCK_SIZE
-        )
-        return out
-    else:
-        # reduction = 'mean' (1) or 'sum' (2)
-        if n_elements == 0:
-            # Follow PyTorch behavior: sum -> 0, mean -> NaN
-            if red == 2:
-                return torch.zeros((), device=input.device, dtype=input.dtype)
-            else:
-                return torch.full(
-                    (), float("nan"), device=input.device, dtype=input.dtype
-                )
-        tmp_sum = _reduce_sum(input, target, margin, n_elements)
+        return _hinge_embedding_loss_none(input, target, margin)
+    n_elements = input.numel()
+    if n_elements == 0:
+        # Follow PyTorch behavior: sum -> 0, mean -> NaN
         if red == 2:
-            # sum
-            return tmp_sum.to(dtype=input.dtype)
-        else:
-            # mean
-            mean_val = (tmp_sum / float(n_elements)).to(dtype=input.dtype)
-            return mean_val
+            return torch.zeros((), device=input.device, dtype=input.dtype)
+        return torch.full((), float("nan"), device=input.device, dtype=input.dtype)
+    return _hinge_embedding_loss_reduce(input, target, red, margin)

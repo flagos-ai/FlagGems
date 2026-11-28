@@ -491,7 +491,7 @@ def unique_consecutive(
         (Tensor, Tensor (optional), Tensor (optional)): output,
             inverse_indices, counts
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNIQUE_CONSECUTIVE")
+    logger.debug("GEMS_ENFLAME UNIQUE_CONSECUTIVE")
 
     if dim is not None:
         # For dim-wise unique_consecutive, fall back to PyTorch for now

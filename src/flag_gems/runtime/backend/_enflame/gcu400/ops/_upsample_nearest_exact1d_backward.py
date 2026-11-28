@@ -221,7 +221,7 @@ def _upsample_nearest_exact1d_backward(
     input_size: Sequence[int],
     scales: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT1D_BACKWARD")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_NEAREST_EXACT1D_BACKWARD")
     return _upsample_nearest_exact1d_backward_impl(
         grad_output, output_size, input_size, scales, None
     )
@@ -235,7 +235,7 @@ def _upsample_nearest_exact1d_backward_grad_input(
     *,
     grad_input: torch.Tensor,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 _UPSAMPLE_NEAREST_EXACT1D_BACKWARD.GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME _UPSAMPLE_NEAREST_EXACT1D_BACKWARD.GRAD_INPUT")
     return _upsample_nearest_exact1d_backward_impl(
         grad_output, output_size, input_size, scales, grad_input
     )
