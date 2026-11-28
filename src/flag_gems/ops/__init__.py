@@ -782,6 +782,7 @@ from flag_gems.ops.cudnn_convolution_add_relu import (
     cudnn_convolution_add_relu,
     cudnn_convolution_add_relu_out,
 )
+from flag_gems.ops.cudnn_convolution_backward import cudnn_convolution_backward
 from flag_gems.ops.cudnn_convolution_relu import (
     cudnn_convolution_relu,
     cudnn_convolution_relu_out,
@@ -2536,6 +2537,7 @@ __all__ = [
     "cudnn_convolution",
     "cudnn_convolution_add_relu",
     "cudnn_convolution_add_relu_out",
+    "cudnn_convolution_backward",
     "cudnn_convolution_relu",
     "cudnn_convolution_relu_out",
     "cudnn_convolution_transpose",
