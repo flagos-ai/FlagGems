@@ -79,6 +79,7 @@ def randn_kernel(
     philox_seed,
     philox_offset,
     BLOCK: tl.constexpr = 512,
+    SCALE: tl.constexpr = 1.0,
 ):
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
@@ -94,6 +95,11 @@ def randn_kernel(
     r3 = uint_to_uniform_float(r3)
     n0, n1 = pair_uniform_to_normal_fast(r0, r1)
     n2, n3 = pair_uniform_to_normal_fast(r2, r3)
+    if SCALE != 1.0:
+        n0 *= SCALE
+        n1 *= SCALE
+        n2 *= SCALE
+        n3 *= SCALE
     # `pid * BLOCK * 4` is an int32 product. Above 2**31 elements it wraps to a
     # negative offset that still satisfies `off < N` for a 64-bit N, so the
     # store lands 4 GiB before the allocation and the tail is never written.

@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import math
 
 import torch
 import triton
@@ -30,16 +31,29 @@ def randn_like(
 ):
     logger.debug("GEMS RANDN_LIKE")
     if device is None:
-        device = x.device.index
+        device = x.device
     if dtype is None:
         dtype = x.dtype
-    out = torch.empty_like(x, device=device, dtype=dtype)
-    N = x.numel()
+    out = torch.empty_like(x, device=device, dtype=dtype, memory_format=memory_format)
+    if out.numel() == 0:
+        return out
+
+    is_complex = out.is_complex()
+    components = torch.view_as_real(out) if is_complex else out
+    buffer = components
+    if is_complex and not components.is_contiguous():
+        buffer = torch.empty_like(components, memory_format=torch.contiguous_format)
+
+    # Each component of a standard complex normal has variance 1/2.
+    scale = math.sqrt(0.5) if is_complex else 1.0
+    N = buffer.numel()
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(increment)
-    with torch_device_fn.device(x.device):
-        randn_kernel[grid_fn](out, N, philox_seed, philox_offset)
+    with torch_device_fn.device(out.device):
+        randn_kernel[grid_fn](buffer, N, philox_seed, philox_offset, SCALE=scale)
+    if buffer is not components:
+        components.copy_(buffer)
     return out

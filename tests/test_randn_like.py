@@ -34,3 +34,20 @@ def test_randn_like(shape, dtype):
 
     assert torch.abs(mean) < 0.01
     assert torch.abs(std - 1) < 0.01
+
+
+@pytest.mark.randn_like
+@pytest.mark.parametrize("dtype", (torch.complex64, torch.complex128))
+def test_randn_like_complex(dtype):
+    x = torch.empty((128, 1024), device=flag_gems.device).T
+    actual = flag_gems.randn_like(x, dtype=dtype)
+    assert actual.dtype == dtype
+    assert actual.shape == x.shape
+    assert actual.stride() == x.stride()
+    parts = torch.view_as_real(actual.cpu()).flatten(0, -2)
+    assert torch.all(parts.mean(dim=0).abs() < 0.015)
+    assert torch.all((parts.var(dim=0) - 0.5).abs() < 0.02)
+
+    empty = flag_gems.randn_like(x[:0], dtype=dtype)
+    assert empty.dtype == dtype
+    assert empty.shape == x[:0].shape
