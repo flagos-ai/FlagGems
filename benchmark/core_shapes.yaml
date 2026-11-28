@@ -1369,6 +1369,15 @@ cudnn_rnn:
     - [16, 4, 128, 128, 1, 1, 2, 0]
   shape_desc: "seq, batch, input, hidden, layers, bidir, mode, batch_first"
 
+
+addcdiv_backward:
+  # Three sizes expose launch-bound, mid-sized and bandwidth-bound backward paths.
+  shapes:
+    - [4096]
+    - [1048576]
+    - [16777216]
+  shape_desc: "N"
+
 swiglu:
   shapes:
     - [4, 32]

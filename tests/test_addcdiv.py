@@ -62,3 +62,194 @@ def test_addcdiv_out(dtype):
     flag_gems.addcdiv_out(inp, t1, t2, value=value, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype, True)
+
+
+# These compact cases complement the shared pointwise shapes with explicit
+# scalar, aligned and non-aligned backward coverage.
+ADDCDIV_BACKWARD_SHAPES = [(), (4096,), (31, 47)]
+
+
+@pytest.mark.addcdiv_backward
+@pytest.mark.parametrize("shape", ADDCDIV_BACKWARD_SHAPES)
+@pytest.mark.parametrize("value", [0.5, -0.75])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addcdiv_backward(shape, value, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    tensor1 = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    tensor2 = torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.5
+    grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_tensor1 = utils.to_reference(tensor1.detach()).requires_grad_()
+    ref_tensor2 = utils.to_reference(tensor2.detach()).requires_grad_()
+    res_inp = inp.detach().requires_grad_()
+    res_tensor1 = tensor1.detach().requires_grad_()
+    res_tensor2 = tensor2.detach().requires_grad_()
+
+    ref_out = torch.addcdiv(ref_inp, ref_tensor1, ref_tensor2, value=value)
+    res_out = flag_gems.addcdiv(res_inp, res_tensor1, res_tensor2, value=value)
+    ref_grads = torch.autograd.grad(
+        ref_out,
+        (ref_inp, ref_tensor1, ref_tensor2),
+        utils.to_reference(grad),
+    )
+    res_grads = torch.autograd.grad(res_out, (res_inp, res_tensor1, res_tensor2), grad)
+    direct_grads = flag_gems.addcdiv_backward(grad, tensor1, tensor2, value=value)
+
+    for result, reference in zip(res_grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype)
+    for result, reference in zip(direct_grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.addcdiv_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addcdiv_backward_registered_dispatch(dtype):
+    shape = (64, 64)
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    tensor1 = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    tensor2 = (
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.5
+    ).requires_grad_()
+    grad = torch.randn_like(inp)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_tensor1 = utils.to_reference(tensor1.detach()).requires_grad_()
+    ref_tensor2 = utils.to_reference(tensor2.detach()).requires_grad_()
+    ref_grads = torch.autograd.grad(
+        torch.addcdiv(ref_inp, ref_tensor1, ref_tensor2, value=-0.75),
+        (ref_inp, ref_tensor1, ref_tensor2),
+        utils.to_reference(grad),
+    )
+
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["addcdiv"])
+        res_out = torch.addcdiv(inp, tensor1, tensor2, value=-0.75)
+        assert "AddcdivFunction" in type(res_out.grad_fn).__name__
+        res_grads = torch.autograd.grad(res_out, (inp, tensor1, tensor2), grad)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    for result, reference in zip(res_grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.addcdiv_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addcdiv_backward_broadcast(dtype):
+    inp = torch.randn(
+        (8, 7, 5), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    tensor1 = torch.randn(
+        (5,), dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    tensor2 = (
+        torch.rand((1, 7, 1), dtype=dtype, device=flag_gems.device) + 0.5
+    ).requires_grad_()
+    grad = torch.randn_like(inp)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    ref_tensor1 = utils.to_reference(tensor1.detach()).requires_grad_()
+    ref_tensor2 = utils.to_reference(tensor2.detach()).requires_grad_()
+
+    ref_grads = torch.autograd.grad(
+        torch.addcdiv(ref_inp, ref_tensor1, ref_tensor2, value=0.5),
+        (ref_inp, ref_tensor1, ref_tensor2),
+        utils.to_reference(grad),
+    )
+    res_grads = torch.autograd.grad(
+        flag_gems.addcdiv(inp, tensor1, tensor2, value=0.5),
+        (inp, tensor1, tensor2),
+        grad,
+    )
+
+    reduction_dims = (1, 8 * 7, 8 * 5)
+    for result, reference, reduce_dim in zip(res_grads, ref_grads, reduction_dims):
+        utils.gems_assert_close(result, reference, dtype, reduce_dim=reduce_dim)
+
+
+@pytest.mark.addcdiv_backward
+def test_addcdiv_backward_broadcast_bfloat16_rounding():
+    # With these exactly representable BF16 inputs, rounding the scale before
+    # multiplying by grad produces a different result from rounding only once.
+    dtype = torch.bfloat16
+    device = flag_gems.device
+    inp = torch.zeros((2, 3), dtype=dtype, device=device)
+    numerator = torch.ones(3, dtype=dtype, device=device, requires_grad=True)
+    denominator = torch.full((2, 1), 0.703125, dtype=dtype, device=device)
+    grad = torch.full_like(inp, 1.5)
+    ref_numerator = utils.to_reference(numerator.detach()).requires_grad_()
+    ref_out = torch.addcdiv(
+        utils.to_reference(inp),
+        ref_numerator,
+        utils.to_reference(denominator),
+        value=0.5,
+    )
+    expected = torch.autograd.grad(ref_out, ref_numerator, utils.to_reference(grad))[0]
+
+    out = flag_gems.addcdiv(inp, numerator, denominator, value=0.5)
+    actual = torch.autograd.grad(out, numerator, grad)[0]
+
+    utils.gems_assert_equal(actual, expected)
+
+
+@pytest.mark.addcdiv_backward
+@pytest.mark.parametrize("required_input", [0, 1, 2])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_addcdiv_backward_single_input(required_input, dtype):
+    shape = (17, 29)
+    inputs = [
+        torch.randn(shape, dtype=dtype, device=flag_gems.device),
+        torch.randn(shape, dtype=dtype, device=flag_gems.device),
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.5,
+    ]
+    inputs[required_input].requires_grad_()
+    grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inputs = [utils.to_reference(value.detach()) for value in inputs]
+    ref_inputs[required_input].requires_grad_()
+
+    ref_grad = torch.autograd.grad(
+        torch.addcdiv(*ref_inputs, value=-0.75),
+        ref_inputs[required_input],
+        utils.to_reference(grad),
+    )[0]
+    res_grad = torch.autograd.grad(
+        flag_gems.addcdiv(*inputs, value=-0.75),
+        inputs[required_input],
+        grad,
+    )[0]
+
+    utils.gems_assert_close(res_grad, ref_grad, dtype)
+
+
+@pytest.mark.addcdiv_backward
+def test_addcdiv_backward_fused_kernel_count():
+    """The three addcdiv gradients are emitted by one Triton kernel."""
+    from torch.profiler import ProfilerActivity, profile
+
+    shape = (4096,)
+    dtype = torch.float16
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    tensor1 = torch.randn(
+        shape, dtype=dtype, device=flag_gems.device, requires_grad=True
+    )
+    tensor2 = (
+        torch.rand(shape, dtype=dtype, device=flag_gems.device) + 0.5
+    ).requires_grad_()
+    grad = torch.randn_like(inp)
+    out = flag_gems.addcdiv(inp, tensor1, tensor2, value=-0.75)
+
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        torch.autograd.grad(out, (inp, tensor1, tensor2), grad)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [(name, count) for name, count in launches if "addcdiv" in name]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches
