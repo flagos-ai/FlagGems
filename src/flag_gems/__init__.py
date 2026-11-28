@@ -2174,7 +2174,12 @@ _FULL_CONFIG = (
         None,
         (QUANTIZED_CUDA_DISPATCH_KEY,),
     ),
-    ("rad2deg", rad2deg),
+    (
+        "rad2deg",
+        rad2deg,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("rad2deg_", rad2deg_),
     ("rand", rand),
     ("rand_like", rand_like),
