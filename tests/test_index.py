@@ -337,10 +337,13 @@ def test_index_int32_offset_overflow():
     out-of-bounds reads ("illegal memory access").
     """
     if flag_gems.vendor_name == "enflame":
-        # The GCU cuda-shim rejects a device object here; query the current one.
-        free_bytes, _ = torch.cuda.mem_get_info()
+        # The GCU cuda-shim requires a query without a device argument.
+        device_api = torch.cuda
     else:
-        free_bytes, _ = torch.cuda.mem_get_info(flag_gems.device)
+        device_api = flag_gems.runtime.torch_device_fn
+    if not hasattr(device_api, "mem_get_info"):
+        pytest.skip("Large-index test requires a device free-memory query")
+    free_bytes, _ = device_api.mem_get_info()
     if free_bytes < 3 * 2**30:
         pytest.skip("not enough free device memory for the int32-offset case")
 
@@ -426,3 +429,248 @@ def test_index_large_strided_int32_offset(index_dtype, use_graph):
         graph = actual = expected = state = backing = indices = packed_indices = None
         gc.collect()
         torch.cuda.empty_cache()
+
+
+def _index_strided_view(raw, layout):
+    if layout == "transpose":
+        return raw.transpose(0, 1)
+    if layout == "offset_permute":
+        return raw[1:5].permute(2, 0, 1)
+    return raw[1:5:2, 1:6:2, 1:8:2]
+
+
+@pytest.mark.index
+@pytest.mark.parametrize(
+    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int32]
+)
+@pytest.mark.parametrize("layout", ["transpose", "offset_permute", "slice"])
+@pytest.mark.parametrize("mode", ["single", "paired", "broadcast"])
+def test_index_noncontiguous_leading(dtype, layout, mode):
+    cpu_raw = (torch.arange(6 * 7 * 8) % 97).reshape(6, 7, 8).to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    inp = _index_strided_view(raw, layout)
+    cpu = _index_strided_view(cpu_raw, layout)
+    cpu_indices = [torch.tensor([0, inp.size(0) - 1])]
+    if mode != "single":
+        cpu_indices.append(torch.tensor([0, inp.size(1) - 1]))
+    if mode == "broadcast":
+        cpu_indices = [cpu_indices[0][:, None], cpu_indices[1][None, :]]
+    expected = torch.ops.aten.index.Tensor(cpu, cpu_indices)
+    indices = [item.to(inp.device) for item in cpu_indices]
+    actual = flag_gems.index(inp, indices)
+    utils.gems_assert_equal(actual.cpu(), expected)
+    utils.gems_assert_equal(raw.cpu(), cpu_raw)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend strided negative indexing"
+)
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16, torch.float32])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+def test_index_noncontiguous_negative(dtype, layout):
+    cpu_raw = (torch.arange(6 * 7 * 8) % 97).reshape(6, 7, 8).to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    cpu = _index_strided_view(cpu_raw, layout)
+    cpu_indices = [torch.tensor([-1, 0]), torch.tensor([-1, 0])]
+    actual = flag_gems.index(
+        _index_strided_view(raw, layout), [i.to(raw.device) for i in cpu_indices]
+    )
+    utils.gems_assert_equal(actual.cpu(), torch.ops.aten.index.Tensor(cpu, cpu_indices))
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Requires Ascend NPUGraph capture and replay",
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+def test_index_noncontiguous_graph(dtype, layout):
+    cpu_raw = (torch.arange(6 * 7 * 8) % 97).reshape(6, 7, 8).to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    inp = _index_strided_view(raw, layout)
+    index = torch.tensor([0, inp.size(0) - 1], device=inp.device)
+    flag_gems.index(inp, [index])
+    graph = torch.npu.NPUGraph()
+    with torch.npu.graph(graph):
+        actual = flag_gems.index(inp, [index])
+    for updated, positions in ((-cpu_raw, [inp.size(0) - 1, 0]), (cpu_raw + 2, [0, 1])):
+        raw.copy_(updated)
+        index.copy_(torch.tensor(positions))
+        actual.fill_(-123)
+        graph.replay()
+        torch.npu.synchronize()
+        expected = torch.ops.aten.index.Tensor(
+            _index_strided_view(updated, layout), [torch.tensor(positions)]
+        )
+        utils.gems_assert_equal(actual.cpu(), expected)
+        utils.gems_assert_equal(raw.cpu(), updated)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend Boolean and byte masks"
+)
+@pytest.mark.parametrize("payload_dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("mask_dtype", [torch.bool, torch.uint8])
+@pytest.mark.parametrize("pattern", ["none", "all", "strided", "multiblock"])
+def test_index_mask_coordinate_order(payload_dtype, mask_dtype, pattern):
+    shape = (65, 129, 2) if pattern == "multiblock" else (3, 5, 4)
+    cpu = torch.arange(np.prod(shape), dtype=torch.int64).reshape(shape)
+    if payload_dtype == torch.int64:
+        cpu = cpu + 2**54
+    cpu = cpu.to(payload_dtype)
+    mask_cpu = (torch.arange(shape[0] * shape[1]).reshape(shape[:2]) % 3 == 0).to(
+        mask_dtype
+    )
+    if pattern == "none":
+        mask_cpu.zero_()
+    elif pattern == "all":
+        mask_cpu.fill_(1)
+    inp = cpu.to(flag_gems.device)
+    if pattern == "strided":
+        storage = torch.empty((shape[1], shape[0]), dtype=mask_dtype, device=inp.device)
+        mask = storage.t()
+        mask.copy_(mask_cpu)
+    else:
+        mask = mask_cpu.to(inp.device)
+    actual = flag_gems.index(inp, [mask])
+    expected = torch.ops.aten.index.Tensor(cpu, [mask_cpu])
+    utils.gems_assert_equal(actual.cpu(), expected)
+    utils.gems_assert_equal(inp.cpu(), cpu)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend advanced indexing metadata"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("mode", ["scalar", "nonleading", "nonadjacent", "broadcast"])
+def test_index_tensor_metadata_forms(dtype, mode):
+    cpu = torch.arange(120, dtype=torch.int64).reshape(4, 5, 6)
+    if dtype == torch.int64:
+        cpu = cpu + 2**54
+    cpu = cpu.to(dtype)
+    if mode == "scalar":
+        indices = [torch.tensor(-1), None, torch.tensor(-1)]
+    elif mode == "nonleading":
+        indices = [None, torch.tensor([0, -1])]
+    elif mode == "nonadjacent":
+        indices = [torch.tensor([0, -1]), None, torch.tensor([-1, 0])]
+    else:
+        indices = [torch.tensor([[0], [-1]]), torch.tensor([[0, 2, -1]])]
+    device_indices = [
+        item.to(flag_gems.device) if item is not None else None for item in indices
+    ]
+    actual = flag_gems.index(cpu.to(flag_gems.device), device_indices)
+    utils.gems_assert_equal(actual.cpu(), torch.ops.aten.index.Tensor(cpu, indices))
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend",
+    reason="Ascend data-dependent graph output boundary",
+)
+def test_index_boolean_capture_rejected():
+    inp = torch.arange(12, dtype=torch.float32, device=flag_gems.device).reshape(3, 4)
+    mask = torch.tensor([True, False, True], device=inp.device)
+    scratch = torch.empty_like(inp)
+    graph = torch.npu.NPUGraph()
+    with pytest.raises(RuntimeError, match="data-dependent output shape"):
+        with torch.npu.graph(graph):
+            scratch.copy_(inp)
+            flag_gems.index(inp, [mask])
+    utils.gems_assert_equal(
+        inp.cpu(), torch.arange(12, dtype=torch.float32).reshape(3, 4)
+    )
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend eager bounds validation"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("layout", ["contiguous", "transpose", "separated"])
+@pytest.mark.parametrize("bad", [4, -5, 2**63 - 1, -(2**63)])
+def test_index_out_of_bounds_rejected(dtype, layout, bad):
+    cpu = torch.arange(4 * 4 * 6).reshape(4, 4, 6).to(dtype)
+    if layout == "transpose":
+        cpu = cpu.transpose(0, 1)
+    indices = [torch.tensor([0, bad])]
+    if layout == "separated":
+        indices += [None, torch.tensor([-1, 0])]
+    with pytest.raises(IndexError):
+        torch.ops.aten.index.Tensor(cpu, indices)
+    inp = cpu.to(flag_gems.device)
+    device_indices = [
+        item.to(inp.device) if item is not None else None for item in indices
+    ]
+    with pytest.raises(IndexError, match="out of bounds"):
+        flag_gems.index(inp, device_indices)
+    utils.gems_assert_equal(inp.cpu(), cpu)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend eager bounds validation"
+)
+@pytest.mark.parametrize("count", [1025, 65537])
+@pytest.mark.parametrize("bad", [4, -5])
+def test_index_out_of_bounds_block_tail(count, bad):
+    inp = torch.arange(24, device=flag_gems.device).reshape(4, 6)
+    cpu_storage = torch.zeros(2 * count, dtype=torch.int64)
+    cpu_storage[-2] = bad
+    index = cpu_storage.to(inp.device)[::2]
+    with pytest.raises(IndexError, match="out of bounds"):
+        flag_gems.index(inp, [index])
+    index[-1] = -4
+    actual = flag_gems.index(inp, [index])
+    expected = torch.zeros((count, 6), dtype=torch.int64)
+    expected[:] = torch.arange(6)
+    utils.gems_assert_equal(actual.cpu(), expected)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend strided negative indexing"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+@pytest.mark.parametrize("layout", ["transpose", "slice"])
+@pytest.mark.parametrize("paired", [False, True])
+def test_index_noncontiguous_suffix_tail(dtype, layout, paired):
+    cpu_raw = torch.arange(7 * 3 * 1301, dtype=torch.int64).reshape(7, 3, 1301)
+    cpu_raw = cpu_raw + 2**54 if dtype == torch.int64 else cpu_raw % 97
+    cpu_raw = cpu_raw.to(dtype)
+    raw = cpu_raw.to(flag_gems.device)
+    if layout == "transpose":
+        cpu, inp = cpu_raw.transpose(0, 1), raw.transpose(0, 1)
+    else:
+        cpu, inp = cpu_raw[::2, :, ::2], raw[::2, :, ::2]
+    indices = [torch.tensor([0, -1])]
+    if paired:
+        indices.append(torch.tensor([-1, 0]))
+    expected = torch.ops.aten.index.Tensor(cpu, indices)
+    actual = flag_gems.index(inp, [index.to(inp.device) for index in indices])
+    utils.gems_assert_equal(actual.cpu(), expected)
+    utils.gems_assert_equal(raw.cpu(), cpu_raw)
+
+
+@pytest.mark.index
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend sparse strided indexing"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16])
+@pytest.mark.parametrize("extent", [1025, 4097])
+def test_index_large_sparse_noncontiguous(dtype, extent):
+    values = (
+        torch.arange(17, dtype=torch.int16)[:, None, None]
+        + torch.arange(extent, dtype=torch.int16)[None, :, None]
+        + torch.arange(1025, dtype=torch.int16)[None, None, :]
+    )
+    cpu = (values % 97).to(dtype)
+    inp = cpu.to(flag_gems.device).transpose(0, 1)
+    index = torch.tensor([0, -1], device=inp.device)
+    actual = flag_gems.index(inp, [index])
+    expected = cpu.transpose(0, 1)[torch.tensor([0, -1])]
+    utils.gems_assert_equal(actual.cpu(), expected)
