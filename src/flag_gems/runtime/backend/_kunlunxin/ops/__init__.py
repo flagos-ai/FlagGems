@@ -492,6 +492,7 @@ from .fake_quantize_per_tensor_affine_cachemask_backward import (  # noqa: F401
 from .feature_alpha_dropout import feature_alpha_dropout
 from .feature_alpha_dropout_ import feature_alpha_dropout_
 from .feature_dropout import feature_dropout, feature_dropout_
+from .fft_ifftshift import fft_ifftshift
 from .fill import (
     fill_scalar,
     fill_scalar_,
@@ -541,6 +542,7 @@ from .fused_moving_avg_obs_fake_quant import (  # noqa: F401
     fused_moving_avg_obs_fake_quant,
 )
 from .gather import gather, gather_backward
+from .gather_sparse_backward import _gather_sparse_backward
 from .gcd import gcd, gcd_out
 from .gcd_inplace import gcd_
 from .ge import ge, ge_scalar, greater_equal_
@@ -1261,6 +1263,7 @@ __all__ = [
     "_fused_adagrad_",
     "_fused_adam",
     "_fused_adam_",
+    "_gather_sparse_backward",
     "_histogramdd_from_bin_cts",
     "_histogramdd_from_bin_cts_out",
     "_index_put_impl_",
@@ -1553,6 +1556,7 @@ __all__ = [
     "feature_alpha_dropout_",
     "feature_dropout",
     "feature_dropout_",
+    "fft_ifftshift",
     "fill_scalar",
     "fill_scalar_",
     "fill_scalar_out",

@@ -111,6 +111,10 @@ def max_pool1d_forward_flat_kernel(
     total: tl.constexpr,
     in_l: tl.constexpr,
     out_l: tl.constexpr,
+    in_c: tl.constexpr,
+    stride_n: tl.constexpr,
+    stride_c: tl.constexpr,
+    stride_in_l: tl.constexpr,
     kernel_l: tl.constexpr,
     stride_l: tl.constexpr,
     padding_l: tl.constexpr,
@@ -158,7 +162,11 @@ def max_pool1d_forward_flat_kernel(
         il = start + kl * dilation_l
         valid = output_mask & (il >= 0) & (il < in_l)
         il_safe = tl.where(valid, il, 0)
-        input_offset = nc_safe * in_l + il_safe
+        input_offset = (
+            (nc_safe.to(tl.int64) // in_c) * stride_n
+            + (nc_safe.to(tl.int64) % in_c) * stride_c
+            + il_safe.to(tl.int64) * stride_in_l
+        )
         if IS_BF16:
             # Avoid bf16 and u16 loads on the fallback path too. Two byte loads
             # do not overread odd lengths or require packed-word alignment.
@@ -291,6 +299,96 @@ def max_pool1d_forward_wide_kernel(
     tl.store(indices_ptr + offsets, max_idx.to(tl.int64), mask=output_mask)
 
 
+@triton.jit
+def _pool1d_tap_rank(bits, TAP: tl.constexpr, E16: tl.constexpr, IS_BF16: tl.constexpr):
+    # Signed magnitude preserves subnormals and makes the two zeros tie.
+    if E16:
+        inf_bits: tl.constexpr = 0x7F80 if IS_BF16 else 0x7C00
+        magnitude = (bits & 0x7FFF).to(tl.int32)
+        negative_mask = 0 - (bits >> 15).to(tl.int32)
+    else:
+        inf_bits: tl.constexpr = 0x7F800000
+        magnitude = (bits & 0x7FFFFFFF).to(tl.int32)
+        negative_mask = bits.to(tl.int32) >> 31
+    rank = (
+        tl.where(negative_mask != 0, -magnitude, magnitude)
+        if E16
+        else (magnitude ^ negative_mask) - negative_mask
+    )
+    # All NaN ranks exceed +inf; the later tap wins between NaNs.
+    return tl.where(magnitude > inf_bits, 0x7FFFFFFC + TAP, rank).to(tl.int32)
+
+
+@triton.jit
+def _pool1d_k3s2_body(
+    input_ptr,
+    output_ptr,
+    indices_ptr,
+    OUT_L: tl.constexpr,
+    E16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    BLOCK: tl.constexpr,
+    FIRST: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    column = offsets % OUT_L
+    if E16:
+        packed_ptr = input_ptr.to(tl.pointer_type(tl.uint32))
+        bits_out = output_ptr.to(tl.pointer_type(tl.uint16))
+        shift: tl.constexpr = 16
+        mask: tl.constexpr = 65535
+    else:
+        packed_ptr = input_ptr.to(tl.pointer_type(tl.uint64))
+        bits_out = output_ptr.to(tl.pointer_type(tl.uint32))
+        shift: tl.constexpr = 32
+        mask: tl.constexpr = 0xFFFFFFFF
+    current = tl.load(packed_ptr + offsets)
+    previous = (
+        tl.load(packed_ptr + tl.maximum(offsets - 1, 0))
+        if FIRST
+        else tl.load(packed_ptr + offsets - 1)
+    )
+    left_bits = (previous >> shift).to(tl.uint32)
+    center_bits = (current & mask).to(tl.uint32)
+    right_bits = (current >> shift).to(tl.uint32)
+    left_rank = tl.where(
+        column == 0, -2147483648, _pool1d_tap_rank(left_bits, 0, E16, IS_BF16)
+    )
+    center_rank = _pool1d_tap_rank(center_bits, 1, E16, IS_BF16)
+    right_rank = _pool1d_tap_rank(right_bits, 2, E16, IS_BF16)
+    top = tl.maximum(left_rank, tl.maximum(center_rank, right_rank))
+    # Test for equality left-to-right to keep the first ordinary tie.
+    take_left = left_rank == top
+    take_center = center_rank == top
+    relative_index = tl.where(take_left, -1, tl.where(take_center, 0, 1))
+    selected_bits = tl.where(
+        take_left, left_bits, tl.where(take_center, center_bits, right_bits)
+    )
+    tl.store(bits_out + offsets, selected_bits)
+    tl.store(indices_ptr + offsets, (column * 2 + relative_index).to(tl.int64))
+
+
+@libentry()
+@triton.jit
+def _pool1d_k3s2(
+    input_ptr,
+    output_ptr,
+    indices_ptr,
+    OUT_L: tl.constexpr,
+    E16: tl.constexpr,
+    IS_BF16: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    if tl.program_id(0) == 0:
+        _pool1d_k3s2_body(
+            input_ptr, output_ptr, indices_ptr, OUT_L, E16, IS_BF16, BLOCK, True
+        )
+    else:
+        _pool1d_k3s2_body(
+            input_ptr, output_ptr, indices_ptr, OUT_L, E16, IS_BF16, BLOCK, False
+        )
+
+
 def _parse_pool_params(kernel_size, stride, padding, dilation):
     def _single(value, name):
         if isinstance(value, (list, tuple)):
@@ -340,7 +438,6 @@ def max_pool1d_with_indices(
     if squeeze_batch:
         input = input.unsqueeze(0)
 
-    input = input.contiguous()
     in_n, in_c, in_l = input.shape
     out_l = max_pool1d_output_size(
         in_l, kernel_l, stride_l, padding_l, dilation_l, ceil_mode
@@ -360,7 +457,42 @@ def max_pool1d_with_indices(
     grid = (triton.cdiv(total, block),)
 
     if (
-        input.dtype in (torch.float32, torch.float16, torch.bfloat16)
+        input.is_contiguous()
+        and input.dtype in (torch.float32, torch.float16, torch.bfloat16)
+        and kernel_l == 3
+        and stride_l == 2
+        and padding_l == 1
+        and dilation_l == 1
+        and in_l % 2 == 0
+        and out_l == in_l // 2
+        and in_l <= 0x7FFFFFFF
+        and total <= 0x7FFFFFFF
+        and total % 1024 == 0
+        and input.data_ptr() % (2 * input.element_size()) == 0
+    ):
+        with torch_device_fn.device(input.device):
+            # Use smaller tiles while the number of blocks limits parallelism.
+            small_grid_limit = 2097152 if input.element_size() == 2 else 524288
+            block_cap = 4096 if total <= small_grid_limit else 8192
+            fast_block = min(block_cap, total & -total)
+            blocks = total // fast_block
+            _pool1d_k3s2[(blocks,)](
+                input,
+                output,
+                indices,
+                out_l,
+                input.element_size() == 2,
+                input.dtype == torch.bfloat16,
+                fast_block,
+                num_warps=1,
+                buffer_size_limit=2048,
+                budget_tiling=False,
+                unroll_num=1,
+                isCloseVectorization=False,
+            )
+    elif (
+        input.is_contiguous()
+        and input.dtype in (torch.float32, torch.float16, torch.bfloat16)
         and dilation_l == 1
         and stride_l % 2 == 0
         and in_l % 2 == 0
@@ -394,6 +526,10 @@ def max_pool1d_with_indices(
                 total,
                 in_l,
                 out_l,
+                in_c,
+                input.stride(0),
+                input.stride(1),
+                input.stride(2),
                 kernel_l,
                 stride_l,
                 padding_l,
