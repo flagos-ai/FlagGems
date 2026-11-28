@@ -84,6 +84,22 @@ def greater_func_scalar(x, y):
 
 def greater_scalar(A, B):
     logger.debug("GEMS_KUNLUNXIN GREATER_SCALAR")
+    if (
+        A.is_contiguous()
+        and A.dtype in (torch.float16, torch.float32, torch.bfloat16)
+        and (numel := A.numel()) >= _GREATER_SCALAR_MASKED_MIN
+    ):
+        wrapped = float(torch.tensor(float(B), dtype=A.dtype).item())
+        if math.isfinite(wrapped) and _greater_scalar_fast_ok(A.dtype, wrapped):
+            tile = (
+                _GREATER_SCALAR_TILE_F32
+                if A.dtype == torch.float32
+                else _GREATER_SCALAR_TILE_HALF
+            )
+            out = torch.empty(A.shape, dtype=torch.bool, device=A.device)
+            return _greater_scalar_out_cmp(
+                A, wrapped, out, tile, A.dtype != torch.float32, numel
+            )
     prev = _greater_set_compare_env()
     try:
         return greater_func_scalar(A, B)
@@ -101,6 +117,13 @@ _GREATER_SCALAR_TILE_HALF = 131072
 _GREATER_SCALAR_MIN_GRID = 8
 _GREATER_SCALAR_MASKED_MIN = 1 << 20
 _FP16_MAX = 65504.0
+_FP16_MIN_NORMAL = 6.103515625e-05
+
+
+def _greater_scalar_fast_ok(dtype, wrapped):
+    if dtype is not torch.bfloat16:
+        return True
+    return _FP16_MIN_NORMAL <= abs(wrapped) <= _FP16_MAX
 
 
 @triton.jit

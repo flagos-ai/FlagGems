@@ -104,6 +104,8 @@ def masked_fill_tensor_value_kernel(inp, expand_mask, value):
 # mid/large benchmark shapes, no regression on small shapes (gated below
 # _FAST_MIN_NUMEL where the pointwise path stays).
 _FAST_TILE = 131072
+_FAST_TILE_MID = 32768
+_FAST_TILE_MID_MAX_NUMEL = 1 << 22
 _FAST_MIN_NUMEL = 1 << 20
 _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
@@ -152,13 +154,14 @@ def _masked_fill_fast(inp, mask, value, out):
         unroll_num=16,
         isCloseMemoryAsync=False,
     )
-    if n % _FAST_TILE == 0:
-        masked_fill_fast_kernel[(n // _FAST_TILE,)](
-            oi, xi, mask8, V=bits, TILE=_FAST_TILE, **launch
+    tile = _FAST_TILE_MID if n <= _FAST_TILE_MID_MAX_NUMEL else _FAST_TILE
+    if n % tile == 0:
+        masked_fill_fast_kernel[(n // tile,)](
+            oi, xi, mask8, V=bits, TILE=tile, **launch
         )
     else:
-        masked_fill_fast_masked_kernel[(math.ceil(n / _FAST_TILE),)](
-            oi, xi, mask8, n, V=bits, TILE=_FAST_TILE, **launch
+        masked_fill_fast_masked_kernel[(math.ceil(n / tile),)](
+            oi, xi, mask8, n, V=bits, TILE=tile, **launch
         )
     return out
 

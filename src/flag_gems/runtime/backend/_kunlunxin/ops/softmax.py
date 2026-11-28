@@ -6,7 +6,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
-from flag_gems.ops.copy import copy_ as _gems_strided_copy_
+from flag_gems.ops.copy import copy_ as _gems_copy_
 from flag_gems.ops.zeros import zero_
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -93,7 +93,7 @@ _TLE_ROW_GEOM = {}
 _TLE_GEOM_MISS = object()
 
 
-def _tle_row_geom(M, N, itemsize):
+def _tle_row_geom(M, N, dtype):
     """Cached [M, N] row-reduce tiling: `(xblock, yblock, row_blocks)`.
 
     Same trade as the sum/log_softmax row-reduce: XBLOCK is rows per program,
@@ -103,10 +103,11 @@ def _tle_row_geom(M, N, itemsize):
     are all there is. XBLOCK may exceed M -- both copies clamp to the descriptor
     extents.
     """
-    geom_key = (M, N, itemsize)
+    geom_key = (M, N, dtype)
     geom = _TLE_ROW_GEOM.get(geom_key, _TLE_GEOM_MISS)
     if geom is not _TLE_GEOM_MISS:
         return geom
+    itemsize = dtype.itemsize
     xblock = min(_TLE_XBLOCK, max(128, _npo2(-(-M // _TLE_CLUSTERS))))
     row_bytes = N * itemsize
     if row_bytes >= _TLE_WIDE_ROW_BYTES:
@@ -147,6 +148,13 @@ def _tle_row_geom(M, N, itemsize):
     # Wide row (N >= 8192) and narrow row (row_bytes <= 2048): nominal LM
     # budget split by XBLOCK, no medium-row doubling.
     tile_elems = _TLE_LM_BYTES_PER_CORE * _TLE_CORE_NUM // itemsize
+    if row_bytes >= _TLE_WIDE_ROW_BYTES and dtype == torch.float16:
+        # Wide fp16 rows tolerate a 2x larger LM tile: measured (10000,65536)
+        # fused 26.5 -> 15.8 ms and (1024,65536) 2.47 -> 2.01 ms, (1024,2**20)
+        # 39.4 -> 32.2 ms. bf16/fp32 hit the TLE stack budget at 2x (compile
+        # fails with "TLE kernel stack is over the local-memory budget"), so
+        # they keep the nominal tile.
+        tile_elems *= 2
     yblock = max(1, min(_npo2(N), tile_elems // xblock))
     while yblock > N and yblock > 1:
         yblock >>= 1
@@ -359,7 +367,7 @@ def _tle_softmax(out, inp, M, N):
         return False
     a = inp.view(M, N)
     c = out.view(M, N)
-    xblock, yblock, row_blocks = _tle_row_geom(M, N, inp.element_size())
+    xblock, yblock, row_blocks = _tle_row_geom(M, N, inp.dtype)
     if N % yblock != 0:
         # Non-pow2 tail: keep the two-kernel path (reduce then pass); the
         # fused kernel's partial last chunk is only exercised by pow2 rows.
@@ -1061,9 +1069,6 @@ def softmax_backward_kernel_inner(
 
 
 _SB_MR_MAX_N = 4096
-# Exact (unmasked) kernel: ~16K elements per program amortizes the per-CTA
-# reduce cost. The clamped-index `_pad` kernel is very sensitive to its tile
-# (8K elements already collapses), so it keeps the original small schedule.
 _SB_N_TILE_M = [
     (16, 64),
     (64, 32),
@@ -1073,8 +1078,16 @@ _SB_N_TILE_M = [
     (2048, 8),
     (4096, 4),
 ]
+# Masked (`_pad`) tile ladder, kept at the original small values: that kernel
+# clamps its indices, so a bigger tile buys nothing and costs LM.
 _SB_N_TILE_M_PAD = [(16, 64), (64, 32), (256, 16), (1024, 8), (2048, 4), (4096, 2)]
 _SB_WIDE = 8192
+# Minimum number of chunks (== parallel programs) for the single-row split
+# path. Below a full warp-sized `tl.sum` over the partial vector is miscompiled
+# on this backend, so short rows keep the serial per-row kernel.
+_SB_SPLIT_MIN_CHUNKS = 64
+# Elementwise flat block used when the reduction dim is 1 (see
+# `softmax_backward_kernel_n1`); 8192 elements/CTA keeps the store affine.
 _SB_N1_BLOCK = 8192
 
 
@@ -1086,8 +1099,9 @@ def softmax_backward_kernel_n1(
     n_elem,
     BLOCK: tl.constexpr,
 ):
-    # Reduction dim == 1: the row sum is `o * g` itself, so the whole tensor is
-    # a flat elementwise `o * (g - o * g)` - no reshape copies, no reduction.
+    # Reduction dim == 1: the row sum is `o * g` itself, so the whole op is the
+    # flat elementwise `o * (g - o * g)` - no reshape/transpose copies and no
+    # 1-wide 2D reduction tile (which is per-CTA bound on XPU).
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     mask = offs < n_elem
@@ -1100,7 +1114,7 @@ def _softmax_backward_n1_flat(output, out_grad, in_grad):
     n_elem = in_grad.numel()
     if n_elem == 0:
         return
-    grid = (triton.cdiv(n_elem, _SB_N1_BLOCK),)
+    grid = ((n_elem + _SB_N1_BLOCK - 1) // _SB_N1_BLOCK,)
     softmax_backward_kernel_n1[grid](
         output,
         out_grad,
@@ -1278,8 +1292,11 @@ def softmax_backward_kernel_split_out(
     W: tl.constexpr,
     NC: tl.constexpr,
 ):
-    # Each chunk re-reads the (small) partial vector to get the row total, so
-    # the sum never round-trips through the host.
+    # Each chunk re-reads the (small) per-chunk partial vector to rebuild the
+    # row total, so the sum never round-trips through the host. `NC` is a power
+    # of two >= 64: a warp-sized reduce is required (shorter `tl.sum` vectors
+    # are miscompiled on this backend) and the unmasked load cannot be replaced
+    # by a masked one (masked lanes come back as garbage).
     pid = tl.program_id(0)
     partial = tl.load(partial_ptr + tl.arange(0, NC))
     scale = tl.sum(partial, 0)
@@ -1294,15 +1311,20 @@ def softmax_backward_kernel_split_out(
 def _softmax_backward_split_1row(output, grad_output, in_grad, N):
     """Chunk-parallel two-pass path for a single very long reduction row.
 
-    The per-row kernels run grid=(M,), so M == 1 leaves one program doing the
-    whole row serially. Here several programs cover the row and only the
-    per-chunk sums round-trip through a tiny scratch vector.
+    `perrow_p2` runs `grid=(M,)`, so M == 1 leaves one program walking the whole
+    row serially (measured 39 ms on 2**28 fp16). Here `chunks` programs cover
+    the row and only the per-chunk sums round-trip through a tiny scratch
+    vector.
     """
+    # `units` is a power of two that `chunks` divides exactly, so no program
+    # needs a mask and no tail kernel is required.
+    if N % _SB_WIDE:
+        return False
     units = N // _SB_WIDE
     chunks = 1
     while chunks * 2 <= min(units, 1024) and units % (chunks * 2) == 0:
         chunks *= 2
-    if chunks < 8:
+    if chunks < _SB_SPLIT_MIN_CHUNKS:
         return False
     tiles = units // chunks
     partial = torch.empty((chunks,), dtype=torch.float32, device=in_grad.device)
@@ -1329,19 +1351,23 @@ def _softmax_backward_split_1row(output, grad_output, in_grad, N):
 
 def _softmax_backward_launch_k1(output, grad_output, in_grad, M, N, input_dtype):
     if N <= _SB_MR_MAX_N:
-        is_pow2 = N == triton.next_power_of_2(N)
+        exact = N == _npo2(N)
         TILE_M = 4
-        for n_hi, tm in _SB_N_TILE_M if is_pow2 else _SB_N_TILE_M_PAD:
+        for n_hi, tm in _SB_N_TILE_M if exact else _SB_N_TILE_M_PAD:
             if N <= n_hi:
                 TILE_M = tm
                 break
-        # Shrink (by halving) until it divides M: the clamped-index `_pad`
-        # kernel loses the affine address pattern and is far slower than the
-        # exact kernel, so taking a smaller exact tile always wins.
-        while TILE_M > 1 and M % TILE_M != 0:
-            TILE_M >>= 1
-        grid = (triton.cdiv(M, TILE_M),)
-        if is_pow2 and M % TILE_M == 0:
+        if exact:
+            # Shrink (by halving) until the tile divides M: the clamped-index
+            # `_pad` kernel loses the affine address pattern and is far slower
+            # than the exact kernel, so a smaller exact tile always wins.
+            while TILE_M > 1 and M % TILE_M != 0:
+                TILE_M >>= 1
+        # `triton.cdiv` / `triton.next_power_of_2` each cost ~3.5 us of host time
+        # (they round-trip the Triton dispatcher); plain arithmetic is the same
+        # value and this wrapper is host-bound on the small shapes.
+        grid = ((M + TILE_M - 1) // TILE_M,)
+        if exact and M % TILE_M == 0:
             softmax_backward_kernel_multirow[grid](
                 output,
                 grad_output,
@@ -1358,12 +1384,12 @@ def _softmax_backward_launch_k1(output, grad_output, in_grad, M, N, input_dtype)
                 in_grad,
                 M,
                 N,
-                W=triton.next_power_of_2(N),
+                W=_npo2(N),
                 TILE_M=TILE_M,
                 num_warps=8,
             )
     else:
-        if M == 1 and N >= 65536 and N % _SB_WIDE == 0 and in_grad.is_contiguous():
+        if M == 1 and N >= 65536 and in_grad.is_contiguous():
             if _softmax_backward_split_1row(output, grad_output, in_grad, N):
                 return
         if N % _SB_WIDE == 0:
@@ -1451,8 +1477,11 @@ def softmax(self, dim, half_to_float=False):
         if K > 1:
             inp_view = self.view(M, N, K).transpose(1, 2)
             inp_reshaped = torch.empty((M * K, N), dtype=self.dtype, device=self.device)
-            if not tle_copy(inp_view, inp_reshaped):
-                torch.ops.aten._copy_from(inp_view, inp_reshaped, False)
+            # 3-D destination keeps `tle_copy` on the transposed tile DMA path;
+            # the aten `_copy_from` fallback cannot expand 3-D -> 2-D.
+            inp_dst = inp_reshaped.view(M, K, N)
+            if not tle_copy(inp_view, inp_dst):
+                _gems_copy_(inp_dst, inp_view)
             out_reshaped = torch.empty((M * K, N), dtype=dtype, device=self.device)
 
             _softmax_forward_launch(out_reshaped, inp_reshaped, M * K, N)
@@ -1589,6 +1618,13 @@ def softmax_backward(grad_output, output, dim, input_dtype, grad_input=None):
         grad_output if grad_output.is_contiguous() else _native_contiguous(grad_output)
     )
     output = output if output.is_contiguous() else _native_contiguous(output)
+    if output.numel() == 0:
+        # aten returns an empty tensor of the same shape for every orthogonal
+        # empty layout; without this guard an empty outer dim makes M zero and
+        # the K computation divides by zero.
+        if grad_input is not None:
+            return grad_input
+        return torch.empty_like(output, dtype=input_dtype)
     K = output.numel() // M // N
     if grad_input is not None and K == 1:
         in_grad = grad_input
@@ -1597,9 +1633,9 @@ def softmax_backward(grad_output, output, dim, input_dtype, grad_input=None):
 
     with torch_device_fn.device(in_grad.device):
         if N == 1 and in_grad.is_contiguous():
-            # The reduction is a single element, so the result is plain
-            # elementwise `o * (g - o * g)`; no transpose/reshape or per-row
-            # reduction is needed (the 1-wide reduction tile is per-CTA bound).
+            # Single-element reduction: plain elementwise `o * (g - o * g)`.
+            # Also avoids the 1-wide 2D reduction tile (N % 8 == 0 is required
+            # for the axis-1 tile reduce) and the 3-D->2-D reshape copies.
             if grad_input is not None:
                 in_grad = grad_input
             _softmax_backward_n1_flat(output, grad_output, in_grad)
@@ -1613,10 +1649,17 @@ def softmax_backward(grad_output, output, dim, input_dtype, grad_input=None):
             out_reshaped = torch.empty(
                 (M * K, N), dtype=output.dtype, device=output.device
             )
-            if not tle_copy(out_grad_view, out_grad_reshaped.view(M, K, N)):
-                _gems_strided_copy_(out_grad_reshaped.view(M, K, N), out_grad_view)
-            if not tle_copy(out_view, out_reshaped.view(M, K, N)):
-                _gems_strided_copy_(out_reshaped.view(M, K, N), out_view)
+            # `tle_copy` only matches the transposed fast path when the source
+            # and destination shapes agree; pass the 3-D view so the (M,K,N)
+            # transposed copy stays on the tile DMA instead of falling into the
+            # aten `_copy_from` decomposition, whose expand_as rejects 3-D -> 2-D
+            # (the exact shape mismatch that used to make this whole branch throw).
+            out_grad_dst = out_grad_reshaped.view(M, K, N)
+            out_dst = out_reshaped.view(M, K, N)
+            if not tle_copy(out_grad_view, out_grad_dst):
+                _gems_copy_(out_grad_dst, out_grad_view)
+            if not tle_copy(out_view, out_dst):
+                _gems_copy_(out_dst, out_view)
             in_grad_reshaped = torch.empty(
                 (M * K, N), dtype=in_grad.dtype, device=in_grad.device
             )

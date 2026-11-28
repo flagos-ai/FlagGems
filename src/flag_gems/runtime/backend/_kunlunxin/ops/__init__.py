@@ -390,6 +390,7 @@ from .col2im import col2im
 from .col_indices_copy import col_indices_copy
 from .column_stack import column_stack, column_stack_out
 from .concatenate import concatenate
+from .conj import conj  # noqa: F401
 from .conj_physical import conj_physical
 from .conj_physical_ import conj_physical_  # noqa: F401
 from .contiguous import contiguous
@@ -869,7 +870,10 @@ from .scaled_modified_bessel_k0 import (
 )
 from .scaled_softmax import scaled_softmax_backward, scaled_softmax_forward
 from .scatter import scatter, scatter_
-from .scatter_add_ import scatter_add, scatter_add_
+
+# scatter_add / scatter_add_: self-contained tle.raw cluster kernels
+# (SM atomic or per-core LM accumulation) -- no vendor kernel dependency.
+from .scatter_add import scatter_add, scatter_add_
 from .scatter_reduce import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .searchsorted import (
     searchsorted,
@@ -1463,6 +1467,7 @@ __all__ = [
     "column_stack",
     "column_stack_out",
     "concatenate",
+    "conj",
     "conj_physical",
     "constant_pad_nd",
     "contiguous",
