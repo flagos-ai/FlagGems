@@ -85,6 +85,7 @@ from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .router_gemm import router_gemm
 from .scatter_reduce_ import scatter_reduce, scatter_reduce_, scatter_reduce_out
 from .softplus_backward import softplus_backward
+from .sort import sort, sort_stable
 from .special_chebyshev_polynomial_t import special_chebyshev_polynomial_t
 from .special_chebyshev_polynomial_u import special_chebyshev_polynomial_u
 from .special_chebyshev_polynomial_w import (
@@ -207,6 +208,8 @@ __all__ = [
     "scatter_reduce_",
     "scatter_reduce_out",
     "softplus_backward",
+    "sort",
+    "sort_stable",
     "special_chebyshev_polynomial_t",
     "special_chebyshev_polynomial_u",
     "special_chebyshev_polynomial_w",
