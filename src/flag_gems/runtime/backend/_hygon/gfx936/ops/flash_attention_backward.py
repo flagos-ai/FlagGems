@@ -37,6 +37,7 @@ def _hygon_dropout(
     threshold,
     drop_scale,
     DIM: tl.constexpr = 64,
+    PACKED_DROPOUT64: tl.constexpr = False,
 ):
     seed = tl.load(RNG).to(tl.uint64)
     offset = tl.load(RNG_OFFSET).to(tl.uint64)
@@ -45,11 +46,15 @@ def _hygon_dropout(
     c1 = tl.full((m.shape[0], n.shape[0]), 0, tl.uint32) + (offset >> 32).to(tl.uint32)
     if DIM == 128:
         c2 = tl.broadcast_to((m[:, None] // 16 * 16).to(tl.uint32), c0.shape)
-        c3 = tl.broadcast_to(
-            (n[None, :] // 64 * 64 + n[None, :] % 16 // 4 * 4).to(tl.uint32), c0.shape
-        )
     else:
         c2 = tl.broadcast_to(m[:, None].to(tl.uint32), c0.shape)
+    if DIM == 128 or (DIM == 64 and PACKED_DROPOUT64):
+        # Native forward packs sixteen dropout bytes into each Philox result.
+        c3 = tl.broadcast_to(
+            (n[None, :] // 64 * 64 + (n[None, :] % 16 // 4) * 4).to(tl.uint32),
+            c0.shape,
+        )
+    else:
         c3 = tl.broadcast_to(n[None, :].to(tl.uint32), c0.shape)
     k0, k1 = seed.to(tl.uint32), (seed >> 32).to(tl.uint32)
     for _ in tl.static_range(7):
@@ -60,7 +65,7 @@ def _hygon_dropout(
         c0, c1, c2, c3 = hi1 ^ c1 ^ k0, lo1, hi0 ^ c3 ^ k1, lo0
         k0 = (k0 + 0x9E3779B9).to(tl.uint32)
         k1 = (k1 + 0xBB67AE85).to(tl.uint32)
-    if DIM == 128:
+    if DIM == 128 or (DIM == 64 and PACKED_DROPOUT64):
         word = n[None, :] // 16 % 4
         bits = tl.where(
             word == 0, c0, tl.where(word == 1, c1, tl.where(word == 2, c2, c3))
@@ -348,6 +353,7 @@ def _aten_flash_bwd_dq(
     WRITE_DELTA: tl.constexpr = True,
     ASCEND_LEGACY_COMPILER: tl.constexpr = False,
     FULL_PRECISION: tl.constexpr = False,
+    PACKED_DROPOUT64: tl.constexpr = False,
 ):
     block = tl.program_id(0)
     if WIDE_SEQUENCE_INDICES:
@@ -425,7 +431,17 @@ def _aten_flash_bwd_dq(
         dp = tl.where(dp_valid, dp, 0.0)
         if DROPOUT:
             dp *= _hygon_dropout(
-                RNG, RNG_OFFSET, batch, head, m, kn, HQ, threshold, 1.0, DIM
+                RNG,
+                RNG_OFFSET,
+                batch,
+                head,
+                m,
+                kn,
+                HQ,
+                threshold,
+                1.0,
+                DIM,
+                PACKED_DROPOUT64=PACKED_DROPOUT64,
             )
         ds = p * (dp - delta[:, None])
         ds_valid = (m[:, None] < sq) & (kn[None, :] < sk)
@@ -498,6 +514,7 @@ def _aten_flash_bwd_dkv(
     COMPUTE_DELTA: tl.constexpr = False,
     ASCEND_LEGACY_COMPILER: tl.constexpr = False,
     FULL_PRECISION: tl.constexpr = False,
+    PACKED_DROPOUT64: tl.constexpr = False,
 ):
     block = tl.program_id(0)
     if WIDE_SEQUENCE_INDICES:
@@ -595,7 +612,17 @@ def _aten_flash_bwd_dkv(
             p_drop = p
             if DROPOUT:
                 keep = _hygon_dropout(
-                    RNG, RNG_OFFSET, batch, head, qm, n, HQ, threshold, 1.0, DIM
+                    RNG,
+                    RNG_OFFSET,
+                    batch,
+                    head,
+                    qm,
+                    n,
+                    HQ,
+                    threshold,
+                    1.0,
+                    DIM,
+                    PACKED_DROPOUT64=PACKED_DROPOUT64,
                 )
                 dp *= keep
                 p_drop = p * keep
@@ -737,6 +764,7 @@ def _hygon_bwd_dkv_per_head(
     COMPUTE_DELTA: tl.constexpr = False,
     ASCEND_LEGACY_COMPILER: tl.constexpr = False,
     FULL_PRECISION: tl.constexpr = False,
+    PACKED_DROPOUT64: tl.constexpr = False,
 ):
     block = tl.program_id(0)
     if WIDE_SEQUENCE_INDICES:
@@ -831,7 +859,17 @@ def _hygon_bwd_dkv_per_head(
             p_drop = p
             if DROPOUT:
                 keep = _hygon_dropout(
-                    RNG, RNG_OFFSET, batch, head, qm, n, HQ, threshold, 1.0, DIM
+                    RNG,
+                    RNG_OFFSET,
+                    batch,
+                    head,
+                    qm,
+                    n,
+                    HQ,
+                    threshold,
+                    1.0,
+                    DIM,
+                    PACKED_DROPOUT64=PACKED_DROPOUT64,
                 )
                 dp *= keep
                 p_drop = p * keep
@@ -1019,6 +1057,7 @@ def _aten_flash_bwd_small(
     BM: tl.constexpr,
     BN: tl.constexpr,
     FULL_PRECISION: tl.constexpr = False,
+    PACKED_DROPOUT64: tl.constexpr = False,
 ):
     block = tl.program_id(0)
     if WIDE_SEQUENCE_INDICES:
@@ -1067,6 +1106,7 @@ def _aten_flash_bwd_small(
                 BN,
                 WRITE_DELTA=False,
                 FULL_PRECISION=FULL_PRECISION,
+                PACKED_DROPOUT64=PACKED_DROPOUT64,
             )
     else:
         if block * BN < sk_max:
@@ -1112,6 +1152,7 @@ def _aten_flash_bwd_small(
                 HEAD_OFFSET=HQ,
                 COMPUTE_DELTA=True,
                 FULL_PRECISION=FULL_PRECISION,
+                PACKED_DROPOUT64=PACKED_DROPOUT64,
             )
 
 
@@ -1138,6 +1179,8 @@ def _aten_flash_backward(
     _warps_override=None,
 ):
     # Validate metadata without reading device values or synchronizing the stream.
+    # Torch-FL boxing and native ATen use different 64-dimension RNG layouts.
+    packed_dropout64 = query.device.type == "flagos"
     if query.ndim != 4 or any(t.ndim != 4 for t in (key, value, out, grad_out)):
         raise ValueError("Hygon dense flash_attention_backward expects BSHD tensors")
     if any(
@@ -1304,6 +1347,7 @@ def _aten_flash_backward(
                 ),
                 num_stages=1,
                 **launch_options,
+                PACKED_DROPOUT64=packed_dropout64,
             )
         return dq, dk, dv
     delta = torch.empty((hq, total_q), dtype=torch.float32, device=q.device)
@@ -1339,6 +1383,7 @@ def _aten_flash_backward(
             num_warps=num_warps,
             num_stages=1,
             **launch_options,
+            PACKED_DROPOUT64=packed_dropout64,
         )
     split_gqa = hq > hk and max(max_q, max_k) >= 256
     if max_k and split_gqa:
@@ -1387,6 +1432,7 @@ def _aten_flash_backward(
             ),
             num_stages=1,
             **launch_options,
+            PACKED_DROPOUT64=packed_dropout64,
         )
         _hygon_reduce_gqa[(triton.cdiv(k.numel(), 256),)](
             dkh,
@@ -1427,6 +1473,7 @@ def _aten_flash_backward(
             ),
             num_stages=1,
             **launch_options,
+            PACKED_DROPOUT64=packed_dropout64,
         )
     return dq, dk, dv
 
