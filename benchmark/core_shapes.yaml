@@ -1479,6 +1479,14 @@ addmm:
   shape_desc: B, M, N, K
   accuracy_shapes: *id002
   quick_shapes: *id003
+addmm_backward:
+  # Square, rectangular and tail tiles exercise both fused gradient GEMMs.
+  shapes:
+  - [1, 64, 64, 64]
+  - [1, 65, 97, 129]
+  - [1, 128, 256, 192]
+  - [1, 256, 256, 256]
+  shape_desc: B, M, N, K
 amin_backward:
   # Row, tail, square and batched reductions exercise the fused tie-count path.
   shapes:
