@@ -587,7 +587,7 @@ from flag_gems.ops.argsort import argsort
 from flag_gems.ops.argwhere import argwhere
 from flag_gems.ops.as_strided_copy import as_strided_copy, as_strided_copy_out
 from flag_gems.ops.as_strided_scatter import as_strided_scatter
-from flag_gems.ops.asin import asin, asin_
+from flag_gems.ops.asin import asin, asin_, asin_backward
 from flag_gems.ops.asinh import asinh, asinh_out
 from flag_gems.ops.asinh_ import asinh_
 from flag_gems.ops.assert_async import _assert_async
@@ -2355,6 +2355,7 @@ __all__ = [
     "as_strided_scatter",
     "asin",
     "asin_",
+    "asin_backward",
     "asinh",
     "asinh_",
     "asinh_out",
