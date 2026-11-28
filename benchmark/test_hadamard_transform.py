@@ -21,6 +21,7 @@ import triton
 from packaging.version import Version
 
 import flag_gems
+from tests.hadamard_reference import special_hadamard_matrix, special_hadamard_reference
 
 from . import base, consts
 
@@ -37,7 +38,7 @@ _skip_if_join_bug = pytest.mark.skipif(
 )
 
 # ============================================================
-# Standard FHT benchmark (hadamard_transform)
+# Standard FHT benchmark (fast_hadamard_transform)
 # ============================================================
 
 _FHT_SHAPES = [
@@ -104,21 +105,21 @@ class HadamardBenchmark(base.GenericBenchmark2DOnly):
         self.shapes = self.DEFAULT_SHAPES
 
 
-@pytest.mark.hadamard_transform
+@pytest.mark.fast_hadamard_transform
 @_skip_if_join_bug
-def test_hadamard_transform():
+def test_fast_hadamard_transform():
     bench = HadamardBenchmark(
         input_fn=ht_input_fn,
-        op_name="hadamard_transform",
+        op_name="fast_hadamard_transform",
         torch_op=torch_ht,
-        gems_op=flag_gems.hadamard_transform,
+        gems_op=flag_gems.fast_hadamard_transform,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
 
 
 # ============================================================
-# M×N fused kernel benchmark (hadamard_transform_12N/20N/28N/40N)
+# M×N fused kernel benchmark (fast_hadamard_transform_12N/20N/28N/40N)
 # ============================================================
 
 _HT_MN_SHAPES = [
@@ -150,30 +151,31 @@ _TAG_FOR_DIM = {
     6144: "12N",
     12288: "12N",
     10240: "20N",
-    20480: "20N",
+    20480: "20N",  # Explicitly benchmark 20N for this dimension, not 40N.
     14336: "28N",
     40960: "40N",
 }
 
 _FN_MAP = {
-    "12N": flag_gems.hadamard_transform_12N,
-    "20N": flag_gems.hadamard_transform_20N,
-    "28N": flag_gems.hadamard_transform_28N,
-    "40N": flag_gems.hadamard_transform_40N,
+    "12N": flag_gems.fast_hadamard_transform_12N,
+    "20N": flag_gems.fast_hadamard_transform_20N,
+    "28N": flag_gems.fast_hadamard_transform_28N,
+    "40N": flag_gems.fast_hadamard_transform_40N,
 }
 
 
 def ht_mn_input_fn(shape, dtype, device):
     batch, dim = shape
-    yield (torch.randn(batch, dim, dtype=dtype, device=device),)
+    x = torch.randn(batch, dim, dtype=dtype, device=device)
+    # Prime the small matrix cache outside the timed reference call.
+    special_hadamard_matrix(int(_TAG_FOR_DIM[dim][:-1]), str(x.device))
+    yield (x,)
 
 
 def torch_ht_mn(x):
-    """Benchmark baseline: pad to next power of 2, then same scipy ref (not gems)."""
-    dim = x.shape[-1]
-    padded = 1 << (dim - 1).bit_length()
-    x_padded = F.pad(x, (0, padded - dim))
-    return _hadamard_transform_ref(x_padded)[..., :dim]
+    """Benchmark baseline: independent H_M tensor product Sylvester H_N."""
+    tag = _TAG_FOR_DIM[x.shape[-1]]
+    return special_hadamard_reference(x, int(tag[:-1]))
 
 
 def gems_ht_mn(x):
@@ -193,12 +195,15 @@ class HadamardMNBenchmark(base.GenericBenchmark2DOnly):
         self.shapes = self.DEFAULT_SHAPES
 
 
-@pytest.mark.hadamard_transform_mn
+@pytest.mark.fast_hadamard_transform_12N
+@pytest.mark.fast_hadamard_transform_20N
+@pytest.mark.fast_hadamard_transform_28N
+@pytest.mark.fast_hadamard_transform_40N
 @_skip_if_join_bug
-def test_hadamard_transform_mn():
+def test_fast_hadamard_transform_mn():
     bench = HadamardMNBenchmark(
         input_fn=ht_mn_input_fn,
-        op_name="hadamard_transform_mn",
+        op_name="fast_hadamard_transform_mn",
         torch_op=torch_ht_mn,
         gems_op=gems_ht_mn,
         dtypes=consts.FLOAT_DTYPES,
