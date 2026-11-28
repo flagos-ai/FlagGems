@@ -181,6 +181,11 @@ def get_higher_dtype(a, b):
 
 
 def mm(a, b):
+    from .linear_projection import try_linear_projection
+
+    projection = try_linear_projection(a, b)
+    if projection is not None:
+        return projection
     logger.debug("GEMS_HYGON MM")
     device = a.device
     # handle non-contiguous inputs if necessary
