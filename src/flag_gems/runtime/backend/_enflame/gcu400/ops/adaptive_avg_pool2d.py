@@ -23,158 +23,153 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-
 # Tuning knobs, adjusted one variable at a time during the optimization rounds.
-POOL_BLOCK_OUT_LIMIT = 64
+# TILE_LIMIT caps the uniform-arm staging tile: the reshape chain bills ~32B
+# of DSM per tile element on GCU400 (a 64K-element tile needs 2MB against the
+# 917504B hardware limit), so 16384 elements is the largest safe power of two.
+# GRID_LIMIT keeps the persistent walk inside one <=48-CTA wave.
+# UNIFORM_WARPS > 0 pins the uniform-arm warp count, bypassing the tile rule.
 POOL_TILE_ELEMENT_LIMIT = 16384
-POOL_NUM_WARPS = 4
-# Single-pass candidate: average the rectangular window directly, removing the staging buffer and second launch.
-POOL_USE_SINGLE_PASS = 1
-POOL_SINGLE_BLOCK_R = 2048
-POOL_SINGLE_GRID_LIMIT = 65535
+POOL_GRID_LIMIT = 48
+POOL_UNIFORM_WARPS = 0
+POOL_GENERAL_BLOCK_OUT = 64
+POOL_GENERAL_TILE_LIMIT = 16384
+POOL_GENERAL_BLOCK_W_CAP = 8192
 
 
 @libentry()
 @triton.jit
-def _adaptive_pool2d_pass_kernel(
+def _adaptive_pool2d_uniform_kernel(
     X,
     Y,
-    L_IN,
-    L_OUT,
-    PLANE_SPAN,
-    X_NC_STRIDE,
-    X_COL_STRIDE,
-    X_POOL_STRIDE,
-    Y_NC_STRIDE,
-    Y_COL_STRIDE,
-    Y_POOL_STRIDE,
-    BLOCKS_PER_PLANE,
-    MAX_WINDOW: tl.constexpr,
-    BLOCK_OUT: tl.constexpr,
+    NC,
+    IH,
+    IW,
+    OH,
+    OW,
+    P,
+    R_W,
+    COL_BLOCKS,
+    UNITS,
+    INV_HW,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    BLOCK_ROWS: tl.constexpr,
+    BLOCK_COLS: tl.constexpr,
+    OUT_SPAN: tl.constexpr,
+    ROWS_PER_SLAB: tl.constexpr,
 ):
-    """Average one spatial axis of a contiguous (NC, axis, column) tensor.
+    """Fast arm for IH % OH == 0, IW % OW == 0 and power-of-two KH/KW.
 
-    Adaptive average pooling over a rectangular window is separable: averaging
-    along W and then along H equals averaging the whole rectangle at once. Each
-    program owns BLOCK_OUT output bins of a single plane, so the load tile stays
-    a compact 2D tile instead of the BO x KH x KW pointer array that makes the
-    GCU400 PassManager fail. aten's bin edges are floor(i*L_IN/L_OUT) and
-    ceil((i+1)*L_IN/L_OUT); MAX_WINDOW covers the largest possible bin.
+    Every plane is exactly OH*KH input rows by OW*KW input columns, so one
+    program can slab P consecutive planes at once: relative input row r is
+    p*IH + oh*KH + kh and the loaded rectangle stays a plain affine 2D tile
+    (row stride IW, contiguous columns) that takes the vectorized tar_load
+    path. The reductions over kh and kw are value-side reshapes, so every
+    tensor stays at rank <= 3 (the 3D pointer-array tile fails the GCU400
+    PassManager) and the fp32 accumulation happens in a single pass with the
+    host-precomputed 1/(KH*KW) reciprocal. A grid-stride walk keeps the grid
+    inside one <=48-CTA wave regardless of N*C.
     """
     pid = tl.program_id(0)
-    out_block = pid % BLOCKS_PER_PLANE
-    plane = pid // BLOCKS_PER_PLANE
-    nc = plane // PLANE_SPAN
-    col = plane % PLANE_SPAN
-
-    out_pos = out_block * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
-    bin_start = (out_pos * L_IN) // L_OUT
-    bin_end = ((out_pos + 1) * L_IN + L_OUT - 1) // L_OUT
-    window = tl.arange(0, MAX_WINDOW)
-    in_pos = bin_start[:, None] + window[None, :]
-    valid = (out_pos[:, None] < L_OUT) & (in_pos < bin_end[:, None]) & (in_pos < L_IN)
-    x_base = nc * X_NC_STRIDE + col * X_COL_STRIDE
-    y_base = nc * Y_NC_STRIDE + col * Y_COL_STRIDE
-    values = tl.load(X + x_base + in_pos * X_POOL_STRIDE, mask=valid, other=0.0).to(
-        tl.float32
-    )
-    count = tl.maximum(bin_end - bin_start, 1)
-    mean = tl.sum(values, 1) / count.to(tl.float32)
-    tl.store(
-        Y + y_base + out_pos * Y_POOL_STRIDE,
-        mean.to(Y.dtype.element_ty),
-        mask=out_pos < L_OUT,
-    )
-
-
-def _run_pool_pass(
-    source,
-    target,
-    length_in,
-    length_out,
-    plane_span,
-    num_planes,
-    x_nc_stride,
-    x_col_stride,
-    x_pool_stride,
-    y_nc_stride,
-    y_col_stride,
-    y_pool_stride,
-    num_warps,
-):
-    """Launch one separable pass described by explicit memory strides."""
-    max_window = triton.next_power_of_2(triton.cdiv(length_in, length_out) + 1)
-    block_out = min(
-        POOL_BLOCK_OUT_LIMIT,
-        triton.next_power_of_2(length_out),
-        max(1, POOL_TILE_ELEMENT_LIMIT // max_window),
-    )
-    blocks_per_plane = triton.cdiv(length_out, block_out)
-    grid = (blocks_per_plane * num_planes * plane_span,)
-    _adaptive_pool2d_pass_kernel[grid](
-        source,
-        target,
-        length_in,
-        length_out,
-        plane_span,
-        x_nc_stride,
-        x_col_stride,
-        x_pool_stride,
-        y_nc_stride,
-        y_col_stride,
-        y_pool_stride,
-        blocks_per_plane,
-        MAX_WINDOW=max_window,
-        BLOCK_OUT=block_out,
-        num_warps=num_warps,
-    )
+    num_progs = tl.num_programs(0)
+    for unit in tl.range(pid, UNITS, num_progs):
+        plane_unit = unit // COL_BLOCKS
+        col_block = unit % COL_BLOCKS
+        p0 = plane_unit * P
+        p_valid = tl.minimum(P, NC - p0)
+        rows = tl.arange(0, BLOCK_ROWS)
+        cols = tl.arange(0, BLOCK_COLS)
+        row = p0 * IH + rows
+        col = col_block * (R_W * KW) + cols
+        col_limit = tl.minimum(R_W * KW, IW - col_block * R_W * KW)
+        valid = (rows < p_valid * IH)[:, None] & (cols < col_limit)[None, :]
+        values = tl.load(
+            X + row[:, None] * IW + col[None, :], mask=valid, other=0.0
+        ).to(tl.float32)
+        # Column reduction: (BLOCK_ROWS, BLOCK_COLS) -> (.., OUT_SPAN, KW).
+        part = tl.sum(tl.reshape(values, (BLOCK_ROWS, OUT_SPAN, KW)), 2)
+        # Row reduction: rows relabel to (p*OH + oh, kh) across the slab.
+        mean = tl.sum(tl.reshape(part, (ROWS_PER_SLAB, KH, OUT_SPAN)), 1)
+        mean = mean * INV_HW
+        out_rows = tl.arange(0, ROWS_PER_SLAB)
+        out_cols = tl.arange(0, OUT_SPAN)
+        out_col = col_block * R_W + out_cols
+        # A unit owns exactly R_W output columns; when the pow2 OUT_SPAN pad
+        # is wider (shrink loop) the extra lanes would collide with the next
+        # unit's territory, so clamp to this unit's true column count.
+        rw_true = tl.minimum(R_W, OW - col_block * R_W)
+        tl.store(
+            Y + p0 * (OH * OW) + (out_rows * OW)[:, None] + out_col[None, :],
+            mean.to(Y.dtype.element_ty),
+            mask=(out_rows < p_valid * OH)[:, None] & (out_cols < rw_true)[None, :],
+        )
 
 
 @libentry()
 @triton.jit
-def _adaptive_pool2d_single_kernel(
+def _adaptive_pool2d_general_kernel(
     X,
     Y,
     IH,
     IW,
     OH,
     OW,
-    NUM_OUT,
-    GRID_SIZE: tl.constexpr,
-    BLOCK_R: tl.constexpr,
+    BLOCKS_PER_PLANE,
+    UNITS,
+    KW: tl.constexpr,
+    MAX_WINDOW: tl.constexpr,
+    BLOCK_OUT: tl.constexpr,
+    BLOCK_W: tl.constexpr,
 ):
-    """Single-kernel rectangle reduction over a 1D window tile.
+    """General arm: aten bin edges floor(i*I/O) .. ceil((i+1)*I/O).
 
-    One program covers one or more output elements via a grid stride loop; the
-    window index r maps to (row, column) inside the aten bin. Keeping the tile
-    one-dimensional avoids the huge BO x KH x KW pointer array that fails the
-    GCU400 PassManager, and removes the intermediate fp32 staging tensor.
+    One program owns BLOCK_OUT output positions of a single (N, C) plane and
+    walks units with a grid-stride loop, so the grid stays inside one <=48-CTA
+    wave (GCU400 also caps grid.x at 65535). The 2D (BLOCK_OUT, BLOCK_W) tile
+    replaces the one-output-per-iteration serial loop: all bins reduce in one
+    tl.sum instead of one reduction tree per output element. Windows wider
+    than BLOCK_W fall back to a chunked accumulation loop, which folds away
+    when the window fits in a single chunk.
     """
-    for out_index in tl.range(tl.program_id(0), NUM_OUT, GRID_SIZE):
-        nc = out_index // (OH * OW)
-        oh = (out_index // OW) % OH
-        ow = out_index % OW
+    pid = tl.program_id(0)
+    num_progs = tl.num_programs(0)
+    for unit in tl.range(pid, UNITS, num_progs):
+        out_block = unit % BLOCKS_PER_PLANE
+        plane = unit // BLOCKS_PER_PLANE
+        out_pos = out_block * BLOCK_OUT + tl.arange(0, BLOCK_OUT)
+        oh = out_pos // OW
+        ow = out_pos - oh * OW
+        pos_ok = out_pos < OH * OW
         bin_h_start = (oh * IH) // OH
         bin_h_end = ((oh + 1) * IH + OH - 1) // OH
         bin_w_start = (ow * IW) // OW
         bin_w_end = ((ow + 1) * IW + OW - 1) // OW
-        window_height = bin_h_end - bin_h_start
-        window_width = bin_w_end - bin_w_start
-        window_elements = tl.maximum(window_height * window_width, 1)
-        offsets = tl.arange(0, BLOCK_R)
-        accumulator = tl.zeros((BLOCK_R,), tl.float32)
-        for start in range(0, window_elements, BLOCK_R):
-            window_index = start + offsets
-            row = bin_h_start + window_index // window_width
-            column = bin_w_start + window_index % window_width
+        win_h = tl.maximum(bin_h_end - bin_h_start, 0)
+        win_w = tl.maximum(bin_w_end - bin_w_start, 0)
+        accumulator = tl.zeros((BLOCK_OUT, BLOCK_W), tl.float32)
+        for start in range(0, MAX_WINDOW, BLOCK_W):
+            window_index = start + tl.arange(0, BLOCK_W)
+            h_off = window_index // KW
+            w_off = window_index - h_off * KW
+            h = bin_h_start[:, None] + h_off[None, :]
+            w = bin_w_start[:, None] + w_off[None, :]
+            valid = (
+                pos_ok[:, None]
+                & (h_off[None, :] < win_h[:, None])
+                & (w_off[None, :] < win_w[:, None])
+            )
             values = tl.load(
-                X + nc * IH * IW + row * IW + column,
-                mask=window_index < window_elements,
-                other=0.0,
+                X + plane * (IH * IW) + h * IW + w, mask=valid, other=0.0
             ).to(tl.float32)
             accumulator += values
-        mean = tl.sum(accumulator, 0) / window_elements.to(tl.float32)
-        tl.store(Y + out_index, mean.to(Y.dtype.element_ty))
+        count = tl.maximum(win_h * win_w, 1).to(tl.float32)
+        mean = tl.sum(accumulator, 1) / count
+        tl.store(
+            Y + plane * (OH * OW) + out_pos,
+            mean.to(Y.dtype.element_ty),
+            mask=pos_ok,
+        )
 
 
 def _normalize_output_size_2d(output_size):
@@ -184,73 +179,125 @@ def _normalize_output_size_2d(output_size):
     return oh, ow
 
 
-def _launch_adaptive_pool_windows(input: torch.Tensor, output: torch.Tensor):
-    """Pool a contiguous ``input`` into a contiguous ``output`` in two passes.
+def _is_pow2(value):
+    return value > 0 and (value & (value - 1)) == 0
 
-    ``output`` must be contiguous: both passes address it with flat offsets, so
-    a strided buffer would be written at the wrong positions. The W pass writes
-    an fp32 staging tensor to keep the separable reduction free of intermediate
-    rounding; the H pass converts back to the caller's dtype on store.
+
+def _launch_uniform(input: torch.Tensor, output: torch.Tensor, nc, ih, iw, oh, ow):
+    kh = ih // oh
+    kw = iw // ow
+    r_w = ow
+    block_cols = triton.next_power_of_2(r_w * kw)
+    block_rows = min(
+        triton.next_power_of_2(nc * ih), POOL_TILE_ELEMENT_LIMIT // block_cols
+    )
+    while block_rows < ih and r_w > 1:
+        r_w = max(1, r_w // 2)
+        block_cols = triton.next_power_of_2(r_w * kw)
+        block_rows = min(
+            triton.next_power_of_2(nc * ih), POOL_TILE_ELEMENT_LIMIT // block_cols
+        )
+    if block_rows < ih:
+        return False
+    planes = max(1, block_rows // ih)
+    out_span = block_cols // kw
+    rows_per_slab = block_rows // kh
+    col_blocks = triton.cdiv(ow, r_w)
+    units = triton.cdiv(nc, planes) * col_blocks
+    grid = (min(units, POOL_GRID_LIMIT),)
+    # Measured on GCU400/L600 (Triton GCU 4.1.6): every 2D tile op pays a
+    # ~0.2-0.8us DSM round trip regardless of tile size, so the largest tile
+    # that fits the per-CTA DSM budget amortizes best. num_warps=1 wins
+    # uniformly here -- nw=2/4 regressed every core shape 2-8x -- and the
+    # 16K-element tile keeps ~8 live buffers inside the 917504B DSM limit
+    # (a 64K tile bills ~32B/element and exceeds it).
+    if POOL_UNIFORM_WARPS > 0:
+        num_warps = POOL_UNIFORM_WARPS
+    else:
+        num_warps = 1
+    _adaptive_pool2d_uniform_kernel[grid](
+        input,
+        output,
+        nc,
+        ih,
+        iw,
+        oh,
+        ow,
+        planes,
+        r_w,
+        col_blocks,
+        units,
+        1.0 / (kh * kw),
+        KH=kh,
+        KW=kw,
+        BLOCK_ROWS=block_rows,
+        BLOCK_COLS=block_cols,
+        OUT_SPAN=out_span,
+        ROWS_PER_SLAB=rows_per_slab,
+        num_warps=num_warps,
+    )
+    return True
+
+
+def _launch_general(input: torch.Tensor, output: torch.Tensor, nc, ih, iw, oh, ow):
+    kh = triton.cdiv(ih, oh) + (1 if ih % oh else 0)
+    kw = triton.cdiv(iw, ow) + (1 if iw % ow else 0)
+    max_window = kh * kw
+    block_w = min(triton.next_power_of_2(max_window), POOL_GENERAL_BLOCK_W_CAP)
+    block_out = min(
+        POOL_GENERAL_BLOCK_OUT,
+        triton.next_power_of_2(oh * ow),
+        max(1, POOL_GENERAL_TILE_LIMIT // block_w),
+    )
+    blocks_per_plane = triton.cdiv(oh * ow, block_out)
+    units = blocks_per_plane * nc
+    grid = (min(units, POOL_GRID_LIMIT),)
+    _adaptive_pool2d_general_kernel[grid](
+        input,
+        output,
+        ih,
+        iw,
+        oh,
+        ow,
+        blocks_per_plane,
+        units,
+        KW=kw,
+        MAX_WINDOW=max_window,
+        BLOCK_OUT=block_out,
+        BLOCK_W=block_w,
+        num_warps=1,
+    )
+
+
+def _launch_adaptive_pool_windows(input: torch.Tensor, output: torch.Tensor):
+    """Pool a contiguous ``input`` into a contiguous ``output`` in one launch.
+
+    ``output`` must be contiguous: the kernels address it with flat offsets,
+    so a strided buffer would be written at the wrong positions. The uniform
+    arm (exact division along both axes, power-of-two windows) slabs whole
+    planes through an affine tile; everything else falls back to the general
+    bin-edge kernel, which keeps aten's per-window floor/ceil semantics for
+    non-divisible and upsampling sizes.
     """
     n, c, ih, iw = input.shape
     oh, ow = output.shape[-2:]
-    num_planes = n * c
+    nc = n * c
     with torch_device_fn.device(input.device):
-        if POOL_USE_SINGLE_PASS:
-            # Structural candidate: complete the rectangular window reduction in one launch.
-            grid_size = min(POOL_SINGLE_GRID_LIMIT, output.numel())
-            _adaptive_pool2d_single_kernel[(grid_size,)](
-                input,
-                output,
-                ih,
-                iw,
-                oh,
-                ow,
-                output.numel(),
-                GRID_SIZE=grid_size,
-                BLOCK_R=POOL_SINGLE_BLOCK_R,
-                num_warps=POOL_NUM_WARPS,
-            )
+        if (
+            ih % oh == 0
+            and iw % ow == 0
+            and _is_pow2(ih // oh)
+            and _is_pow2(iw // ow)
+            and input.numel() < 2**31
+            and output.numel() < 2**31
+            and _launch_uniform(input, output, nc, ih, iw, oh, ow)
+        ):
             return
-        row_staging = torch.empty(
-            (n, c, ih, ow), device=input.device, dtype=torch.float32
-        )
-        # Pass 1: (NC, H, W) -> (NC, H, OW), pooling the innermost W axis.
-        _run_pool_pass(
-            input,
-            row_staging,
-            iw,
-            ow,
-            ih,
-            num_planes,
-            ih * iw,
-            iw,
-            1,
-            ih * ow,
-            ow,
-            1,
-            POOL_NUM_WARPS,
-        )
-        # Pass 2: (NC, H, OW) -> (NC, OH, OW), pooling H with stride OW.
-        _run_pool_pass(
-            row_staging,
-            output,
-            ih,
-            oh,
-            ow,
-            num_planes,
-            ih * ow,
-            1,
-            ow,
-            oh * ow,
-            1,
-            ow,
-            POOL_NUM_WARPS,
-        )
+        _launch_general(input, output, nc, ih, iw, oh, ow)
 
 
 def adaptive_avg_pool2d(input: torch.Tensor, output_size):
-    logger.debug("GEMS_ENFLAME_GCU400 ADAPTIVE_AVG_POOL2D")
+    logger.debug("GEMS_ENFLAME ADAPTIVE_AVG_POOL2D")
     input = input.contiguous()
     oh, ow = _normalize_output_size_2d(output_size)
     n, c, ih, iw = input.shape
@@ -262,7 +309,7 @@ def adaptive_avg_pool2d(input: torch.Tensor, output_size):
 
 
 def _adaptive_avg_pool2d_out(input: torch.Tensor, output_size, *, out: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 _ADAPTIVE_AVG_POOL2D_OUT")
+    logger.debug("GEMS_ENFLAME _ADAPTIVE_AVG_POOL2D_OUT")
     if out.dtype != input.dtype:
         raise RuntimeError(
             f"Expected out tensor to have dtype {input.dtype}, "

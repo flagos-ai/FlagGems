@@ -91,53 +91,6 @@ def _gcu_int64_layout():
         return False
 
 
-def _install_native_max_dim_guard():
-    """Re-route ``aten::max.dim`` on the GCU under the int64 layout regime.
-
-    In that regime the native ``topsatenMax`` aborts the whole process
-    (TOPSATEN_STATUS_NOT_SUPPORT on the int64 indices output, a C++ terminate
-    rather than a catchable exception), so any reference-leg torch code doing
-    ``torch.max(x, dim)`` on GCU tensors dies (rc=134).  The gcu400
-    ``max_dim`` implementation is correct in the same regime (stages indices
-    through an int32 buffer, verified values+indices against CPU).  With the
-    env off the native path is correct and the guard stays out of the way.
-    Idempotent and enflame-only; the kthvalue aten guard is the precedent.
-    """
-    global _MAX_DIM_GUARD_LIBRARY
-    if not _gcu_int64_layout():
-        return
-    if getattr(torch, _MAX_DIM_GUARD_FLAG, False):
-        return
-    try:
-        from flag_gems.runtime import device as _runtime_device
-
-        if _runtime_device.vendor_name != "enflame":
-            return
-    except Exception:
-        return
-    try:
-        from flag_gems.runtime.backend._enflame.gcu400.ops.max import (
-            max_dim as _gcu400_max_dim,
-        )
-    except Exception as error:
-        logger.warning("gcu400 max_dim unavailable, guard skipped: %s", error)
-        return
-    library = torch.library.Library("aten", "IMPL")
-    try:
-        library.impl("max.dim", _gcu400_max_dim, "PrivateUse1")
-    except RuntimeError as error:
-        logger.warning(
-            "max.dim PrivateUse1 registration skipped: %s",
-            error,
-        )
-        return
-    _MAX_DIM_GUARD_LIBRARY = library
-    setattr(torch, _MAX_DIM_GUARD_FLAG, True)
-
-
-_install_native_max_dim_guard()
-
-
 # GCU launch limits (triton.backends.enflame.backend.GcuLauncher):
 # grid.x <= 65535, grid.y <= 255, grid.z <= 255.
 _GRID_X_MAX = 65535
@@ -475,9 +428,7 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_quant_insert(
         eps: used in RMSNorm
         cache_block_size: tokens per paged-cache block
     """
-    logger.debug(
-        "GEMS_ENFLAME_GCU400 FUSED_DEEPSEEK_V4_QNORM_ROPE_KV_ROPE_QUANT_INSERT"
-    )
+    logger.debug("GEMS_ENFLAME FUSED_DEEPSEEK_V4_QNORM_ROPE_KV_ROPE_QUANT_INSERT")
     assert q.is_contiguous() and kv.is_contiguous()
     num_tokens, num_heads, head_dims = q.shape
     assert head_dims == 512

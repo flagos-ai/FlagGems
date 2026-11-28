@@ -43,7 +43,7 @@ def _list_to_tensor(self):
     route calls to that entry. The implementation is also exposed directly as
     ``flag_gems._list_to_tensor`` so it can be exercised explicitly.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _LIST_TO_TENSOR")
+    logger.debug("GEMS_ENFLAME _LIST_TO_TENSOR")
     n = len(self)
     device = runtime.device.name
     out = torch.empty((n,), dtype=torch.int32, device=device)

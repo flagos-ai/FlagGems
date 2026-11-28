@@ -5,28 +5,27 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 """GCU400-specific _foreach_mul / _foreach_mul_ (all 4 overloads).
 
-The common foreach executor carries the tensor list in a 2D grid, and GCU400's ``grid.y``
-limit of 255 causes ``out of resource`` on large shapes. Contiguous float lists use the
-1D fixed grid / metadata fused kernel from ``_foreach_flat``; non-float,
-non-contiguous or broadcast shapes still delegate to the common executor to keep dtype policy and exception semantics.
+The shared foreach executor carries the tensor list on a 2-D grid, and GCU400's ``grid.y`` cap of
+255 makes large shapes ``out of resource``. Contiguous float lists go through
+``_foreach_flat``'s 1-D fixed-grid / metadata-fused kernel; non-float, non-contiguous and
+broadcast forms still delegate to the shared executor to keep dtype policy and error semantics.
+
+Uploading the fused kernel's metadata (``torch.tensor(..., device=)``) is a synchronous H2D of
+~90us per call, pinning every uncached overload at a shape-independent ~100-200us. The four
+metadata segments hold only addresses and element counts, while the kernel still reads the actual
+tensor data on every call, so caching exactly by ``(device, address, element count)`` gives zero
+H2D on steady-state calls (the allocator reuses the same addresses); the ScalarList fp32 scalar
+table is likewise read-only and cached independently by value.
 """
 
 import logging
-from contextlib import nullcontext
 
 import torch
+import triton
 
 from flag_gems.ops._foreach_binary import _apply_list, _apply_scalar, _apply_tensor
-from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.foreach import _device_meta
 
 from ._foreach_flat import (
@@ -37,9 +36,9 @@ from ._foreach_flat import (
     MODE_SCALAR_LIST,
     MODE_TENSOR,
     OP_MUL,
-    _fused_grid,
     can_use_flat,
     fused_binary_list_kernel,
+    fused_binary_scalar_kernel,
     run_binary,
 )
 
@@ -47,279 +46,253 @@ logger = logging.getLogger(__name__)
 
 # --- TUNING PARAMS START ---
 # Generated per round by the optimization driver script; all compile-time / launch-time config, semantics unchanged.
-FIXED_GRID = 48
-BLOCK_SIZE = 8192
+FIXED_GRID = 96
+BLOCK_SIZE = 16384
 NUM_WARPS = 4
 NUM_STAGES = 1
 USE_DEVICE_CONTEXT = 0
 FP32_PROMOTE = 0
 FUSED_LAUNCH = 1
 FALLBACK_TO_PUBLIC = 0
-# .List specific: reuse the common _device_meta cache instead of rebuilding int64 metadata each time.
-USE_CACHED_META = 1
-# Small shapes use the common binary executor (its 2D grid stays in bounds and its cache is more complete).
+# All overloads reuse the read-only _device_meta cache, eliminating the synchronous H2D on steady-state calls.
+USE_META_CACHE = 1
+# The fp32 scalar table for .ScalarList is cached separately by (device, value).
+USE_SCALAR_CACHE = 1
+SCALAR_CACHE_LIMIT = 64
+# Small shapes use the common binary executor (its 2D grid stays in range and its cache is more complete).
 PUBLIC_SMALL_SHAPE = 0
 SMALL_SHAPE_MAX_NUMEL = 261120
 # --- TUNING PARAMS END ---
 
+# Read-only metadata cache: the key contains only device and address/element count, not tensor data; the kernel still
+# fully reads inputs and recomputes each time, so address reuse or in-place content changes do not affect correctness.
+_SCALAR_CACHE = {}
+# (num_tensors, max_numel, block) -> grid tuple, see _run_mul_cached.
+_GRID_CACHE = {}
 
-def _run_mul_list_cached(self, other, outputs):
-    """Build int64 metadata using the common _device_meta cache, avoiding a synchronous H2D per call.
 
-    The four-segment layout (input/output/second-operand addresses + element counts) must exactly match
-    _foreach_flat._fused_meta, otherwise the fused kernel reads wrong pointers.
+def _cached_scalar_tensor(scalars, device):
+    """The ScalarList fp32 scalar table (read-only), cached by (device, value tuple)."""
+    key = (str(device), tuple(scalars))
+    cached = _SCALAR_CACHE.get(key)
+    if cached is not None:
+        return cached
+    if len(_SCALAR_CACHE) >= SCALAR_CACHE_LIMIT:
+        _SCALAR_CACHE.clear()
+    cached = torch.tensor(scalars, dtype=torch.float32, device=device)
+    _SCALAR_CACHE[key] = cached
+    return cached
+
+
+def _run_mul_cached(self, operand, mode, inplace):
+    """Lean single-launch path for the four operand forms (metadata goes through the read-only cache).
+
+    Inapplicable forms return ``FALLBACK`` and the caller picks the fallback target: broadcast
+    ``.List`` needs ``run_binary``'s per-tensor kernel; the rest fall back to the shared executor.
+    The four metadata segments (input/output/second-operand addresses plus element counts) are
+    identical in layout to ``_foreach_flat``'s fused kernel.
     """
+    if not can_use_flat(self, operand, mode):
+        return FALLBACK
     num_tensors = len(self)
-    pointers = (
-        [tensor.data_ptr() for tensor in self]
-        + [tensor.data_ptr() for tensor in outputs]
-        + [other_tensor.data_ptr() for other_tensor in other]
-        + [tensor.numel() for tensor in self]
-    )
-    meta = _device_meta(pointers, self[0].device)
-    grid = (_fused_grid(self, FIXED_GRID, BLOCK_SIZE),)
-    device_context = (
-        torch_device_fn.device(self[0].device) if USE_DEVICE_CONTEXT else nullcontext()
-    )
-    with device_context:
+    in_ptrs = [tensor.data_ptr() for tensor in self]
+    outputs = self if inplace else [torch.empty_like(tensor) for tensor in self]
+    out_ptrs = in_ptrs if inplace else [tensor.data_ptr() for tensor in outputs]
+    numels = [tensor.numel() for tensor in self]
+    first = self[0]
+    triton_dtype = _TL_DTYPES[first.dtype]
+    device = first.device
+    # The fused grid only depends on (list length, largest numel, block width): cache it so a steady
+    # stream of same-shaped calls does not re-scan the list for its maximum.
+    grid_key = (num_tensors, max(numels), BLOCK_SIZE)
+    grid_edges = _GRID_CACHE.get(grid_key)
+    if grid_edges is None:
+        grid_edges = (
+            max(1, min(FIXED_GRID, num_tensors * triton.cdiv(grid_key[1], BLOCK_SIZE))),
+        )
+        _GRID_CACHE[grid_key] = grid_edges
+    grid = grid_edges
+
+    if mode == MODE_LIST:
+        # Same-shape lists share flat indices; reuse the numel vector already built above instead of
+        # walking both lists pairwise again (32 x numel() per call is measurable at this launch scale).
+        if numels != [other.numel() for other in operand]:
+            # Broadcast .List does not share flat indices with the inputs, so hand it to the per-tensor kernel.
+            return FALLBACK
+        b_ptrs = [other.data_ptr() for other in operand]
+        meta = _device_meta(in_ptrs + out_ptrs + b_ptrs + numels, device)
         fused_binary_list_kernel[grid](
             meta,
             num_tensors,
             OP_MUL,
-            _TL_DTYPES[self[0].dtype],
+            triton_dtype,
             FP32_PROMOTE,
             BLOCK_SIZE,
             num_warps=NUM_WARPS,
             num_stages=NUM_STAGES,
         )
-    return outputs
+    elif mode == MODE_SCALAR_LIST:
+        if USE_SCALAR_CACHE:
+            scalar_tensor = _cached_scalar_tensor(operand, device)
+        else:
+            scalar_tensor = torch.tensor(operand, dtype=torch.float32, device=device)
+        meta = _device_meta(in_ptrs + out_ptrs + [0] * num_tensors + numels, device)
+        fused_binary_scalar_kernel[grid](
+            meta,
+            scalar_tensor,
+            num_tensors,
+            OP_MUL,
+            triton_dtype,
+            0,
+            triton_dtype,
+            0.0,
+            1,
+            FP32_PROMOTE,
+            BLOCK_SIZE,
+            num_warps=NUM_WARPS,
+            num_stages=NUM_STAGES,
+        )
+    elif mode == MODE_TENSOR:
+        # A 0-d tensor is often fp32; it must be read using its own dtype, not the list dtype.
+        b_dtype = _TL_DTYPES.get(operand.dtype, triton_dtype)
+        meta = _device_meta(
+            in_ptrs + out_ptrs + [operand.data_ptr()] * num_tensors + numels, device
+        )
+        fused_binary_scalar_kernel[grid](
+            meta,
+            operand,
+            num_tensors,
+            OP_MUL,
+            triton_dtype,
+            1,
+            b_dtype,
+            0.0,
+            0,
+            FP32_PROMOTE,
+            BLOCK_SIZE,
+            num_warps=NUM_WARPS,
+            num_stages=NUM_STAGES,
+        )
+    else:
+        meta = _device_meta(in_ptrs + out_ptrs + [0] * num_tensors + numels, device)
+        fused_binary_scalar_kernel[grid](
+            meta,
+            self[0],
+            num_tensors,
+            OP_MUL,
+            triton_dtype,
+            0,
+            triton_dtype,
+            float(operand),
+            0,
+            FP32_PROMOTE,
+            BLOCK_SIZE,
+            num_warps=NUM_WARPS,
+            num_stages=NUM_STAGES,
+        )
+    return None if inplace else outputs
+
+
+def _dispatch(self, operand, mode, inplace, fallback):
+    """Lean single-launch path first; broadcast/anomalous forms fall back to the shared semantics."""
+    if FALLBACK_TO_PUBLIC:
+        return fallback()
+    if USE_META_CACHE:
+        result = _run_mul_cached(self, operand, mode, inplace)
+        if result is not FALLBACK:
+            return result
+        if mode != MODE_LIST:
+            # can_use_flat failed: leave dtype policy and exception semantics to the common executor.
+            return fallback()
+    result = run_binary(
+        self,
+        operand,
+        OP_MUL,
+        mode,
+        inplace,
+        fixed_grid=FIXED_GRID,
+        block_size=BLOCK_SIZE,
+        num_warps=NUM_WARPS,
+        num_stages=NUM_STAGES,
+        use_device_context=USE_DEVICE_CONTEXT,
+        fp32_promote=FP32_PROMOTE,
+        fused=FUSED_LAUNCH,
+    )
+    if result is FALLBACK:
+        return fallback()
+    return result
 
 
 def _foreach_mul_List(self, other):
-    logger.debug("GEMS_GCU400 _FOREACH_MUL_LIST")
-
-    def fallback():
-        return _apply_list("mul", self, other, inplace=False)
-
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    if (
-        PUBLIC_SMALL_SHAPE
-        and self
-        and max(t.numel() for t in self) <= SMALL_SHAPE_MAX_NUMEL
-    ):
-        return fallback()
-    if USE_CACHED_META and can_use_flat(self, other, MODE_LIST):
-        fused_ready = all(
-            other_tensor.numel() == tensor.numel()
-            for tensor, other_tensor in zip(self, other)
-        )
-        if fused_ready:
-            outputs = [torch.empty_like(tensor) for tensor in self]
-            return _run_mul_list_cached(self, other, outputs)
-    result = run_binary(
-        self,
-        other,
-        OP_MUL,
-        MODE_LIST,
-        False,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
+    logger.debug("GEMS_GCU400 _FOREACH_MUL_SCALAR")
+    return _dispatch(
+        self, other, MODE_LIST, False, lambda: _apply_list("mul", self, other, False)
     )
-    if result is FALLBACK:
-        return fallback()
-    return result
 
 
 def _foreach_mul_Scalar(self, scalar):
-    logger.debug("GEMS_GCU400 _FOREACH_MUL_SCALAR")
-
-    def fallback():
-        return _apply_scalar("mul", self, scalar, inplace=False)
-
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    result = run_binary(
+    return _dispatch(
         self,
         scalar,
-        OP_MUL,
         MODE_SCALAR,
         False,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
+        lambda: _apply_scalar("mul", self, scalar, False),
     )
-    if result is FALLBACK:
-        return fallback()
-    return result
 
 
 def _foreach_mul_ScalarList(self, scalars):
     logger.debug("GEMS_GCU400 _FOREACH_MUL_SCALARLIST")
-
-    def fallback():
-        return _apply_scalar("mul", self, scalars, inplace=False)
-
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    result = run_binary(
+    return _dispatch(
         self,
         scalars,
-        OP_MUL,
         MODE_SCALAR_LIST,
         False,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
+        lambda: _apply_scalar("mul", self, scalars, False),
     )
-    if result is FALLBACK:
-        return fallback()
-    return result
 
 
 def _foreach_mul_Tensor(self, other):
     logger.debug("GEMS_GCU400 _FOREACH_MUL_TENSOR")
-
-    def fallback():
-        return _apply_tensor("mul", self, other, inplace=False)
-
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    result = run_binary(
+    return _dispatch(
         self,
         other,
-        OP_MUL,
         MODE_TENSOR,
         False,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
+        lambda: _apply_tensor("mul", self, other, False),
     )
-    if result is FALLBACK:
-        return fallback()
-    return result
 
 
 def _foreach_mul__List(self, other):
     logger.debug("GEMS_GCU400 _FOREACH_MUL__LIST")
-
-    def fallback():
-        return _apply_list("mul", self, other, inplace=True)
-
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    result = run_binary(
-        self,
-        other,
-        OP_MUL,
-        MODE_LIST,
-        True,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
+    return _dispatch(
+        self, other, MODE_LIST, True, lambda: _apply_list("mul", self, other, True)
     )
-    if result is FALLBACK:
-        return fallback()
-    return result
 
 
 def _foreach_mul__Scalar(self, scalar):
     logger.debug("GEMS_GCU400 _FOREACH_MUL__SCALAR")
-
-    def fallback():
-        return _apply_scalar("mul", self, scalar, inplace=True)
-
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    result = run_binary(
+    return _dispatch(
         self,
         scalar,
-        OP_MUL,
         MODE_SCALAR,
         True,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
+        lambda: _apply_scalar("mul", self, scalar, True),
     )
-    if result is FALLBACK:
-        return fallback()
-    return result
 
 
 def _foreach_mul__ScalarList(self, scalars):
     logger.debug("GEMS_GCU400 _FOREACH_MUL__SCALARLIST")
-
-    def fallback():
-        return _apply_scalar("mul", self, scalars, inplace=True)
-
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    result = run_binary(
+    return _dispatch(
         self,
         scalars,
-        OP_MUL,
         MODE_SCALAR_LIST,
         True,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
+        lambda: _apply_scalar("mul", self, scalars, True),
     )
-    if result is FALLBACK:
-        return fallback()
-    return result
 
 
 def _foreach_mul__Tensor(self, other):
     logger.debug("GEMS_GCU400 _FOREACH_MUL__TENSOR")
-
-    def fallback():
-        return _apply_tensor("mul", self, other, inplace=True)
-
-    if FALLBACK_TO_PUBLIC:
-        return fallback()
-    result = run_binary(
-        self,
-        other,
-        OP_MUL,
-        MODE_TENSOR,
-        True,
-        fixed_grid=FIXED_GRID,
-        block_size=BLOCK_SIZE,
-        num_warps=NUM_WARPS,
-        num_stages=NUM_STAGES,
-        use_device_context=USE_DEVICE_CONTEXT,
-        fp32_promote=FP32_PROMOTE,
-        fused=FUSED_LAUNCH,
+    return _dispatch(
+        self, other, MODE_TENSOR, True, lambda: _apply_tensor("mul", self, other, True)
     )
-    if result is FALLBACK:
-        return fallback()
-    return result

@@ -58,8 +58,14 @@ try:
     import triton.experimental.tle.language as tle  # noqa: F401
     from triton.experimental.tle.language import raw as tle_raw
     from triton.experimental.tle.raw import dialect
+    from triton.experimental.tle.raw.runtime import registry as _tle_raw_registry
 
-    HAS_TLE_RAW = True
+    # Being "importable on the Python side" alone does not mean TLE-Raw is usable: Triton's TLE python package may
+    # exist while the C++ binding triton._C.libtriton.tle is missing (e.g. a PyPI triton has overwritten
+    # the flagtree version). In that case triton.experimental.tle.raw silently skips the tops backend,
+    # and the @dialect(name="tops") below will raise KeyError, so use whether the dialect is actually registered as the
+    # criterion.
+    HAS_TLE_RAW = "tops" in _tle_raw_registry
 except ImportError:  # pragma: no cover - TLE is part of the gcu400 toolchain
     HAS_TLE_RAW = False
 

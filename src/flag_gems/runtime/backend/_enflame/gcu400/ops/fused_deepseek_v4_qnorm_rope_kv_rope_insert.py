@@ -135,7 +135,7 @@ def fused_deepseek_v4_qnorm_rope_kv_rope_insert(
     cache_block_size=16,
 ):
     """Fused QNorm+RoPE (Q) and RoPE+Insert (KV), BF16, GCU400 variant."""
-    logger.debug("GEMS_ENFLAME_GCU400 FUSED_DEEPSEEK_V4_QNORM_ROPE_KV_ROPE_INSERT")
+    logger.debug("GEMS_ENFLAME FUSED_DEEPSEEK_V4_QNORM_ROPE_KV_ROPE_INSERT")
 
     # Only large workloads pay two device copies for int32 conversion; small ones keep the original dtype
     if q.shape[0] >= 512:

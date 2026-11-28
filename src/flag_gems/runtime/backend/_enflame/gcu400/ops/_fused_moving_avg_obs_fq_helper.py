@@ -336,7 +336,7 @@ def _fused_moving_avg_obs_fq_helper(
     Returns (output, mask); running_min/max/scale/zero_point are updated in
     place to match the native op's mutating contract.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _FUSED_MOVING_AVG_OBS_FQ_HELPER")
+    logger.debug("GEMS_ENFLAME _FUSED_MOVING_AVG_OBS_FQ_HELPER")
     # The native ATen operator is intentionally restricted to float32 input.
     # Keep this check at the dispatch boundary instead of silently converting
     # unsupported inputs, which would make FlagGems diverge from ATen.

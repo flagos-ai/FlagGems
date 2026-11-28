@@ -19,11 +19,6 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
-pytestmark = pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="enflame does not support sparse COO tensors",
-)
-
 
 def _make_sparse_coo(shape, dtype, density=0.3, coalesced=True):
     """Build a sparse COO tensor on the device."""

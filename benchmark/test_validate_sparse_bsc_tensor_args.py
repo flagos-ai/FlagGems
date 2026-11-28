@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -65,6 +67,13 @@ class SparseValidationBenchmark(base.Benchmark):
         layouts = (torch.sparse_bsc,)
         for layout in layouts:
             for shape in self.shapes:
+                if flag_gems.vendor_name == "enflame" and shape[0] == 0:
+                    # The zero-compressed-axis descriptor builds its plain
+                    # indices with aten::flip, which topsaten reports as
+                    # TOPSATEN_STATUS_NOT_SUPPORT on GCU and aborts the process
+                    # before either leg can be timed. Every other shape keeps
+                    # its baseline, so only this case is skipped.
+                    continue
                 comp, plain, values, size = _make_inputs(
                     layout, shape, torch.int64, dtype, self.device
                 )

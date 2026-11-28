@@ -174,7 +174,7 @@ def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
 
 
 def im2col(input, kernel_size, dilation=1, padding=0, stride=1):
-    logger.debug("GEMS_ENFLAME_GCU400 IM2COL")
+    logger.debug("GEMS_ENFLAME IM2COL")
     x = input
     if x.ndim == 3:
         x = x.unsqueeze(0)

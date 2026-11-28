@@ -22,6 +22,16 @@ from .accuracy_utils import gems_assert_equal
 
 pytestmark = pytest.mark.mm_w8a8
 
+# enflame(GCU) mm_w8a8_int8/gemm uses the same FP32 dequant semantics as the
+# vendor-independent CPU INT64 reference, so all cases run there; only the
+# graph/stream cases need torch.cuda CUDAGraph, which the GCU runtime lacks.
+_GRAPH_CAPABLE = ("thead", "enflame")
+if flag_gems.vendor_name == "enflame":
+    from flag_gems.runtime import torch_device_fn as _torch_device_fn
+
+    if not hasattr(_torch_device_fn, "CUDAGraph"):
+        _GRAPH_CAPABLE = ("thead",)
+
 
 SHAPES = [
     (1, 16, 16),
@@ -50,7 +60,9 @@ SHAPES = [
 ]
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in ("thead", "enflame"), reason="thead/enflame only"
+)
 @pytest.mark.parametrize("shape", SHAPES)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16, torch.float32])
 @pytest.mark.mm_w8a8
@@ -69,7 +81,8 @@ def test_mm_w8a8_int8(shape, dtype):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "ascend"), reason="INT8 strided matrices"
+    flag_gems.vendor_name not in ("thead", "ascend", "enflame"),
+    reason="INT8 strided matrices",
 )
 @pytest.mark.parametrize("layout", ["row_major", "sliced", "broadcast"])
 @pytest.mark.mm_w8a8
@@ -93,7 +106,10 @@ def test_mm_w8a8_int8_strides(layout):
     torch.testing.assert_close(y, a.float() @ b.float(), rtol=0, atol=0)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in _GRAPH_CAPABLE,
+    reason="torch.cuda stream/CUDAGraph is required",
+)
 @pytest.mark.parametrize("use_graph", [False, True])
 @pytest.mark.parametrize("use_out", [False, True])
 @pytest.mark.mm_w8a8
@@ -140,7 +156,9 @@ def test_mm_w8a8_int8_updates(use_graph, use_out, shape):
         torch.testing.assert_close(y, torch.full_like(y, k * av * bv * sav * sbv))
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in ("thead", "enflame"), reason="thead/enflame only"
+)
 @pytest.mark.parametrize("shape", [(2, 3, 0), (0, 3, 8), (2, 0, 8), (0, 0, 0)])
 @pytest.mark.mm_w8a8
 def test_mm_w8a8_int8_empty(shape):
@@ -153,7 +171,9 @@ def test_mm_w8a8_int8_empty(shape):
     torch.testing.assert_close(y, torch.zeros_like(y))
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in ("thead", "enflame"), reason="thead/enflame only"
+)
 @pytest.mark.mm_w8a8
 def test_mm_w8a8_int8_reject_float():
     a = torch.ones((2, 3), device=flag_gems.device)
@@ -167,12 +187,19 @@ def test_mm_w8a8_int8_reject_float():
 def _assert_reference(a, b, sa, sb, out, bias=None):
     # Check all entries of small cases and a deterministic subset of large
     # cases against an independent CPU INT64 product, not a floating GEMM.
+    #
+    # Every gather happens after the host transfer on purpose: the GCU
+    # aten::index lowering returns wrong elements for these row/column index
+    # lists (measured 1406 of 16384 wrong values on a 16x128 gather and 4083 of
+    # 524288 wrong rows on a 256-row gather), which used to make the reference
+    # itself disagree with the kernel. Gathering on CPU keeps the arithmetic
+    # identical for every vendor and removes the dependence on that lowering.
     m, k = a.shape
     n = b.shape[1]
     rows = list(range(m)) if m * n * k <= 1000000 else sorted({0, m // 2, m - 1})
     cols = list(range(n)) if m * n * k <= 1000000 else sorted({0, n // 2, n - 1})
-    aa = a[rows].cpu().to(torch.int64)
-    bb = b[:, cols].cpu().to(torch.int64)
+    aa = a.cpu()[rows].to(torch.int64)
+    bb = b.cpu()[:, cols].to(torch.int64)
     sa = sa.cpu().reshape(-1)
     sb = sb.cpu().reshape(-1)
     sa = sa.expand(m) if sa.numel() == 1 else sa
@@ -181,14 +208,16 @@ def _assert_reference(a, b, sa, sb, out, bias=None):
     if bias is not None:
         ref += bias.cpu()[cols].float()[None, :]
     torch.testing.assert_close(
-        out[rows][:, cols].cpu(),
+        out.cpu()[rows][:, cols],
         ref.to(out.dtype),
         rtol=1e-5 if out.dtype == torch.float32 else 1e-2,
         atol=1e-4,
     )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in ("thead", "enflame"), reason="thead/enflame only"
+)
 @pytest.mark.parametrize(
     "shape",
     [
@@ -220,7 +249,8 @@ def test_scaled_bias(shape, out_dtype, scales):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "ascend"), reason="INT8 default output dtype"
+    flag_gems.vendor_name not in ("thead", "ascend", "enflame"),
+    reason="INT8 default output dtype",
 )
 @pytest.mark.parametrize("shape", [(2, 3, 0), (0, 3, 8), (2, 0, 8), (0, 0, 0)])
 def test_scaled_empty_bias(shape):
@@ -234,7 +264,10 @@ def test_scaled_empty_bias(shape):
     torch.testing.assert_close(y, bias[None, :].expand(m, n))
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in _GRAPH_CAPABLE,
+    reason="torch.cuda stream/CUDAGraph is required",
+)
 @pytest.mark.parametrize(
     "shape", [(3, 17, 128), (1, 32, 128), (32, 1, 128), (17, 35, 67), (1025, 65, 2048)]
 )
@@ -272,7 +305,9 @@ def test_scaled_graph_bias_updates(shape, scalar):
         )
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in ("thead", "enflame"), reason="thead/enflame only"
+)
 @pytest.mark.parametrize(
     "invalid",
     [
@@ -292,6 +327,10 @@ def test_scaled_graph_bias_updates(shape, scalar):
     ],
 )
 def test_scaled_validation(invalid):
+    if flag_gems.vendor_name == "enflame" and invalid == "bias_dtype":
+        # the enflame backend explicitly supports FP16/BF16/FP32 bias (FP32 addition within the epilogue),
+        # so a bias whose dtype differs from out is a valid input, not a case that should be rejected.
+        pytest.skip("enflame accepts FP16/BF16/FP32 bias regardless of out dtype")
     a = torch.ones(2, 3, device=flag_gems.device, dtype=torch.int8)
     b = torch.ones(3, 4, device=a.device, dtype=torch.int8)
     sa = torch.ones(2, device=a.device)
@@ -329,7 +368,8 @@ def test_scaled_validation(invalid):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("thead", "ascend"), reason="INT8 default output dtype"
+    flag_gems.vendor_name not in ("thead", "ascend", "enflame"),
+    reason="INT8 default output dtype",
 )
 @pytest.mark.parametrize(
     "shape", [(1, 17, 32), (3, 35, 128), (17, 35, 67), (3, 17, 33001)]
@@ -345,7 +385,9 @@ def test_tensor_scales_without_bias(shape):
     _assert_reference(a, b, sa, sb, y)
 
 
-@pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="thead only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in ("thead", "enflame"), reason="thead/enflame only"
+)
 def test_scaled_unaligned_weight():
     m, n, k = 2, 16, 128
     a = torch.randint(-128, 128, (m, k), device=flag_gems.device, dtype=torch.int8)
@@ -376,7 +418,7 @@ def reference(a, b, sa, sb, bias=None, dtype=torch.float32):
     return value.to(dtype)
 
 
-_PREQUANTIZED = ("hygon", "metax", "ascend")
+_PREQUANTIZED = ("hygon", "metax", "ascend", "enflame")
 
 
 @pytest.mark.skipif(
@@ -425,7 +467,8 @@ def test_prequantized(shape, dtype, scalar, bias_on, layout):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("hygon", "ascend"), reason="INT8 long-K accumulation"
+    flag_gems.vendor_name not in ("hygon", "ascend", "enflame"),
+    reason="INT8 long-K accumulation",
 )
 @pytest.mark.parametrize("code", [-128, 127])
 def test_long_k_overflow(code):
@@ -461,6 +504,8 @@ def test_graph_updates():
     out = torch.empty((17, 13), device=flag_gems.device, dtype=dtype)
     for _ in range(3):
         flag_gems.mm_w8a8_int8_out(a, b, sa, sb, out=out, bias=bias)
+    if not hasattr(torch_device_fn, "CUDAGraph") and flag_gems.vendor_name != "ascend":
+        pytest.skip("device graph API is not available on this backend")
     graph_type = (
         torch_device_fn.NPUGraph
         if flag_gems.vendor_name == "ascend"

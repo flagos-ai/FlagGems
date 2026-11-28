@@ -35,7 +35,7 @@ def linalg_svd(A, full_matrices=True, *, driver=None):
     to obtain ``Vh``. ``full_matrices=True`` corresponds to ``some=False`` (full
     U/V matrices) in the ``torch.svd`` convention.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_SVD")
+    logger.debug("GEMS_ENFLAME LINALG_SVD")
     # The Triton SVD kernels only implement float32; higher/lower precision
     # matrices (e.g. float16/bfloat16) are not supported by the backend.
     if A.dtype != torch.float32:

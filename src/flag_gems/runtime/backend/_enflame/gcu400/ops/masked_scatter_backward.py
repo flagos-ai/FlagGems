@@ -44,13 +44,17 @@ logger = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 
 _NUM_PROGS = 48  # MAX_GRID_DIM on GCU400 (utils.config_utils)
-_TARGET_PROGS = 16  # small/medium-N block-count heuristic
+_TARGET_PROGS = 8  # small/medium-N block-count heuristic
 _MIN_BLOCK = 256
 _MAX_BLOCK = 8192
 _MAX_N_FAST = 2**30  # keep every offset/position safely inside int32
 _BIG_WARPS = 4  # num_warps for BLOCK_SIZE >= _WARP_SPLIT
 _SMALL_WARPS = 2
 _WARP_SPLIT = 2048
+# For large shapes, host memset + scatter writes on selected lanes only is cheaper; for small/medium shapes, having the
+# kernel
+# write all positions in one pass is cheaper (avoids the extra memset launch overhead).
+_MEMSET_MIN_NUMEL = 4194304
 
 
 @libentry()
@@ -157,9 +161,23 @@ def _masked_scatter_backward_fast(grad_output, mask, numel):
     blocks_per_prog = triton.cdiv(num_blocks, num_progs)
     num_progs = triton.cdiv(num_blocks, blocks_per_prog)
     NP_BLOCK = triton.next_power_of_2(num_progs)
-    num_warps = _BIG_WARPS if BLOCK_SIZE >= _WARP_SPLIT else _SMALL_WARPS
+    # dtype-aware num_warps: chosen by the byte size of a single tile; 2 warps for large fp32 tiles
+    # (measurements show 4 warps are actually slower on a 32KB tile), while large fp16/bf16 tiles keep 4 warps.
+    tile_bytes = BLOCK_SIZE * grad_output.element_size()
+    if tile_bytes <= 4096:
+        num_warps = _SMALL_WARPS
+    elif tile_bytes <= 16384:
+        num_warps = _BIG_WARPS
+    else:
+        num_warps = 2
 
-    if numel > N:
+    if numel >= _MEMSET_MIN_NUMEL:
+        # First memset the whole block (contiguous writes at full DMA bandwidth), then inside the kernel only perform
+        # scatter writes on selected lanes; unselected positions are covered by the memset zeros, reducing scatter
+        # writes to ~p*numel.
+        out = torch.zeros(numel, dtype=grad_output.dtype, device=grad_output.device)
+        write_zeros = False
+    elif numel > N:
         # Tail [N, numel) cannot be covered by any mask element; pre-zero.
         out = torch.zeros(numel, dtype=grad_output.dtype, device=grad_output.device)
         write_zeros = False
@@ -226,7 +244,7 @@ def masked_scatter_backward(grad_output, mask, sizes):
     non-contiguous inputs, N beyond the int32 fast-path domain) falls back
     to ``masked_select``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MASKED_SCATTER_BACKWARD")
+    logger.debug("GEMS_ENFLAME MASKED_SCATTER_BACKWARD")
 
     sizes = list(sizes)
     numel = 1

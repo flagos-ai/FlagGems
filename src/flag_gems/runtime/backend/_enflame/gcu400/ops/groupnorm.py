@@ -30,6 +30,37 @@ GRID_DIM_X = 24
 MAX_FLAT_BLOCK = 16384
 MAX_FLAT_TWO_PASS_BLOCK = 4096
 MAX_FLAT_N = 4
+# Forward tiling policy (gcu400 measurements, 2026-11-17):
+# - num_warps=1 hits a codegen pathology once a tile reaches 2048 elements
+#   ([2,1024]: 81.6us vs 23.4us at [2,512] on (16,16,8,88)), so rows covered
+#   by a single tile keep BG*BH <= 1024 elements at num_warps=1.
+# - Long rows (HW > 1024) prefer the largest BLOCK_HW inside the DSM budget:
+#   [2,8192] nw2 = 70.7us vs [2,2048] nw1 = 167.7us on (20,6,65536).
+DSM_BUDGET = 448 * 1024
+DSM_HARD_BUDGET = 768 * 1024
+DSM_LIVE_TILES = 6
+SMALL_ROW_HW = 1024
+SMALL_TILE = 1024
+
+
+def _forward_block_config(C, group, HxW):
+    group_size = triton.cdiv(C, group)
+    block_g = triton.next_power_of_2(group_size)
+    block_h = triton.next_power_of_2(HxW)
+    if block_h <= SMALL_ROW_HW:
+        while block_g * block_h > SMALL_TILE and block_h > 32:
+            block_h //= 2
+        num_warps = 1 if block_g * block_h <= SMALL_TILE else 2
+    else:
+        # DSM budget: ~6 live fp32 [BG, BH] tiles must stay under the
+        # 448KB dual-program line (hard-capped below the 896KB limit that
+        # raises triton OutOfResources at compile time).
+        while block_g * block_h * 4 * DSM_LIVE_TILES > DSM_BUDGET and block_h > 256:
+            block_h //= 2
+        while block_g * block_h * 4 * DSM_LIVE_TILES > DSM_HARD_BUDGET and block_h > 32:
+            block_h //= 2
+        num_warps = 2
+    return block_g, block_h, num_warps
 
 
 @libentry()
@@ -408,15 +439,23 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
     logger.debug("GEMS_ENFLAME GROUP_NORM")
 
     group_size = triton.cdiv(C, group)
-    input = input.contiguous()
-    weight = None if weight is None else weight.contiguous()
-    bias = None if bias is None else bias.contiguous()
+    # Touching .contiguous() unconditionally costs one host dispatch per tensor,
+    # which dominates the tiny shapes (N*group <= 4, a few hundred elements)
+    # where the kernel itself is only a few microseconds; the guard keeps the
+    # exact same device tensors while removing 12%-22% of the end-to-end time
+    # there and staying neutral on the bandwidth-bound large rows.
+    if not input.is_contiguous():
+        input = input.contiguous()
+    if weight is not None and not weight.is_contiguous():
+        weight = weight.contiguous()
+    if bias is not None and not bias.is_contiguous():
+        bias = bias.contiguous()
 
     y = torch.empty_like(input)
     mean = torch.empty((N, group), dtype=input.dtype, device=input.device)
     rstd = torch.empty((N, group), dtype=input.dtype, device=input.device)
 
-    BLOCK_HW_SIZE = min(triton.next_power_of_2(HxW), MAX_BLOCK_HW)
+    block_group_size, block_hw_size, num_warps = _forward_block_config(C, group, HxW)
 
     grid = (N * group,)
     with torch_device_fn.device(input.device):
@@ -432,9 +471,9 @@ def group_norm(input, weight, bias, N, C, HxW, group, eps=1e-05):
             HxW,
             group,
             eps,
-            BLOCK_GROUP_SIZE=triton.next_power_of_2(group_size),
-            BLOCK_HW_SIZE=BLOCK_HW_SIZE,
-            num_warps=1,
+            BLOCK_GROUP_SIZE=block_group_size,
+            BLOCK_HW_SIZE=block_hw_size,
+            num_warps=num_warps,
         )
     return y, mean, rstd
 

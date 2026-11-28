@@ -31,7 +31,7 @@ def native_batch_norm(
     eps=1e-5,
 ):
     """Run native batch normalization through the existing implementation."""
-    logger.debug("GEMS_ENFLAME_GCU400 NATIVE_BATCH_NORM")
+    logger.debug("GEMS_ENFLAME NATIVE_BATCH_NORM")
     return batch_norm(
         input,
         weight,

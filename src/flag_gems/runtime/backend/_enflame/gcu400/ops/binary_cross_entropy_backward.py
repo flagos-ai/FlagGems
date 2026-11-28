@@ -42,7 +42,7 @@ def bce_backward_kernel_weight(grad_output, self, target, weight, reduction):
 
 
 def binary_cross_entropy_backward(grad_output, self, target, weight=None, reduction=1):
-    logger.debug("GEMS_ENFLAME_GCU400 BINARY_CROSS_ENTROPY_BACKWARD")
+    logger.debug("GEMS_ENFLAME BINARY_CROSS_ENTROPY_BACKWARD")
     n = self.numel()
 
     if weight is not None:

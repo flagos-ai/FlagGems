@@ -27,23 +27,42 @@ from flag_gems.utils import libentry, libtuner
 logger = logging.getLogger(__name__)
 
 # P19: GCU caps grid.x at 65535 and grid.y at 255 (hardware hard limits). The
-# channel-tile axis (cdiv(N * spatial, BLOCK_SIZE)) reaches the thousands for
-# conv-shaped inputs, so the launch is capped here and each program strides
-# over the remaining tiles inside the kernel (log_sigmoid_backward precedent).
+# tile/unit axis is capped here and each program strides over the remaining
+# tiles inside the kernel (log_sigmoid_backward precedent).
 _MAX_GRID_Y = 255
+
+# GCU400 lowers per-element integer div/rem by a runtime divisor to serial
+# extern calls (tops_floordivsi_v2_si32 / tops_remsi_v2_si32, 256-lane
+# chunks) that cannot pipeline with the streaming loads/stores; on
+# (20, 6, 65536) that wall alone costs ~2.4x the whole kernel (probe rounds
+# j20261117002513: divaddr 149-313us vs affine 54-65us). The flat kernel
+# therefore derives (batch, spatial) offsets without per-element div:
+#   ADDR_MODE 0: spatial_size is a power of two -> shifts (exact, any size)
+#   ADDR_MODE 1: fp32 reciprocal + two-step boundary fixup; exact whenever
+#                n_inner < 2**24 (flat index representable in fp32) and
+#                N < 2**22 (reciprocal error < 0.5, off-by-one fixable)
+#   ADDR_MODE 2: exact div/rem fallback for giant tensors == original body
+_ADDR_SHIFT = 0
+_ADDR_FLOAT = 1
+_ADDR_EXACT = 2
+
+# Large-spatial inputs take the *_large kernel whose tiles are (batch,
+# s-tile) units: each unit is one contiguous run addressed as
+# scalar_base + arange (pure affine addressing, the GCU400 fast path), with
+# the div/mod reduced to one scalar division per unit. Small-spatial inputs
+# stay on the flat kernel: for S < BLOCK the unit scheme would waste lanes
+# and inflate program counts past the single-wave budget (probe v1/v3:
+# 16-32us vs 4.7-8.9us flat on the S=704/384 shapes).
+_LARGE_SPATIAL = 8192
 
 
 @libentry()
 @libtuner(
     configs=[
-        triton.Config({"BLOCK_SIZE": 512}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK_SIZE": 1024}, num_warps=8, num_stages=1),
         triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=1),
-        triton.Config({"BLOCK_SIZE": 2048}, num_warps=8, num_stages=2),
         triton.Config({"BLOCK_SIZE": 4096}, num_warps=16, num_stages=1),
     ],
-    key=["n_inner"],
+    key=["n_inner", "spatial_size"],
 )
 @triton.jit
 def batch_norm_backward_elemt_kernel(
@@ -59,29 +78,25 @@ def batch_norm_backward_elemt_kernel(
     n_inner,
     spatial_size,
     chan_stride,
+    ADDR_MODE: tl.constexpr,
+    LOG2_S: tl.constexpr,
     HAS_WEIGHT: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
     """
-    Per-channel batch norm backward element-wise gradient kernel.
+    Per-channel batch norm backward element-wise gradient kernel (flat tiling).
 
-    Grid is 2D: (C, cdiv(N*spatial, BLOCK_SIZE)).
-    - axis 0 selects the channel
-    - axis 1 tiles over the flattened batch*spatial dimension
+    Grid is 2D: (C, cdiv(N*spatial, BLOCK_SIZE)). Axis 0 selects the channel,
+    axis 1 tiles over the flattened batch*spatial dimension (capped at
+    _MAX_GRID_Y; each program strides over the remaining tiles).
 
     For NCHW contiguous layout, each channel c has N contiguous spatial
-    chunks of size S, separated by stride C*S. We flatten the N*S elements
-    per channel into a 1D index and compute the actual memory offset as:
-      batch_idx = flat_idx // S
-      spatial_idx = flat_idx % S
+    chunks of size S, separated by stride C*S. A flat index f within one
+    channel maps to memory as:
+      batch_idx = f // S;  spatial_idx = f % S
       offset = batch_idx * C * S + c * S + spatial_idx
-
-    Args (kernel):
-      n_inner: N * spatial_size (elements per channel)
-      spatial_size: product of spatial dims
-      chan_stride: C * spatial_size (batch stride in flat memory)
-
-    Per-channel statistics are loaded once per program (scalar).
+    The div/mod is replaced by ADDR_MODE (see module docstring) to avoid the
+    GCU400 per-element div/rem extern-call wall.
     """
     c = tl.program_id(0)
 
@@ -103,10 +118,9 @@ def batch_norm_backward_elemt_kernel(
     invstd_sq_sum_dy_xmu = invstd * invstd * sum_dy_xmu
     w_invstd = weight * invstd
 
-    # Tile over flattened (batch * spatial) dimension. grid.y is capped at
-    # _MAX_GRID_Y, so each program strides over every _MAX_GRID_Y-th tile via
-    # the live grid size; the per-channel stats above are loaded once per
-    # program and reused across the strided tiles.
+    if ADDR_MODE == 1:  # _ADDR_FLOAT: reciprocal + boundary fixup
+        inv_s = 1.0 / spatial_size.to(tl.float32)
+
     pid_tile = tl.program_id(1)
     num_tiles = tl.cdiv(n_inner, BLOCK_SIZE)
     num_programs = tl.num_programs(1)
@@ -114,12 +128,27 @@ def batch_norm_backward_elemt_kernel(
         flat_offsets = tile * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
         mask = flat_offsets < n_inner
 
-        # Convert flat index to memory offset in NCHW layout
-        batch_idx = flat_offsets // spatial_size
-        spatial_idx = flat_offsets % spatial_size
+        if ADDR_MODE == 0:  # _ADDR_SHIFT: power-of-two spatial
+            # Power-of-two spatial: div/mod are exact shifts
+            batch_idx = flat_offsets >> LOG2_S
+            spatial_idx = flat_offsets & ((1 << LOG2_S) - 1)
+        elif ADDR_MODE == 1:  # _ADDR_FLOAT
+            # Reciprocal multiply + truncate, then repair the (at most one)
+            # boundary error with two exact integer corrections
+            batch_idx = (flat_offsets.to(tl.float32) * inv_s).to(tl.int32)
+            spatial_idx = flat_offsets - batch_idx * spatial_size
+            neg = spatial_idx < 0
+            batch_idx = tl.where(neg, batch_idx - 1, batch_idx)
+            spatial_idx = tl.where(neg, spatial_idx + spatial_size, spatial_idx)
+            ge = spatial_idx >= spatial_size
+            batch_idx = tl.where(ge, batch_idx + 1, batch_idx)
+            spatial_idx = tl.where(ge, spatial_idx - spatial_size, spatial_idx)
+        else:
+            # Giant tensors: original exact div/rem (same cost as before)
+            batch_idx = flat_offsets // spatial_size
+            spatial_idx = flat_offsets % spatial_size
         mem_offsets = batch_idx * chan_stride + c * spatial_size + spatial_idx
 
-        # Coalesced loads (spatial elements within a batch are contiguous)
         grad_out = tl.load(grad_out_ptr + mem_offsets, mask=mask, other=0.0).to(
             tl.float32
         )
@@ -132,6 +161,77 @@ def batch_norm_backward_elemt_kernel(
         )
 
         tl.store(grad_input_ptr + mem_offsets, result, mask=mask)
+
+
+@libentry()
+@libtuner(
+    configs=[
+        triton.Config({"BLOCK": 8192}, num_warps=16, num_stages=1),
+        triton.Config({"BLOCK": 16384}, num_warps=16, num_stages=1),
+        triton.Config({"BLOCK": 16384}, num_warps=32, num_stages=1),
+        triton.Config({"BLOCK": 32768}, num_warps=32, num_stages=1),
+    ],
+    key=["n_batches", "spatial_size"],
+)
+@triton.jit
+def batch_norm_backward_elemt_kernel_large(
+    grad_out_ptr,
+    input_ptr,
+    mean_ptr,
+    invstd_ptr,
+    weight_ptr,
+    sum_dy_ptr,
+    sum_dy_xmu_ptr,
+    count_ptr,
+    grad_input_ptr,
+    n_batches,
+    spatial_size,
+    chan_stride,
+    HAS_WEIGHT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """
+    Per-channel batch norm backward gradient kernel for large spatial sizes.
+
+    A unit is one (batch, s-tile) pair, i.e. one contiguous run of channel c.
+    Each program strides over units (grid.y capped at _MAX_GRID_Y); the
+    unit->(batch, tile) mapping is one scalar division per unit and the
+    in-tile addressing is scalar_base + arange (pure affine), which keeps
+    every load/store on the GCU400 burst path.
+    """
+    c = tl.program_id(0)
+
+    inv_count = 1.0 / tl.load(count_ptr).to(tl.float32)
+    mean = tl.load(mean_ptr + c).to(tl.float32)
+    invstd = tl.load(invstd_ptr + c).to(tl.float32)
+    sum_dy = tl.load(sum_dy_ptr + c).to(tl.float32)
+    sum_dy_xmu = tl.load(sum_dy_xmu_ptr + c).to(tl.float32)
+
+    if HAS_WEIGHT:
+        weight = tl.load(weight_ptr + c).to(tl.float32)
+    else:
+        weight = 1.0
+
+    invstd_sq_sum_dy_xmu = invstd * invstd * sum_dy_xmu
+    w_invstd = weight * invstd
+
+    pid = tl.program_id(1)
+    num_programs = tl.num_programs(1)
+    nst = tl.cdiv(spatial_size, BLOCK)
+    total_units = n_batches * nst
+    for unit in tl.range(pid, total_units, num_programs):
+        b = unit // nst
+        t = unit - b * nst
+        base = b * chan_stride + c * spatial_size + t * BLOCK
+        offs = tl.arange(0, BLOCK)
+        m = offs < spatial_size - t * BLOCK
+        grad_out = tl.load(grad_out_ptr + base + offs, mask=m, other=0.0).to(tl.float32)
+        inp = tl.load(input_ptr + base + offs, mask=m, other=0.0).to(tl.float32)
+        xmu = inp - mean
+        result = w_invstd * (
+            grad_out - (sum_dy + xmu * invstd_sq_sum_dy_xmu) * inv_count
+        )
+        tl.store(grad_input_ptr + base + offs, result, mask=m)
 
 
 def batch_norm_backward_elemt(
@@ -160,7 +260,7 @@ def batch_norm_backward_elemt(
     Returns:
         grad_input: Gradient w.r.t. input (N, C, *)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 BATCH_NORM_BACKWARD_ELEMT")
+    logger.debug("GEMS_ENFLAME BATCH_NORM_BACKWARD_ELEMT")
 
     # Ensure contiguous memory layout
     grad_out = grad_out.contiguous()
@@ -192,29 +292,64 @@ def batch_norm_backward_elemt(
     # Allocate output
     grad_input = torch.empty_like(input)
 
-    # 2D grid: (C, min(cdiv(n_inner, BLOCK_SIZE), _MAX_GRID_Y)) — the tile axis
-    # is capped at the P19 grid.y limit and the kernel strides over the rest.
     with torch_device_fn.device(input.device):
-        batch_norm_backward_elemt_kernel[
-            lambda meta: (
-                C,
-                min(triton.cdiv(n_inner, meta["BLOCK_SIZE"]), _MAX_GRID_Y),
+        if spatial_size >= _LARGE_SPATIAL:
+            # Affine (batch, s-tile) units: contiguous runs, no per-element
+            # index arithmetic; grid.y capped at the P19 limit, kernel strides.
+            batch_norm_backward_elemt_kernel_large[
+                lambda meta: (
+                    C,
+                    min(N * triton.cdiv(spatial_size, meta["BLOCK"]), _MAX_GRID_Y),
+                )
+            ](
+                grad_out,
+                input,
+                mean,
+                invstd,
+                weight,
+                sum_dy,
+                sum_dy_xmu,
+                count,
+                grad_input,
+                N,
+                spatial_size,
+                chan_stride,
+                HAS_WEIGHT=has_weight,
             )
-        ](
-            grad_out,
-            input,
-            mean,
-            invstd,
-            weight,
-            sum_dy,
-            sum_dy_xmu,
-            count,
-            grad_input,
-            n_inner,
-            spatial_size,
-            chan_stride,
-            HAS_WEIGHT=has_weight,
-        )
+        else:
+            # Flat tiling with div-free (shift / reciprocal-fixup / exact)
+            # channel offset derivation.
+            if spatial_size > 0 and (spatial_size & (spatial_size - 1)) == 0:
+                addr_mode = _ADDR_SHIFT
+                log2_s = spatial_size.bit_length() - 1
+            elif n_inner <= (1 << 24) and N <= (1 << 22):
+                addr_mode = _ADDR_FLOAT
+                log2_s = 0
+            else:
+                addr_mode = _ADDR_EXACT
+                log2_s = 0
+            batch_norm_backward_elemt_kernel[
+                lambda meta: (
+                    C,
+                    min(triton.cdiv(n_inner, meta["BLOCK_SIZE"]), _MAX_GRID_Y),
+                )
+            ](
+                grad_out,
+                input,
+                mean,
+                invstd,
+                weight,
+                sum_dy,
+                sum_dy_xmu,
+                count,
+                grad_input,
+                n_inner,
+                spatial_size,
+                chan_stride,
+                ADDR_MODE=addr_mode,
+                LOG2_S=log2_s,
+                HAS_WEIGHT=has_weight,
+            )
 
     return grad_input
 
@@ -231,26 +366,3 @@ def batch_norm_backward_elemt(
 # "skipped" warning by op_registrar.for_each (same kernel either way).
 _ATEN_REGISTRATION_FLAG = "_flag_gems_gcu400_batch_norm_backward_elemt_registered"
 _ATEN_REGISTRATION_LIBRARY = None
-
-
-def _register_aten_batch_norm_backward_elemt():
-    global _ATEN_REGISTRATION_LIBRARY
-    if getattr(torch, _ATEN_REGISTRATION_FLAG, False):
-        return
-    library = torch.library.Library("aten", "IMPL")
-    try:
-        library.impl(
-            "batch_norm_backward_elemt",
-            batch_norm_backward_elemt,
-            "PrivateUse1",
-        )
-    except RuntimeError as error:
-        logger.warning(
-            "batch_norm_backward_elemt PrivateUse1 registration skipped: %s", error
-        )
-        return
-    _ATEN_REGISTRATION_LIBRARY = library
-    setattr(torch, _ATEN_REGISTRATION_FLAG, True)
-
-
-_register_aten_batch_norm_backward_elemt()

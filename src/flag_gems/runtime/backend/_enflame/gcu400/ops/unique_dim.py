@@ -37,6 +37,16 @@ _UNIQUE_DIM_HASH_MIN_ROW_LEN = 1024
 # Smaller tile for the fused key kernel's float branches: their int64 bit-twiddle
 # temporaries overflow the Ascend unified buffer at the default tile size.
 _UNIQUE_DIM_BUILD_KEY_FLOAT_BLOCK_SIZE = 256
+# GCU400 hardware grid limits: grid.x <= 65535, grid.y <= 255. Kernels that
+# want one program per row launch min(rows, 32768) programs and walk the
+# remaining rows with a grid-stride loop. The cap stays well below the 65535
+# hardware limit because launches at exactly 65535 are a documented danger
+# zone on this backend (P19: silent wrong results / hangs). Chunk counts stay
+# in grid.y, so row lengths are bounded by 255 * _UNIQUE_DIM_COMPARE_BLOCK_SIZE.
+_UNIQUE_DIM_GRID_X_MAX = 32768
+# Above this total element count, row * row_len offsets are computed in int64
+# (the grid.x cap no longer bounds them inside int32).
+_UNIQUE_DIM_WIDE_NUMEL = 2**31
 
 
 # Per-column bit budgets and to-int64 conversions that preserve the original
@@ -126,18 +136,29 @@ def _unique_dim_row_hash_chunk_kernel(
     row_len: int,
     num_chunks: int,
     BLOCK_SIZE: tl.constexpr,
+    WIDE: tl.constexpr,
 ):
-    row = ext.program_id(0)
+    # GCU400 grid.x is capped at 65535, so rows are processed with a
+    # grid-stride loop instead of one program per row.
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
     chunk = ext.program_id(1)
     offsets = chunk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < row_len
 
-    vals = tl.load(flat_ptr + row * row_len + offsets, mask=mask, other=0)
-    vals_i64 = vals.to(tl.int64)
-    offsets_i64 = offsets.to(tl.int64)
-    mix = (vals_i64 + (offsets_i64 + 1) * 1009 + 9176) * 131071
-    mix = tl.where(mask, mix, 0)
-    tl.store(chunk_hash_ptr + row * num_chunks + chunk, tl.sum(mix, axis=0))
+    for row in tl.range(pid, num_rows, step):
+        # WIDE: with the grid.x cap lifted, numel >= 2**31 makes
+        # ``row * row_len`` wrap around int32; widen just the scalar row base.
+        if WIDE:
+            row_base = flat_ptr + row.to(tl.int64) * row_len
+        else:
+            row_base = flat_ptr + row * row_len
+        vals = tl.load(row_base + offsets, mask=mask, other=0)
+        vals_i64 = vals.to(tl.int64)
+        offsets_i64 = offsets.to(tl.int64)
+        mix = (vals_i64 + (offsets_i64 + 1) * 1009 + 9176) * 131071
+        mix = tl.where(mask, mix, 0)
+        tl.store(chunk_hash_ptr + row * num_chunks + chunk, tl.sum(mix, axis=0))
 
 
 @libentry()
@@ -145,14 +166,17 @@ def _unique_dim_row_hash_chunk_kernel(
 def _unique_dim_row_hash_reduce_kernel(
     chunk_hash_ptr: tl.tensor,
     row_hash_ptr: tl.tensor,
+    num_rows: int,
     num_chunks: int,
     BLOCK_CHUNKS: tl.constexpr,
 ):
-    row = ext.program_id(0)
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
     chunks = tl.arange(0, BLOCK_CHUNKS)
     mask = chunks < num_chunks
-    vals = tl.load(chunk_hash_ptr + row * num_chunks + chunks, mask=mask, other=0)
-    tl.store(row_hash_ptr + row, tl.sum(vals, axis=0))
+    for row in tl.range(pid, num_rows, step):
+        vals = tl.load(chunk_hash_ptr + row * num_chunks + chunks, mask=mask, other=0)
+        tl.store(row_hash_ptr + row, tl.sum(vals, axis=0))
 
 
 @libentry()
@@ -166,23 +190,25 @@ def _unique_dim_row_chunk_diff_kernel(
     num_chunks: int,
     BLOCK_SIZE: tl.constexpr,
 ):
-    row = ext.program_id(0)
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
     chunk = ext.program_id(1)
     offsets = chunk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < row_len
 
-    out = tl.full((), 0, dtype=tl.int32)
-    if row == 0:
-        out = tl.where(chunk == 0, 1, 0)
-    else:
-        cur_row = tl.load(sorted_indices_ptr + row)
-        prev_row = tl.load(sorted_indices_ptr + row - 1)
-        cur = tl.load(flat_ptr + cur_row * row_len + offsets, mask=mask)
-        prev = tl.load(flat_ptr + prev_row * row_len + offsets, mask=mask)
-        neq = (cur != prev) & mask
-        has_diff = tl.sum(neq.to(tl.int32), axis=0) != 0
-        out = has_diff.to(tl.int32)
-    tl.store(row_chunk_diff_ptr + row * num_chunks + chunk, out)
+    for row in tl.range(pid, num_rows, step):
+        out = tl.full((), 0, dtype=tl.int32)
+        if row == 0:
+            out = tl.where(chunk == 0, 1, 0)
+        else:
+            cur_row = tl.load(sorted_indices_ptr + row)
+            prev_row = tl.load(sorted_indices_ptr + row - 1)
+            cur = tl.load(flat_ptr + cur_row * row_len + offsets, mask=mask)
+            prev = tl.load(flat_ptr + prev_row * row_len + offsets, mask=mask)
+            neq = (cur != prev) & mask
+            has_diff = tl.sum(neq.to(tl.int32), axis=0) != 0
+            out = has_diff.to(tl.int32)
+        tl.store(row_chunk_diff_ptr + row * num_chunks + chunk, out)
 
 
 @libentry()
@@ -197,28 +223,30 @@ def _unique_dim_row_chunk_diff_hash_kernel(
     num_chunks: int,
     BLOCK_SIZE: tl.constexpr,
 ):
-    row = ext.program_id(0)
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
     chunk = ext.program_id(1)
     offsets = chunk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < row_len
 
-    out = tl.full((), 0, dtype=tl.int32)
-    if row == 0:
-        out = tl.where(chunk == 0, 1, 0)
-    else:
-        cur_row = tl.load(sorted_indices_ptr + row)
-        prev_row = tl.load(sorted_indices_ptr + row - 1)
-        cur_hash = tl.load(row_hash_ptr + cur_row)
-        prev_hash = tl.load(row_hash_ptr + prev_row)
-        if cur_hash != prev_hash:
+    for row in tl.range(pid, num_rows, step):
+        out = tl.full((), 0, dtype=tl.int32)
+        if row == 0:
             out = tl.where(chunk == 0, 1, 0)
         else:
-            cur = tl.load(flat_ptr + cur_row * row_len + offsets, mask=mask)
-            prev = tl.load(flat_ptr + prev_row * row_len + offsets, mask=mask)
-            neq = (cur != prev) & mask
-            has_diff = tl.sum(neq.to(tl.int32), axis=0) != 0
-            out = has_diff.to(tl.int32)
-    tl.store(row_chunk_diff_ptr + row * num_chunks + chunk, out)
+            cur_row = tl.load(sorted_indices_ptr + row)
+            prev_row = tl.load(sorted_indices_ptr + row - 1)
+            cur_hash = tl.load(row_hash_ptr + cur_row)
+            prev_hash = tl.load(row_hash_ptr + prev_row)
+            if cur_hash != prev_hash:
+                out = tl.where(chunk == 0, 1, 0)
+            else:
+                cur = tl.load(flat_ptr + cur_row * row_len + offsets, mask=mask)
+                prev = tl.load(flat_ptr + prev_row * row_len + offsets, mask=mask)
+                neq = (cur != prev) & mask
+                has_diff = tl.sum(neq.to(tl.int32), axis=0) != 0
+                out = has_diff.to(tl.int32)
+        tl.store(row_chunk_diff_ptr + row * num_chunks + chunk, out)
 
 
 @libentry()
@@ -226,14 +254,19 @@ def _unique_dim_row_chunk_diff_hash_kernel(
 def _unique_dim_row_diff_reduce_kernel(
     row_chunk_diff_ptr: tl.tensor,
     is_first_ptr: tl.tensor,
+    num_rows: int,
     num_chunks: int,
     BLOCK_CHUNKS: tl.constexpr,
 ):
-    row = ext.program_id(0)
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
     chunks = tl.arange(0, BLOCK_CHUNKS)
     mask = chunks < num_chunks
-    vals = tl.load(row_chunk_diff_ptr + row * num_chunks + chunks, mask=mask, other=0)
-    tl.store(is_first_ptr + row, tl.sum(vals, axis=0) != 0)
+    for row in tl.range(pid, num_rows, step):
+        vals = tl.load(
+            row_chunk_diff_ptr + row * num_chunks + chunks, mask=mask, other=0
+        )
+        tl.store(is_first_ptr + row, tl.sum(vals, axis=0) != 0)
 
 
 @libentry()
@@ -246,19 +279,21 @@ def _unique_dim_row_single_chunk_first_kernel(
     row_len: int,
     BLOCK_SIZE: tl.constexpr,
 ):
-    row = ext.program_id(0)
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
     offsets = tl.arange(0, BLOCK_SIZE)
     mask = offsets < row_len
 
-    out = tl.full((), True, dtype=tl.int1)
-    if row != 0:
-        cur_row = tl.load(sorted_indices_ptr + row)
-        prev_row = tl.load(sorted_indices_ptr + row - 1)
-        cur = tl.load(flat_ptr + cur_row * row_len + offsets, mask=mask)
-        prev = tl.load(flat_ptr + prev_row * row_len + offsets, mask=mask)
-        neq = (cur != prev) & mask
-        out = tl.sum(neq.to(tl.int32), axis=0) != 0
-    tl.store(is_first_ptr + row, out)
+    for row in tl.range(pid, num_rows, step):
+        out = tl.full((), True, dtype=tl.int1)
+        if row != 0:
+            cur_row = tl.load(sorted_indices_ptr + row)
+            prev_row = tl.load(sorted_indices_ptr + row - 1)
+            cur = tl.load(flat_ptr + cur_row * row_len + offsets, mask=mask)
+            prev = tl.load(flat_ptr + prev_row * row_len + offsets, mask=mask)
+            neq = (cur != prev) & mask
+            out = tl.sum(neq.to(tl.int32), axis=0) != 0
+        tl.store(is_first_ptr + row, out)
 
 
 @libentry()
@@ -270,20 +305,30 @@ def _unique_dim_gather_moved_kernel(
     num_unique: int,
     row_len: int,
     BLOCK_SIZE: tl.constexpr,
+    WIDE: tl.constexpr,
 ):
     # One program per (output row, column chunk). Copies a contiguous span of
     # the source row selected through ``unique_indices`` into the matching span
     # of the output row. Loading ``src_row`` once per program (scalar) and using
     # contiguous column offsets avoids the per-element integer divide/modulo and
     # scattered indexing of a flat-offset gather, which dominate NPU time.
-    row = ext.program_id(0)
+    # GCU400 grid.x is capped at 65535, so output rows use a grid-stride loop.
+    pid = ext.program_id(0)
+    step = tl.num_programs(0)
     chunk = ext.program_id(1)
     col = chunk * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = col < row_len
 
-    src_row = tl.load(unique_indices_ptr + row)
-    values = tl.load(flat_ptr + src_row * row_len + col, mask=mask)
-    tl.store(output_ptr + row * row_len + col, values, mask=mask)
+    for row in tl.range(pid, num_unique, step):
+        src_row = tl.load(unique_indices_ptr + row)
+        values = tl.load(flat_ptr + src_row * row_len + col, mask=mask)
+        # WIDE: read offsets are already int64 via ``src_row``; the output row
+        # base needs the same widening once numel >= 2**31 becomes reachable.
+        if WIDE:
+            out_base = output_ptr + row.to(tl.int64) * row_len
+        else:
+            out_base = output_ptr + row * row_len
+        tl.store(out_base + col, values, mask=mask)
 
 
 @libentry()
@@ -669,18 +714,24 @@ def _unique_dim_row_hash(flat: torch.Tensor) -> torch.Tensor:
     )
     row_hash = torch.empty(num_rows, dtype=torch.int64, device=flat.device)
     with torch_device_fn.device(flat.device.index):
-        _unique_dim_row_hash_chunk_kernel[(num_rows, num_chunks, 1)](
+        _unique_dim_row_hash_chunk_kernel[
+            (min(num_rows, _UNIQUE_DIM_GRID_X_MAX), num_chunks, 1)
+        ](
             flat,
             chunk_hash,
             num_rows,
             row_len,
             num_chunks,
             BLOCK_SIZE=block_size,
+            WIDE=num_rows * row_len >= _UNIQUE_DIM_WIDE_NUMEL,
             num_warps=_triton_num_warps(block_size),
         )
-        _unique_dim_row_hash_reduce_kernel[(num_rows, 1, 1)](
+        _unique_dim_row_hash_reduce_kernel[
+            (min(num_rows, _UNIQUE_DIM_GRID_X_MAX), 1, 1)
+        ](
             chunk_hash,
             row_hash,
+            num_rows,
             num_chunks,
             BLOCK_CHUNKS=triton.next_power_of_2(num_chunks),
             num_warps=_triton_num_warps(triton.next_power_of_2(num_chunks)),
@@ -701,7 +752,9 @@ def _unique_dim_first_mask(flat: torch.Tensor, sorted_indices: torch.Tensor):
     is_first = torch.empty(num_rows, dtype=torch.bool, device=flat.device)
     if num_chunks == 1:
         with torch_device_fn.device(flat.device.index):
-            _unique_dim_row_single_chunk_first_kernel[(num_rows, 1, 1)](
+            _unique_dim_row_single_chunk_first_kernel[
+                (min(num_rows, _UNIQUE_DIM_GRID_X_MAX), 1, 1)
+            ](
                 flat,
                 sorted_indices,
                 is_first,
@@ -715,7 +768,7 @@ def _unique_dim_first_mask(flat: torch.Tensor, sorted_indices: torch.Tensor):
     row_chunk_diff = torch.empty(
         (num_rows, num_chunks), dtype=torch.int32, device=flat.device
     )
-    grid = (num_rows, num_chunks, 1)
+    grid = (min(num_rows, _UNIQUE_DIM_GRID_X_MAX), num_chunks, 1)
     row_hash = (
         _unique_dim_row_hash(flat) if row_len >= _UNIQUE_DIM_HASH_MIN_ROW_LEN else None
     )
@@ -743,9 +796,12 @@ def _unique_dim_first_mask(flat: torch.Tensor, sorted_indices: torch.Tensor):
                 BLOCK_SIZE=block_size,
                 num_warps=_triton_num_warps(block_size),
             )
-        _unique_dim_row_diff_reduce_kernel[(num_rows, 1, 1)](
+        _unique_dim_row_diff_reduce_kernel[
+            (min(num_rows, _UNIQUE_DIM_GRID_X_MAX), 1, 1)
+        ](
             row_chunk_diff,
             is_first,
+            num_rows,
             num_chunks,
             BLOCK_CHUNKS=triton.next_power_of_2(num_chunks),
             num_warps=_triton_num_warps(triton.next_power_of_2(num_chunks)),
@@ -774,7 +830,7 @@ def _unique_dim_gather_output(
         device=moved.device,
     )
     num_chunks = triton.cdiv(row_len, _UNIQUE_DIM_GATHER_BLOCK_SIZE)
-    grid = (num_unique, num_chunks, 1)
+    grid = (min(num_unique, _UNIQUE_DIM_GRID_X_MAX), num_chunks, 1)
     with torch_device_fn.device(moved.device.index):
         _unique_dim_gather_moved_kernel[grid](
             flat,
@@ -783,6 +839,7 @@ def _unique_dim_gather_output(
             num_unique,
             row_len,
             BLOCK_SIZE=_UNIQUE_DIM_GATHER_BLOCK_SIZE,
+            WIDE=num_unique * row_len >= _UNIQUE_DIM_WIDE_NUMEL,
             num_warps=4,
         )
     return moved_output.movedim(0, dim)
@@ -891,7 +948,7 @@ def unique_dim(
     slices, an optional inverse mapping of shape ``(input.size(dim),)`` and an
     optional per-unique count tensor of shape ``(output.size(dim),)``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 UNIQUE_DIM")
+    logger.debug("GEMS_ENFLAME UNIQUE_DIM")
 
     ndim = input.ndim if input.ndim > 0 else 1
     if dim < 0:

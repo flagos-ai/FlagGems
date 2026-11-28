@@ -29,10 +29,24 @@ wrapper only performs metadata queries, zero-copy dtype views, launch-argument
 preparation, the JIT launch, and the autograd bookkeeping (mark the receiver
 dirty, return a zero gradient) that the native comparison operator also has.
 
-Because the operation is memory bound, the device kernels are already at the
-bandwidth roof for large tensors; the wrapper therefore resolves the launch
-decision once per (shape, strides, dtypes, device) signature and reuses it, so
-small tensors do not pay repeated promotion and planning work on every call.
+GCU400 adaptation (P19, 2026-11-17): the hardware caps ``grid.x`` at 65535, so
+the one-block-per-program launch of the generic KernelGen recipe exceeds the
+limit on the 2^30-element benchmark tier (``cdiv(2**30, 2048) = 524288``).
+All three kernels are therefore persistent: at most ``NUM_SIPS * 2 = 48``
+programs are launched and each walks its blocks with a grid-stride
+``tl.range`` loop, which removes the limit for any numel.
+
+The last-dimension broadcast overload gets its own kernel: a power-of-two
+operand row is loaded once per program and materialized across the tile by a
+register broadcast, while the receiver stays a single flat affine stream
+(the generic per-lane ``idx % last_dim`` gather blocks vectorization on this
+backend and drops the stream to ~1.8 TB/s).  Small broadcasts and non-power-
+of-two tails keep the flat masked-gather path.
+
+Because the operation is memory bound, the device kernels sit at the
+bandwidth roof for large tensors; the wrapper resolves the launch decision
+once per (shape, strides, dtypes, device) signature and reuses it, so small
+tensors do not pay repeated promotion and planning work on every call.
 Only shape/stride/dtype metadata is cached — never tensor data.
 """
 
@@ -44,10 +58,16 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
-# 1024 elements per program: the comparison is memory bound, so one 4-warp
-# program per 1024 elements keeps fully coalesced 16 B accesses per thread.
-_BLOCK = 1024
-_NUM_WARPS = 4
+# Persistent-kernel grid cap: at most two programs per SIP stay resident and
+# each walks blocks grid-stride, so numel is never bounded by the 65535
+# grid.x hardware limit (P19).  48 is the family-calibrated resident size
+# (trunc_/fix_/arctanh_ in-place do_bench sweeps on GCU400).
+NUM_SIPS = 24
+_MAX_GRID = NUM_SIPS * 2
+# Row-broadcast kernel is used for power-of-two last dimensions up to this
+# many lanes (the operand row lives in registers across the grid-stride
+# loop); wider tails keep the flat masked-gather path (correct, slow).
+_ROWS_LB_MAX = 8192
 # Resolved launch plans are cached per (shape, strides, dtypes, device) key;
 # 8192 entries bound the cache for hot shapes without unbounded growth.
 _CACHE_MAX = 8192
@@ -98,8 +118,9 @@ def _ge_contig_kernel(
     BLOCK: tl.constexpr,
     I64: tl.constexpr,
     EVEN: tl.constexpr,
+    POW2: tl.constexpr,
 ):
-    """Fast path: the receiver is contiguous.
+    """Persistent fast path: the receiver is contiguous.
 
     MODE 0 -> ``other`` has the receiver's shape and is contiguous.
     MODE 1 -> ``other`` is contiguous and broadcasts along the last dimension.
@@ -108,32 +129,87 @@ def _ge_contig_kernel(
     ``EVEN`` says ``numel`` is a multiple of ``BLOCK``: in that case every
     lane is in bounds and the mask is dropped entirely, which lets the backend
     emit vectorized 128-bit global accesses instead of predicated scalars.
+    ``POW2`` says ``last_dim`` is a power of two, so the broadcast offset is a
+    bitmask instead of a modulo.  ``I64`` widens the flat offsets once
+    ``numel`` leaves the int32 domain.
     """
     pid = tl.program_id(0)
-    if I64:
-        idx = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
-    else:
-        idx = pid * BLOCK + tl.arange(0, BLOCK)
-    if EVEN:
-        a = tl.load(self_ptr + idx).to(CT)
-    else:
-        a = tl.load(self_ptr + idx, mask=idx < numel, other=0).to(CT)
-    if MODE == 2:
-        b = tl.full([BLOCK], other_scalar, CT)
-    elif MODE == 1:
-        if EVEN:
-            b = tl.load(other_ptr + (idx % last_dim)).to(CT)
+    num_pids = tl.num_programs(0)
+    num_blocks = (numel + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        if I64:
+            idx = block_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
         else:
-            b = tl.load(other_ptr + (idx % last_dim), mask=idx < numel, other=0).to(CT)
-    else:
+            idx = block_id * BLOCK + tl.arange(0, BLOCK)
         if EVEN:
-            b = tl.load(other_ptr + idx).to(CT)
+            a = tl.load(self_ptr + idx).to(CT)
         else:
-            b = tl.load(other_ptr + idx, mask=idx < numel, other=0).to(CT)
-    if EVEN:
-        tl.store(self_ptr + idx, (a >= b).to(OT))
-    else:
-        tl.store(self_ptr + idx, (a >= b).to(OT), mask=idx < numel)
+            a = tl.load(self_ptr + idx, mask=idx < numel, other=0).to(CT)
+        if MODE == 2:
+            b = tl.full([BLOCK], other_scalar, CT)
+        else:
+            if MODE == 1:
+                if POW2:
+                    b_off = idx & (last_dim - 1)
+                else:
+                    b_off = idx % last_dim
+            else:
+                b_off = idx
+            if EVEN:
+                b = tl.load(other_ptr + b_off).to(CT)
+            else:
+                b = tl.load(other_ptr + b_off, mask=idx < numel, other=0).to(CT)
+        if EVEN:
+            tl.store(self_ptr + idx, (a >= b).to(OT))
+        else:
+            tl.store(self_ptr + idx, (a >= b).to(OT), mask=idx < numel)
+
+
+@triton.jit(do_not_specialize=["other_scalar"])
+def _ge_bcast_kernel(
+    self_ptr,
+    other_ptr,
+    other_scalar,
+    numel,
+    last_dim,
+    CT: tl.constexpr,
+    OT: tl.constexpr,
+    BLOCK: tl.constexpr,
+    LB: tl.constexpr,
+    R: tl.constexpr,
+    I64: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """Broadcast path: the operand spans one power-of-two last dimension.
+
+    The tile is R whole operand rows, so the operand is loaded once per
+    program with a plain affine access, materialized across the tile by a
+    register broadcast, and the receiver stream stays a single flat affine
+    access.  The gather forms tried first all miss the bandwidth roof on
+    GCU400: the per-lane ``idx & (last_dim - 1)`` address blocks vectorized
+    loads (~1.8 TB/s), a 2D [R, LB] index tensor pays ~30% of address
+    materialization (~2.3 TB/s), and small per-row tiles lose the memory
+    pipeline (~0.5 TB/s); this form reaches the 1R+1W roof (~3.2 TB/s,
+    matching native).  ``EVEN`` drops the tail mask for whole tiles.
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    num_blocks = (numel + BLOCK - 1) // BLOCK
+    cols = tl.arange(0, LB)
+    b_row = tl.load(other_ptr + cols).to(CT)
+    b_tile = tl.reshape(tl.broadcast_to(b_row[None, :], (R, LB)), (BLOCK,))
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        if I64:
+            idx = block_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+        else:
+            idx = block_id * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            a = tl.load(self_ptr + idx).to(CT)
+            tl.store(self_ptr + idx, (a >= b_tile).to(OT))
+        else:
+            m = idx < numel
+            a = tl.load(self_ptr + idx, mask=m, other=0).to(CT)
+            tl.store(self_ptr + idx, (a >= b_tile).to(OT), mask=m)
 
 
 @triton.jit(do_not_specialize=["other_scalar"])
@@ -153,28 +229,31 @@ def _ge_nd_kernel(
 
     ``meta_ptr`` holds the receiver shape, receiver strides and operand strides
     stored least-significant-dimension first; a broadcast dimension has an
-    operand stride of 0.
+    operand stride of 0.  Persistent grid-stride walk, same as the flat path.
     """
     pid = tl.program_id(0)
-    idx = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
-    mask = idx < numel
-    off_s = tl.zeros([BLOCK], dtype=tl.int64)
-    off_o = tl.zeros([BLOCK], dtype=tl.int64)
-    rem = idx
-    for i in tl.static_range(NDIM):
-        shp = tl.load(meta_ptr + i)
-        st_s = tl.load(meta_ptr + NDIM + i)
-        st_o = tl.load(meta_ptr + 2 * NDIM + i)
-        coord = rem % shp
-        rem = rem // shp
-        off_s += coord * st_s
-        off_o += coord * st_o
-    a = tl.load(self_ptr + off_s, mask=mask, other=0).to(CT)
-    if SCALAR:
-        b = tl.full([BLOCK], other_scalar, CT)
-    else:
-        b = tl.load(other_ptr + off_o, mask=mask, other=0).to(CT)
-    tl.store(self_ptr + off_s, (a >= b).to(OT), mask=mask)
+    num_pids = tl.num_programs(0)
+    num_blocks = (numel + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        idx = block_id.to(tl.int64) * BLOCK + tl.arange(0, BLOCK).to(tl.int64)
+        mask = idx < numel
+        off_s = tl.zeros([BLOCK], dtype=tl.int64)
+        off_o = tl.zeros([BLOCK], dtype=tl.int64)
+        rem = idx
+        for i in tl.static_range(NDIM):
+            shp = tl.load(meta_ptr + i)
+            st_s = tl.load(meta_ptr + NDIM + i)
+            st_o = tl.load(meta_ptr + 2 * NDIM + i)
+            coord = rem % shp
+            rem = rem // shp
+            off_s += coord * st_s
+            off_o += coord * st_o
+        a = tl.load(self_ptr + off_s, mask=mask, other=0).to(CT)
+        if SCALAR:
+            b = tl.full([BLOCK], other_scalar, CT)
+        else:
+            b = tl.load(other_ptr + off_o, mask=mask, other=0).to(CT)
+        tl.store(self_ptr + off_s, (a >= b).to(OT), mask=mask)
 
 
 def _operand_broadcasts_to(receiver, operand):
@@ -194,6 +273,52 @@ def _byte_view(tensor):
         return tensor.view(torch.uint8)
     except RuntimeError:
         return None
+
+
+def _choose_contig_launch(numel, itemsize, mode):
+    """BLOCK/num_warps ladder for the persistent flat kernel.
+
+    In-place do_bench(median) sweep on GCU400 (2026-11-17, all core shapes x
+    dtypes x overloads, 24/48-program grids).  The scalar overload streams
+    1R+1W and the tensor overload 2R+1W, and the two mixes prefer different
+    warp counts on the huge tier, so the ladder is split by mode:
+      tiny (<= 8192): B1024/nw2, launch-bound (~3.1us raw either way);
+      small-mid (<= 65536): B8192/nw2;
+      mid (<= 2^24): B65536/nw2 16-bit / B32768/nw2 4-byte (G/H/F best);
+      huge 16-bit: B131072 with nw4 scalar / nw2 tensor (A: 3230GB/s,
+      B: 3000GB/s — the 3-word DRAM mix roof);
+      huge 4-byte: B65536/nw4 scalar (C: 3231GB/s) / B32768/nw2 tensor
+      (D: 2989GB/s).
+    """
+    if numel <= 8192:
+        return 1024, 2
+    if numel <= 65536:
+        return 8192, 2
+    if numel <= (1 << 24):
+        return (65536, 2) if itemsize <= 2 else (32768, 2)
+    if mode == 2:
+        return (131072, 4) if itemsize <= 2 else (65536, 4)
+    return (131072, 2) if itemsize <= 2 else (32768, 2)
+
+
+def _choose_bcast_launch(numel, itemsize, last_dim):
+    """Tile geometry for the last-dimension broadcast kernel.
+
+    The operand is a single cached row, so the DRAM mix is the scalar one
+    (1R+1W); the tile target is R whole rows and reaches it (power of two,
+    never more rows than the receiver has).  do_bench(median) sweep on
+    GCU400 (2026-11-17): the huge tier wants B65536/nw2 16-bit (3206GB/s)
+    and B32768/nw2 4-byte (3215GB/s), the mid tier B32768/nw2 — num_warps 2
+    everywhere.
+    """
+    lb = last_dim
+    rows_avail = triton.next_power_of_2(max(1, numel // lb))
+    if numel <= (1 << 24):
+        target = 32768
+    else:
+        target = 65536 if itemsize <= 2 else 32768
+    r = max(1, min(target // lb, rows_avail))
+    return lb, r, 2
 
 
 def _plan(self, other):
@@ -243,6 +368,7 @@ def _plan(self, other):
     if contig:
         mode = None
         last = 0
+        pow2 = False
         if scalar:
             mode = 2
         elif other.shape == self.shape and other_contig:
@@ -255,31 +381,52 @@ def _plan(self, other):
         ):
             mode = 1
             last = self.shape[-1]
+            pow2 = last & (last - 1) == 0
         if mode is not None:
-            # Larger tiles give each thread more outstanding 128-bit loads for
-            # the mid/large streaming cases; tiny tensors use a small tile so
-            # the grid still spreads over the machine's SMs instead of running
-            # as a handful of CTAs.
-            if numel >= 2**20:
-                block = 2048
-            elif numel <= 4096:
-                block = 256
+            # Pow2 broadcast reaches the register-broadcast kernel once the
+            # flat gather stops paying for itself (below ~64K elements the
+            # whole stream is launch-bound and the AND path is cheaper).
+            if mode == 1 and pow2 and last <= _ROWS_LB_MAX and numel >= 65536:
+                lb, r, num_warps = _choose_bcast_launch(
+                    numel, self.element_size(), last
+                )
+                tile = r * lb
+                plan = (
+                    2,  # row-broadcast kernel
+                    mode,
+                    CT,
+                    OT,
+                    bool_self,
+                    bool_other,
+                    min(triton.cdiv(numel, tile), _MAX_GRID),
+                    last,
+                    lb,
+                    r,
+                    num_warps,
+                    numel >= 2**31,
+                    numel % tile == 0,
+                    numel,
+                )
             else:
-                block = _BLOCK
-            plan = (
-                0,  # contiguous kernel
-                mode,
-                CT,
-                OT,
-                bool_self,
-                bool_other,
-                triton.cdiv(numel, block),
-                last,
-                numel >= 2**31,
-                numel,
-                block,
-                numel % block == 0,
-            )
+                block, num_warps = _choose_contig_launch(
+                    numel, self.element_size(), mode
+                )
+                plan = (
+                    0,  # contiguous kernel
+                    mode,
+                    CT,
+                    OT,
+                    bool_self,
+                    bool_other,
+                    min(triton.cdiv(numel, block), _MAX_GRID),
+                    last,
+                    numel >= 2**31,
+                    numel,
+                    block,
+                    num_warps,
+                    numel % block == 0,
+                    pow2,
+                )
             if len(_PLANS) < _CACHE_MAX:
                 _PLANS[key] = plan
             return plan
@@ -300,11 +447,13 @@ def _plan(self, other):
         OT,
         bool_self,
         bool_other,
-        triton.cdiv(numel, _BLOCK),
+        min(triton.cdiv(numel, 1024), _MAX_GRID),
         0,
         True,
         meta,
-        _BLOCK,
+        1024,
+        4,
+        False,
         False,
     )
     if len(_PLANS) < _CACHE_MAX:
@@ -319,8 +468,75 @@ def _launch(self, other):
         viewed = _byte_view(self)
         if viewed is not None:
             x = viewed
+    if plan[0] == 2:
+        # Row-broadcast: operand row loaded once, materialized by register
+        # broadcast; receiver stays a single flat affine stream.
+        (
+            _,
+            _,
+            CT,
+            OT,
+            _,
+            bool_other,
+            programs,
+            last,
+            lb,
+            r,
+            num_warps,
+            i64,
+            even,
+            numel,
+        ) = plan
+        y = other
+        if bool_other:
+            viewed = _byte_view(other)
+            if viewed is not None:
+                y = viewed
+        for attempt in range(3):
+            try:
+                _ge_bcast_kernel[(programs,)](
+                    x,
+                    y,
+                    0,
+                    numel,
+                    last,
+                    CT=CT,
+                    OT=OT,
+                    BLOCK=r * lb,
+                    LB=lb,
+                    R=r,
+                    I64=i64,
+                    EVEN=even,
+                    num_warps=num_warps,
+                )
+                return
+            except Exception as exc:
+                if attempt == 2:
+                    raise
+                logger.warning(
+                    "ge_ bcast kernel launch failed (attempt %d): %s",
+                    attempt + 1,
+                    exc,
+                )
+        return
+
     if plan[0] == 0:
-        _, mode, CT, OT, _, bool_other, programs, last, i64, numel, block, even = plan
+        (
+            _,
+            mode,
+            CT,
+            OT,
+            _,
+            bool_other,
+            programs,
+            last,
+            i64,
+            numel,
+            block,
+            num_warps,
+            even,
+            pow2,
+        ) = plan
         if mode == 2:
             y = x
             operand = other
@@ -331,23 +547,52 @@ def _launch(self, other):
                 if viewed is not None:
                     y = viewed
             operand = 0
-        _ge_contig_kernel[(programs,)](
-            x,
-            y,
-            operand,
-            numel,
-            last,
-            MODE=mode,
-            CT=CT,
-            OT=OT,
-            BLOCK=block,
-            I64=i64,
-            EVEN=even,
-            num_warps=_NUM_WARPS,
-        )
+        # The external llvm converter intermittently fails on cold compiles
+        # (nondeterministic, host-level userland flake windows on shared
+        # nodes); retrying the launch recompiles and succeeds (trunc_/fix_
+        # precedents for the same toolchain family).
+        for attempt in range(3):
+            try:
+                _ge_contig_kernel[(programs,)](
+                    x,
+                    y,
+                    operand,
+                    numel,
+                    last,
+                    MODE=mode,
+                    CT=CT,
+                    OT=OT,
+                    BLOCK=block,
+                    I64=i64,
+                    EVEN=even,
+                    POW2=pow2,
+                    num_warps=num_warps,
+                )
+                return
+            except Exception as exc:
+                if attempt == 2:
+                    raise
+                logger.warning(
+                    "ge_ flat kernel launch failed (attempt %d): %s", attempt + 1, exc
+                )
         return
 
-    _, ndim, CT, OT, _, bool_other, programs, _, _, meta, block, _ = plan
+    (
+        _,
+        ndim,
+        CT,
+        OT,
+        _,
+        bool_other,
+        programs,
+        _,
+        _,
+        meta,
+        block,
+        num_warps,
+        _,
+        _,
+    ) = plan
     numel = self.numel()
     scalar = not isinstance(other, torch.Tensor)
     if scalar:
@@ -361,19 +606,28 @@ def _launch(self, other):
                 y = viewed
         operand = 0
     meta_t = torch.tensor(meta, dtype=torch.int64, device=self.device)
-    _ge_nd_kernel[(programs,)](
-        x,
-        y,
-        meta_t,
-        operand,
-        numel,
-        NDIM=ndim,
-        SCALAR=scalar,
-        CT=CT,
-        OT=OT,
-        BLOCK=block,
-        num_warps=_NUM_WARPS,
-    )
+    for attempt in range(3):
+        try:
+            _ge_nd_kernel[(programs,)](
+                x,
+                y,
+                meta_t,
+                operand,
+                numel,
+                NDIM=ndim,
+                SCALAR=scalar,
+                CT=CT,
+                OT=OT,
+                BLOCK=block,
+                num_warps=num_warps,
+            )
+            return
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "ge_ nd kernel launch failed (attempt %d): %s", attempt + 1, exc
+            )
 
 
 class _GeInplace(torch.autograd.Function):
@@ -396,7 +650,7 @@ class _GeInplace(torch.autograd.Function):
 
 
 def ge_tensor_(self, other):
-    logger.debug("GEMS_ENFLAME_GCU400 GE__TENSOR")
+    logger.debug("GEMS_ENFLAME GE__TENSOR")
     if not isinstance(self, torch.Tensor):
         raise TypeError("ge_tensor_() received a non-Tensor receiver")
     if self.dtype not in _SUPPORTED:
@@ -416,7 +670,7 @@ def ge_tensor_(self, other):
 
 
 def ge_scalar_(self, other):
-    logger.debug("GEMS_ENFLAME_GCU400 GE__SCALAR")
+    logger.debug("GEMS_ENFLAME GE__SCALAR")
     if not isinstance(self, torch.Tensor):
         raise TypeError("ge_scalar_() received a non-Tensor receiver")
     if self.dtype not in _SUPPORTED:

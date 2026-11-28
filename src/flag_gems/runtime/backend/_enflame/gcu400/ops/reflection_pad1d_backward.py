@@ -139,5 +139,5 @@ def _copy_rows_kernel(in_ptr, out_ptr, B, W, BLOCK_W: tl.constexpr):
 
 
 def reflection_pad1d_backward(grad_output: torch.Tensor, input: torch.Tensor, padding):
-    logger.debug("GEMS_ENFLAME_GCU400 REFLECTION_PAD1D_BACKWARD")
+    logger.debug("GEMS_ENFLAME REFLECTION_PAD1D_BACKWARD")
     return _launch_reflection_pad1d_backward(grad_output, input, padding)

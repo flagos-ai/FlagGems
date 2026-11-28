@@ -125,6 +125,13 @@ def test_accuracy_dimV_unsupported_layouts_raise(layout):
 
 
 @pytest.mark.dimV
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_dimV"
+    ),
+)
 def test_accuracy_dimV_dispatch_stability():
     # The registration is on the Sparse dispatch key; exercise the
     # dispatcher-routed path repeatedly (a recursion bug or stale state would

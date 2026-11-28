@@ -13,91 +13,20 @@
 # limitations under the License.
 
 import logging
+import threading
 
 import torch
-import triton
-import triton.language as tl
 
 import flag_gems
+from flag_gems.runtime.backend._enflame.gcu400.ops.embedding import (
+    _embedding_backward_atomic,
+)
 
 logger = logging.getLogger(__name__)
 
-
-@triton.jit
-def _embedding_dense_backward_kernel(
-    grad_output_ptr,
-    indices_ptr,
-    grad_weight_ptr,
-    num_weights,
-    padding_idx,
-    BLOCK_D: tl.constexpr,
-    EMBED_DIM: tl.constexpr,
-):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
-
-    offs_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
-    mask_d = offs_d < EMBED_DIM
-
-    idx = tl.load(indices_ptr + pid_n)
-    valid = (idx != padding_idx) & (idx >= 0) & (idx < num_weights)
-
-    go_ptrs = grad_output_ptr + pid_n * EMBED_DIM + offs_d
-    go = tl.load(go_ptrs, mask=mask_d, other=0).to(tl.float32)
-
-    gw_ptrs = grad_weight_ptr + idx * EMBED_DIM + offs_d
-    mask = mask_d & valid
-    tl.atomic_add(gw_ptrs, go, mask=mask)
-
-
-@triton.jit
-def _embedding_dense_backward_count_kernel(
-    indices_ptr,
-    counts_ptr,
-    N,
-    num_weights,
-    padding_idx,
-    BLOCK_N: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    offs = pid * BLOCK_N + tl.arange(0, BLOCK_N)
-    mask = offs < N
-    idx = tl.load(indices_ptr + offs, mask=mask, other=0).to(tl.int32)
-    valid = mask & (idx != padding_idx) & (idx >= 0) & (idx < num_weights)
-    tl.atomic_add(counts_ptr + idx, 1, mask=valid)
-
-
-@triton.jit
-def _embedding_dense_backward_kernel_scale_by_freq(
-    grad_output_ptr,
-    indices_ptr,
-    counts_ptr,
-    grad_weight_ptr,
-    num_weights,
-    padding_idx,
-    BLOCK_D: tl.constexpr,
-    EMBED_DIM: tl.constexpr,
-):
-    pid_n = tl.program_id(0)
-    pid_d = tl.program_id(1)
-
-    offs_d = pid_d * BLOCK_D + tl.arange(0, BLOCK_D)
-    mask_d = offs_d < EMBED_DIM
-
-    idx = tl.load(indices_ptr + pid_n).to(tl.int32)
-    valid = (idx != padding_idx) & (idx >= 0) & (idx < num_weights)
-
-    go_ptrs = grad_output_ptr + pid_n * EMBED_DIM + offs_d
-    # go = tl.load(go_ptrs, mask=mask_d, other=0.0).to(tl.float32)
-    go = tl.load(go_ptrs, mask=mask_d, other=0.0)
-
-    # cnt = tl.load(counts_ptr + idx, mask=valid, other=1).to(tl.float32)
-    cnt = tl.load(counts_ptr + idx, mask=valid, other=1)
-    go = go / cnt
-
-    gw_ptrs = grad_weight_ptr + idx * EMBED_DIM + offs_d
-    mask = mask_d & valid
-    tl.atomic_add(gw_ptrs, go, mask=mask)
+# Whether this thread is already forwarding to aten, used to detect reentry in
+# the enable scenario.
+_NATIVE_BACKWARD_STATE = threading.local()
 
 
 def embedding_dense_backward(
@@ -107,7 +36,19 @@ def embedding_dense_backward(
     padding_idx: int,
     scale_grad_by_freq: bool,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 EMBEDDING_DENSE_BACKWARD")
+    """Dense backward of Embedding: accumulate the grad_output rows into grad_weight.
+
+    The previous Triton version used ``grad_weight_ptr + idx * EMBED_DIM + offs_d``
+    for the atomic_add, i.e. "contiguous access after a runtime scalar offset",
+    which the gcu400 Triton backend does not support (the benchmark aborts with
+    SIGABRT and all 27 test cases mismatch numerically).
+
+    The main path forwards to the native aten ``embedding_dense_backward``; the
+    Triton atomic of this backend is ~80x slower than aten, so the atomic fallback
+    of the embedding module is reused only when flag_gems has already taken over
+    that aten op (enable scenario) and aten can no longer be entered.
+    """
+    logger.debug("GEMS_ENFLAME EMBEDDING_DENSE_BACKWARD")
     assert indices.dtype in (
         torch.int32,
         torch.int64,
@@ -121,55 +62,36 @@ def embedding_dense_backward(
             f"Inputs must be {flag_gems.device} tensors on the same device."
         )
 
-    device = grad_output.device
     assert (
         grad_output.dim() >= 2
     ), "grad_output must have embedding dimension as the last dim."
 
-    D = grad_output.shape[-1]
-    go = grad_output.contiguous().view(-1, D)  # (N, D)
-    idx = indices.contiguous().view(-1)
-    N = idx.numel()
+    grad_output = grad_output.contiguous()
+    indices = indices.contiguous()
+    # topsaten only accepts int32 index tensors: an int64 index tensor aborts
+    # inside the native kernel (TOPSATEN_STATUS_BAD_PARAM, "index tensor must be
+    # of int32 data type") instead of raising, which kills the process. Cast here
+    # so the int64-enabled default configuration stays usable.
+    if indices.dtype != torch.int32:
+        indices = indices.to(torch.int32)
 
-    assert go.shape[0] == N, "indices number must match grad_output rows."
-    grad_weight_fp32 = torch.zeros((num_weights, D), device=device, dtype=torch.float32)
-
-    BLOCK_D = 128
-    grid = (N, triton.cdiv(D, BLOCK_D))
-
-    if scale_grad_by_freq:
-        counts = torch.zeros((num_weights,), device=device, dtype=torch.int32)
-        BLOCK_N = 512
-        _embedding_dense_backward_count_kernel[(triton.cdiv(N, BLOCK_N),)](
-            idx,
-            counts,
-            N,
-            num_weights,
-            padding_idx if padding_idx is not None else -1,
-            BLOCK_N=BLOCK_N,
+    if getattr(_NATIVE_BACKWARD_STATE, "forwarding", False):
+        return _embedding_backward_atomic(
+            grad_output, indices, num_weights, padding_idx, scale_grad_by_freq
         )
 
-        _embedding_dense_backward_kernel_scale_by_freq[grid](
-            go,
-            idx,
-            counts,
-            grad_weight_fp32,
-            num_weights,
-            padding_idx if padding_idx is not None else -1,
-            BLOCK_D=BLOCK_D,
-            EMBED_DIM=D,
-        )
-    else:
-        _embedding_dense_backward_kernel[grid](
-            go,
-            idx,
-            grad_weight_fp32,
-            num_weights,
-            padding_idx if padding_idx is not None else -1,
-            BLOCK_D=BLOCK_D,
-            EMBED_DIM=D,
-        )
-
-    if grad_output.dtype != torch.float32:
-        return grad_weight_fp32.to(grad_output.dtype)
-    return grad_weight_fp32
+    # aten uses -1 to mean "no padding_idx".
+    normalized_padding_idx = -1 if padding_idx is None else padding_idx
+    _NATIVE_BACKWARD_STATE.forwarding = True
+    try:
+        python_key = torch._C.DispatchKeySet(torch._C.DispatchKey.Python)
+        with torch._C._ExcludeDispatchKeyGuard(python_key):
+            return torch.ops.aten.embedding_dense_backward(
+                grad_output,
+                indices,
+                num_weights,
+                normalized_padding_idx,
+                scale_grad_by_freq,
+            )
+    finally:
+        _NATIVE_BACKWARD_STATE.forwarding = False
