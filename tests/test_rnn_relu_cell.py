@@ -221,6 +221,10 @@ def test_accuracy_rnn_relu_cell_invalid_input():
 
 
 @pytest.mark.rnn_relu_cell
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "ascend",
+    reason="NPU aclnnInplaceNormal does not support complex64; tensor creation fails before flag_gems is reached",
+)
 def test_accuracy_rnn_relu_cell_complex_rejected():
     """Complex input is rejected, as it is by ATen."""
     batch, input_size, hidden_size = 4, 8, 8
