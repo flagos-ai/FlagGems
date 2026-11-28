@@ -1669,7 +1669,12 @@ _FULL_CONFIG = (
     ("hstack", hstack),
     ("huber_loss", huber_loss),
     ("huber_loss.out", huber_loss_out),
-    ("hypot", hypot),
+    (
+        "hypot",
+        hypot,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("hypot.out", hypot_out),
     ("hypot_", hypot_),
     (

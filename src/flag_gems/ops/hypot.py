@@ -19,6 +19,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -64,6 +65,8 @@ def _hypot_kernel(
     t_nz = tl.where(t > 0, t, 1).to(COMPUTE_DTYPE)
     r = m / t_nz
     res = tl.where(t > 0, t * tl.sqrt(1 + r * r), m)
+    # Native hypot returns inf even when the other operand is nan or inf.
+    res = tl.where((ax == float("inf")) | (ay == float("inf")), float("inf"), res)
 
     out_val = res.to(OUT_DTYPE)
     tl.store(out_ptr + offsets, out_val, mask=mask)
@@ -106,8 +109,62 @@ def _launch_hypot_kernel(x: torch.Tensor, y: torch.Tensor, out: torch.Tensor):
         )
 
 
-def hypot(a: torch.Tensor, b: torch.Tensor):
-    logger.debug("GEMS HYPOT")
+@triton.jit
+def _hypot_backward_kernel(
+    grad_ptr,
+    input_ptr,
+    result_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+):
+    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = offsets < n_elements
+    grad = tl.load(grad_ptr + offsets, mask, other=0)
+    value = tl.load(input_ptr + offsets, mask, other=0)
+    result = tl.load(result_ptr + offsets, mask, other=1)
+    # ATen evaluates (grad * input) / result using the promoted result dtype.
+    # Round the intermediate product accordingly (including half/bfloat16),
+    # while leaving 0/0 and inf/inf to produce NaN naturally.
+    product = (grad.to(tl.float64) * value.to(tl.float64)).to(result.dtype)
+    derivative = product.to(tl.float64) / result.to(tl.float64)
+    tl.store(out_ptr + offsets, derivative, mask)
+
+
+def _hypot_backward(grad, value, result):
+    out = torch.empty(result.shape, dtype=value.dtype, device=value.device)
+    if out.numel():
+        block_size = 1024
+        with torch_device_fn.device(value.device):
+            _hypot_backward_kernel[(triton.cdiv(out.numel(), block_size),)](
+                grad.contiguous(),
+                value.expand(result.shape).contiguous(),
+                result.contiguous(),
+                out,
+                out.numel(),
+                block_size,
+            )
+    if out.shape != value.shape:
+        out = sum_to_size(out, value.shape)
+    return out
+
+
+class _HypotAutograd(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        result = _hypot_forward(a, b)
+        ctx.save_for_backward(a, b, result)
+        return result
+
+    @staticmethod
+    def backward(ctx, grad):
+        a, b, result = ctx.saved_tensors
+        grad_a = _hypot_backward(grad, a, result) if ctx.needs_input_grad[0] else None
+        grad_b = _hypot_backward(grad, b, result) if ctx.needs_input_grad[1] else None
+        return grad_a, grad_b
+
+
+def _hypot_forward(a: torch.Tensor, b: torch.Tensor):
     out_dtype = _infer_hypot_out_dtype(a, b)
     device = a.device
     if b.device != device:
@@ -121,6 +178,13 @@ def hypot(a: torch.Tensor, b: torch.Tensor):
 
     _launch_hypot_kernel(x, y, out)
     return out
+
+
+def hypot(a: torch.Tensor, b: torch.Tensor):
+    logger.debug("GEMS HYPOT")
+    if torch.is_grad_enabled() and (a.requires_grad or b.requires_grad):
+        return _HypotAutograd.apply(a, b)
+    return _hypot_forward(a, b)
 
 
 def hypot_out(a: torch.Tensor, b: torch.Tensor, out: torch.Tensor):

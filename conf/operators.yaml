@@ -10686,6 +10686,17 @@ ops:
   - Math
   stages:
   - alpha: '5.4'
+- id: hypot_backward
+  description: First-order gradient of hypot using grad times input divided by the result, with broadcast reduction.
+  for:
+  - hypot
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: hypot_out
   description: 'Given the legs of a right triangle, return its hypotenuse.
 

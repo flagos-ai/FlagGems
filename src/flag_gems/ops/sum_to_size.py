@@ -78,7 +78,9 @@ def _full_reduce(inp, dtype):
     mid_size = triton.cdiv(M, block_size)
     block_mid = triton.next_power_of_2(mid_size)
 
-    mid = torch.empty((mid_size,), dtype=dtype, device=inp.device)
+    # Keep partial sums in float32 to avoid rounding them before the final reduction.
+    mid_dtype = torch.float32 if dtype in (torch.float16, torch.bfloat16) else dtype
+    mid = torch.empty((mid_size,), dtype=mid_dtype, device=inp.device)
     out = torch.empty([], dtype=dtype, device=inp.device)
     with torch_device_fn.device(inp.device):
         sum_to_size_flat_kernel_1[(mid_size, 1, 1)](inp, mid, M, block_size)
