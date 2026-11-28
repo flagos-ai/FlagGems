@@ -1577,7 +1577,12 @@ _FULL_CONFIG = (
     ("fmod.Tensor", fmod_tensor),
     ("fmod_.Scalar", fmod_scalar_),
     ("fmod_.Tensor", fmod_tensor_),
-    ("frac", frac),
+    (
+        "frac",
+        frac,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("frac_", frac_),
     ("fractional_max_pool2d", fractional_max_pool2d),
     ("fractional_max_pool2d_backward", fractional_max_pool2d_backward),
