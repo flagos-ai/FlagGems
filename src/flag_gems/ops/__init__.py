@@ -1437,7 +1437,7 @@ from flag_gems.ops.reflection_pad2d import reflection_pad2d, reflection_pad2d_ou
 from flag_gems.ops.reflection_pad2d_backward import reflection_pad2d_backward
 from flag_gems.ops.reflection_pad3d import reflection_pad3d, reflection_pad3d_out
 from flag_gems.ops.reflection_pad3d_backward import reflection_pad3d_backward
-from flag_gems.ops.relu import relu, relu_
+from flag_gems.ops.relu import relu, relu_, relu_backward
 from flag_gems.ops.relu6 import relu6
 from flag_gems.ops.relu6_ import relu6_
 from flag_gems.ops.remainder import remainder, remainder_
@@ -3219,6 +3219,7 @@ __all__ = [
     "relu6",
     "relu6_",
     "relu_",
+    "relu_backward",
     "remainder",
     "remainder_",
     "renorm",

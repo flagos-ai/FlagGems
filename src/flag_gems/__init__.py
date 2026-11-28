@@ -2206,7 +2206,12 @@ _FULL_CONFIG = (
     ("reflection_pad3d", reflection_pad3d),
     ("reflection_pad3d.out", reflection_pad3d),
     ("reflection_pad3d_backward", reflection_pad3d_backward),
-    ("relu", relu),
+    (
+        "relu",
+        relu,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("relu6", relu6),
     ("relu6_", relu6_),
     ("relu_", relu_),
