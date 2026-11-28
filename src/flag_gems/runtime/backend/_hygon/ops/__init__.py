@@ -328,6 +328,7 @@ from .nansum import nansum, nansum_out
 from .nll_loss2d import nll_loss2d
 from .nll_loss_backward import heur_block_n, nll_loss_backward
 from .nll_loss_nd import nll_loss_forward, nll_loss_nd_backward
+from .nonzero import nonzero
 from .nonzero_numpy import nonzero_numpy
 from .norm_scalaropt_dim import norm_scalaropt_dim
 from .nuclear_norm import nuclear_norm
@@ -723,6 +724,7 @@ __all__ = [
     "nll_loss_backward",
     "nll_loss_forward",
     "nll_loss_nd_backward",
+    "nonzero",
     "nonzero_numpy",
     "norm_scalaropt_dim",
     "nuclear_norm",
