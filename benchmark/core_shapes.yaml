@@ -192,6 +192,20 @@ gelu_backward:
     - [64, 512, 512]
     - [256, 1024, 1024]
 
+erfinv_backward:
+  # The default 1 GiB-element case makes the eager `torch.erfinv` autograd
+  # reference peak at ~32 GiB on fp32 (the autograd chain materialises
+  # erfinv/pow/exp intermediates), which OOMs on a shared CI GPU. Cap the
+  # largest case at 256M elements (~8 GiB peak) so the benchmark runs
+  # there; the same kernel keeps its large-size speedup data from the
+  # H20-3e measurement.
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [256, 1024, 1024]
+
 cosh:
   shapes:
     - [4096, 4096]
