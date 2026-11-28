@@ -33,6 +33,9 @@ _NATIVE_COPY_KEYSET = torch._C.DispatchKeySet(
     torch._C.DispatchKey.CompositeExplicitAutograd
 )
 
+# Lazily-set flag for ``_fp64_payload_is_narrow``: None = not probed yet.
+_FP64_NARROW_PAYLOAD = None
+
 
 def _safe_contiguous(t):
     if t.is_contiguous():
@@ -42,14 +45,47 @@ def _safe_contiguous(t):
     return out
 
 
+def _f32_payload_alias(t):
+    """Zero-copy fp32 view of a float64 tensor's on-device payload.
+
+    This backend has no float64 arithmetic: ``torch_gcu`` stores float64
+    tensors as a compact N x float32 payload (the "Double use Float replace"
+    strategy, verified by dumping ``t.view(torch.float32)`` word 0..N-1 which
+    holds the element values) while the tensor metadata still reports
+    8-byte elements.  An fp32 alias with the same shape and the same stride
+    numbers overlays that payload exactly, so the fp32 Triton kernel can
+    read the reflectors and write Q without a single cast or copy kernel --
+    matching the native ATen behaviour, which also computes float64 orgqr
+    in float32 (maxdiff vs an explicit fp32-compute reference is ~1e-7).
+    """
+    alias = torch.empty(0, dtype=torch.float32, device=t.device)
+    alias.set_(t.untyped_storage(), t.storage_offset(), t.shape, t.stride())
+    return alias
+
+
+def _fp64_payload_is_narrow(device):
+    """One-time probe: is the float64 payload really compact fp32 words?
+
+    Guards against a future torch_gcu env flip that would switch float64 to a
+    true 8-byte layout; in that case the alias would read low-mantissa garbage
+    and the operator must fall back to the CPU path instead.
+    """
+    global _FP64_NARROW_PAYLOAD
+    if _FP64_NARROW_PAYLOAD is None:
+        try:
+            probe = torch.tensor([1.0], dtype=torch.float64, device=device)
+            first_word = probe.view(torch.float32)[:1].to("cpu").item()
+            _FP64_NARROW_PAYLOAD = first_word == 1.0
+        except Exception:
+            _FP64_NARROW_PAYLOAD = False
+    return _FP64_NARROW_PAYLOAD
+
+
 def _orgqr_fp64(input, tau, out):
     """float64 reflectors: evaluate on the CPU, write the result back natively.
 
-    Every Triton kernel in this operator fails to lower for float64 on this
-    backend (``Pipeline run failed: PassManager execution failed``), and the
-    generic pointwise copy segfaults the compiler, so the device path cannot
-    run at all.  The operator is metadata-heavy rather than bandwidth-bound,
-    and float64 is only exercised by the correctness suite.
+    Fallback for environments where the float64 payload is not the compact
+    fp32 layout (see ``_f32_payload_alias``); also used for CPU tensors.
     """
     result = torch.orgqr(input.detach().to("cpu"), tau.detach().to("cpu"))
     result = result.to(input.device)
@@ -133,6 +169,108 @@ def orgqr_kernel(
     )
 
 
+@libentry()
+@triton.jit
+def orgqr_wy_kernel(
+    inp,
+    tau,
+    out,
+    M,
+    N,
+    K,
+    input_batch_stride,
+    input_row_stride,
+    input_col_stride,
+    tau_batch_stride,
+    out_batch_stride,
+    out_row_stride,
+    out_col_stride,
+    COL_MAJOR_IN: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    LOG2_STEPS: tl.constexpr,
+):
+    """Blocked-Householder (compact-WY) variant for longer reflector sweeps.
+
+    Groups BLOCK_K reflectors into one rank-BLOCK_K update Q <- Q * (I - V T V^T)
+    so the serial chain shrinks from K steps to K/BLOCK_K steps, with the
+    per-block work expressed as tl.dot matmuls.
+
+    Correctness notes (all measured on this backend, see knowledge/):
+    - 1-D loads with descending index vectors return scrambled values, so the
+      reflector block is loaded with ASCENDING k and the mirrored WY form is
+      used: T = J T_desc J, i.e. the nilpotent generator is strictly UPPER
+      (L~[i,m] = tau_i * S[i,m] for i < m) instead of strictly lower.
+    - 2-D masked loads whose row mask (negative reflector index) is partially
+      false return garbage instead of ``other``; addresses are clamped into
+      range and padded reflector rows are zeroed with an explicit where.
+    - T = (I + L~)^-1 diag(tau) via the nilpotent factorization
+      (I-L~)(I+L~^2)(I+L~^4)(I+L~^8): LOG2_STEPS = ceil(log2(BLOCK_K)) - 1
+      squarings, because L~^BLOCK_K = 0 exactly.
+    """
+    batch = tl.program_id(0)
+    col_start = tl.program_id(1) * BLOCK_N
+    cols = col_start + tl.arange(0, BLOCK_N)
+    rows = tl.arange(0, BLOCK_M)
+    kk = tl.arange(0, BLOCK_K)
+    row_mask = rows < M
+    col_mask = cols < N
+
+    input_base = inp + batch * input_batch_stride
+    tau_base = tau + batch * tau_batch_stride
+    out_base = out + batch * out_batch_stride
+
+    q_t = tl.where(rows[None, :] == cols[:, None], 1.0, 0.0).to(inp.dtype.element_ty)
+    eye = tl.where(kk[:, None] == kk[None, :], 1.0, 0.0).to(inp.dtype.element_ty)
+
+    for b in range(0, tl.cdiv(K, BLOCK_K)):
+        bot = K - (b + 1) * BLOCK_K
+        kidx = bot + kk
+        kmask = kidx >= 0
+        kidx_safe = tl.maximum(kidx, 0)
+        if COL_MAJOR_IN:
+            raw = tl.load(
+                input_base + kidx_safe[:, None] * input_col_stride + rows[None, :],
+                mask=row_mask[None, :],
+                other=0.0,
+            )
+        else:
+            raw = tl.load(
+                input_base
+                + rows[None, :] * input_row_stride
+                + kidx_safe[:, None] * input_col_stride,
+                mask=row_mask[None, :],
+                other=0.0,
+            )
+        v_tile = tl.where(
+            rows[None, :] > kidx[:, None],
+            raw,
+            tl.where(rows[None, :] == kidx[:, None], 1.0, 0.0),
+        )
+        v_tile = tl.where(kmask[:, None], v_tile, 0.0)
+        tau_b = tl.load(tau_base + kidx, mask=kmask, other=0.0)
+        # S = V^T V in ascending-k order; L~ strictly upper (mirrored form)
+        S = tl.dot(v_tile, tl.trans(v_tile))
+        Lm = tl.where(kk[:, None] < kk[None, :], tau_b[:, None] * S, 0.0)
+        X = eye - Lm
+        Li = Lm
+        for _ in tl.static_range(LOG2_STEPS):
+            Li = tl.dot(Li, Li)
+            X = tl.dot(X, eye + Li)
+        Tm = X * tau_b[None, :]
+        # Q <- Q - (Q V) T^T V^T   (row form of P = I - V T V^T)
+        A = tl.dot(q_t, tl.trans(v_tile))
+        A = tl.dot(A, tl.trans(Tm))
+        q_t = q_t - tl.dot(A, v_tile)
+
+    tl.store(
+        out_base + rows[:, None] * out_row_stride + cols[None, :] * out_col_stride,
+        tl.trans(q_t),
+        mask=row_mask[:, None] & col_mask[None, :],
+    )
+
+
 def _validate_orgqr(input, tau, out=None):
     if input.ndim < 2:
         raise RuntimeError("orgqr: input must have at least 2 dimensions")
@@ -174,7 +312,14 @@ def _orgqr_impl(input, tau, out):
     if out.numel() == 0:
         return out
 
-    if input.dtype == torch.float64:
+    # float64 inputs on GCU carry a compact fp32 payload (see
+    # ``_f32_payload_alias``): run the fp32 kernel directly on zero-copy
+    # fp32 aliases.  If the payload is not the narrow layout (foreign
+    # torch_gcu build / CPU tensors), keep the CPU evaluation fallback.
+    compute_f32 = input.dtype == torch.float64
+    if compute_f32 and (
+        input.device.type != "gcu" or not _fp64_payload_is_narrow(input.device)
+    ):
         return _orgqr_fp64(input, tau, out)
 
     # Keep the geqrf-native layout when the batch dims already flatten: the
@@ -199,13 +344,14 @@ def _orgqr_impl(input, tau, out):
         )
         input_work = preserved_input
 
+    work_dtype = torch.float32 if compute_f32 else input.dtype
     copy_back = False
     if out.dtype != input.dtype or not out.is_contiguous():
         # Reflectors must be applied in input precision; cast only the final Q.
         # A non-contiguous ``out`` also needs a contiguous workspace: the GCU
         # strided store mis-addresses transposed batch/dim layouts (measured
         # on transposed_batch and a transposed 2-D out).
-        out_work = torch.empty((batch_size, m, n), dtype=input.dtype, device=out.device)
+        out_work = torch.empty((batch_size, m, n), dtype=work_dtype, device=out.device)
         copy_back = True
     elif input.ndim == 2:
         out_work = out.unsqueeze(0)
@@ -216,39 +362,89 @@ def _orgqr_impl(input, tau, out):
             # Flattening arbitrary batch strides may require a copy. Compute
             # in a workspace and explicitly write back to the provided out.
             out_work = torch.empty(
-                (batch_size, m, n), dtype=input.dtype, device=out.device
+                (batch_size, m, n), dtype=work_dtype, device=out.device
             )
             copy_back = True
 
-    block_m = triton.next_power_of_2(m)
-    # Narrow column blocks keep the serial per-iteration work small (best
-    # measured: 8 x 128 tile, num_warps=1) and give the grid more parallelism.
+    if compute_f32:
+        input_work = _f32_payload_alias(input_work)
+        tau_work = _f32_payload_alias(tau_work)
+        if not copy_back:
+            out_work = _f32_payload_alias(out_work)
+
+    # GCU400 vectorization cliff: state tiles narrower than the 128-lane fast
+    # path pay 1.5-1.9us per serial reflector iteration vs ~0.6us at 128 lanes
+    # (measured: 16x8 17.4->7.9us, 32x16 30.2->12.9us, 64x32 56.1->22.0us),
+    # so always pad the row axis to 128 and let the row mask absorb it.
+    block_m = max(triton.next_power_of_2(m), 128)
+    # Narrow column blocks keep the serial per-iteration work small (BN=4 and
+    # BN=8 measure equal at BLOCK_M=128) and give the grid more parallelism.
     # The doubling guard keeps grid.y within the 255-program hardware limit
     # for very tall outputs (n > 2040), matching the old BLOCK_N=32 envelope.
-    block_n = 4
-    while triton.cdiv(n, block_n) > 512:
-        block_n *= 2
+    # Blocked WY wins from K >= 8 (128x128 77->40us, 128x64 40->27us, 64x32
+    # 22->15us kernel-only). A single 8-wide block is enough at K=8: the fused
+    # sweep costs 10.8us instead of 12.6us for the sequential form, i.e. the
+    # T-build overhead is already paid back at one block. BLOCK_K stays 16 for
+    # longer sweeps; BLOCK_K=32 (measured) and BLOCK_K=8 at K=32 (16.2us and
+    # 26.2us at 32x16/64x32) both lose. The q_t tile scales with BLOCK_N, so
+    # cap the WY form at BLOCK_M <= 256 for the DSM budget.
+    use_wy = k >= 8 and block_m <= 256
+    if use_wy:
+        block_k = 16 if k >= 16 else 8
+        # BLOCK_N=16 beats 32 for wide outputs (128x128: 65.6us vs 69.1us) and
+        # 8 beats 16 for n<=32 by spreading the sweep over 2-4 programs
+        # (64x32: 19.6us vs 20.2us). BLOCK_N=8 at n=128 regresses to 77.7us.
+        block_n = 8 if n <= 32 else 16
+        while triton.cdiv(n, block_n) > 512:
+            block_n *= 2
+    else:
+        block_n = 4
+        while triton.cdiv(n, block_n) > 512:
+            block_n *= 2
     col_major_in = input_work.stride(1) == 1
     with torch_device_fn.device(input.device):
-        orgqr_kernel[(batch_size, triton.cdiv(n, block_n))](
-            input_work,
-            tau_work,
-            out_work,
-            m,
-            n,
-            k,
-            input_work.stride(0),
-            input_work.stride(1),
-            input_work.stride(2),
-            tau_work.stride(0),
-            out_work.stride(0),
-            out_work.stride(1),
-            out_work.stride(2),
-            COL_MAJOR_IN=col_major_in,
-            BLOCK_M=block_m,
-            BLOCK_N=block_n,
-            num_warps=1,
-        )
+        if use_wy:
+            orgqr_wy_kernel[(batch_size, triton.cdiv(n, block_n))](
+                input_work,
+                tau_work,
+                out_work,
+                m,
+                n,
+                k,
+                input_work.stride(0),
+                input_work.stride(1),
+                input_work.stride(2),
+                tau_work.stride(0),
+                out_work.stride(0),
+                out_work.stride(1),
+                out_work.stride(2),
+                COL_MAJOR_IN=col_major_in,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                BLOCK_K=block_k,
+                LOG2_STEPS=block_k.bit_length() - 2,
+                num_warps=1,
+            )
+        else:
+            orgqr_kernel[(batch_size, triton.cdiv(n, block_n))](
+                input_work,
+                tau_work,
+                out_work,
+                m,
+                n,
+                k,
+                input_work.stride(0),
+                input_work.stride(1),
+                input_work.stride(2),
+                tau_work.stride(0),
+                out_work.stride(0),
+                out_work.stride(1),
+                out_work.stride(2),
+                COL_MAJOR_IN=col_major_in,
+                BLOCK_M=block_m,
+                BLOCK_N=block_n,
+                num_warps=1,
+            )
         if copy_back:
             torch.ops.aten.copy_.default.redispatch(
                 _NATIVE_COPY_KEYSET, out, out_work.view(out.shape), False
@@ -261,7 +457,7 @@ def orgqr(input, tau):
 
     Complex inputs are intentionally unsupported by this Triton implementation.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 ORGQR")
+    logger.debug("GEMS_ENFLAME ORGQR")
     _validate_orgqr(input, tau)
     # Contiguous output matches the ATen convention and, for the transposed
     # geqrf inputs this backend produces, skips a strided write-back copy.
@@ -271,5 +467,5 @@ def orgqr(input, tau):
 
 def orgqr_out(input, tau, *, out):
     """Write Q into ``out``, preserving its storage and arbitrary batch strides."""
-    logger.debug("GEMS_ENFLAME_GCU400 ORGQR_OUT")
+    logger.debug("GEMS_ENFLAME ORGQR_OUT")
     return _orgqr_impl(input, tau, out)

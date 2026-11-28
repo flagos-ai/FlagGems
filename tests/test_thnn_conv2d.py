@@ -32,6 +32,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _reference_input(tensor):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.cpu()
+    return utils.to_reference(tensor)
+
+
 gems_device = flag_gems.device
 
 # The native thnn_conv2d routes float32 through an im2col + GEMM path whose
@@ -125,12 +132,6 @@ def _native(inp, weight, kernel, bias, stride, padding):
     return torch.ops.aten.thnn_conv2d(
         inp, weight, _pair(kernel), bias, _pair(stride), _pair(padding)
     )
-
-
-def _reference_input(tensor):
-    if flag_gems.vendor_name == "mthreads" and tensor is not None:
-        return tensor.cpu()
-    return utils.to_reference(tensor)
 
 
 def _reference(inp, weight, kernel, bias, stride, padding):

@@ -35,6 +35,17 @@ logger = logging.getLogger(__name__)
 
 BLOCK_SIZE = 8192
 MAX_GRID_SIZE = 48
+# 4-byte lanes prefer a much wider tile on gcu400 (same sweep as silu_and_mul):
+# 16.7M fp32 65536 -> 0.0806ms vs 8192 -> 0.0831ms, 536M fp32 -> 2.6653 vs
+# 2.8093ms.  2-byte lanes keep 8192 (16384/32768 both measured slower).
+BLOCK_SIZE_WIDE = 65536
+TILE_LEVELS = (
+    (1024, 256),
+    (4096, 1024),
+    (32768, 2048),
+    (262144, 4096),
+    (1 << 22, 8192),
+)
 
 
 @libentry()
@@ -79,10 +90,24 @@ def _smc_flat_grad_kernel(
         tl.store(DY + off, d * gate_silu * up_mask, mask)
 
 
+def _flat_block(out):
+    # Same ladder as silu_and_mul: small inputs need a proportional tile, and
+    # only large 4-byte inputs benefit from the widest one.
+    n = out.numel()
+    element_size = out.element_size()
+    if element_size >= 4 and n > (1 << 22):
+        return BLOCK_SIZE_WIDE
+    for limit, tile in TILE_LEVELS:
+        if n <= limit:
+            return tile
+    return BLOCK_SIZE
+
+
 def _launch_flat(x, y, out, limit):
     n = x.numel()
-    grid = (min(MAX_GRID_SIZE, triton.cdiv(n, BLOCK_SIZE)),)
-    _smc_flat_kernel[grid](x, y, out, n, float(limit), BLOCK_SIZE, num_warps=4)
+    block = _flat_block(out)
+    grid = (min(MAX_GRID_SIZE, triton.cdiv(n, block)),)
+    _smc_flat_kernel[grid](x, y, out, n, float(limit), block, num_warps=4)
 
 
 def _launch_flat_grad(x, y, dgrad, dx, dy, limit):
@@ -117,7 +142,7 @@ class SiluAndMulWithClamp(torch.autograd.Function):
 
 def silu_and_mul_with_clamp(x, y, limit):
     # Inference path: avoid autograd.Function.apply graph construction.
-    logger.debug("GEMS_ENFLAME_GCU400 SILU_AND_MUL_WITH_CLAMP")
+    logger.debug("GEMS_ENFLAME SILU_AND_MUL_WITH_CLAMP")
     if not torch.is_grad_enabled() or not (x.requires_grad or y.requires_grad):
         out = torch.empty_like(x)
         _launch_flat(x.contiguous(), y.contiguous(), out, limit)

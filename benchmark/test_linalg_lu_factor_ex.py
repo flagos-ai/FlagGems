@@ -225,6 +225,14 @@ class LinalgLuFactorExBenchmark(base.Benchmark):
                     yield inp, {"pivot": pivot, "check_errors": check_errors}
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::linalg_lu_factor_ex; the native baseline "
+        "falls through to a CPU fallback / inner Triton kernel that cannot run "
+        "on the device, so there is no native baseline"
+    ),
+)
 @pytest.mark.linalg_lu_factor_ex
 def test_linalg_lu_factor_ex():
     bench = LinalgLuFactorExBenchmark(
@@ -260,7 +268,32 @@ class LinalgLuFactorExOutBenchmark(base.Benchmark):
                 info = torch.empty(batch_shape, dtype=torch.int32, device=inp.device)
                 yield inp, {"out": (LU, pivots, info)}
 
+        if VENDOR == "enflame":
+            # Off CUDA the loop above skips every pivot value, so this benchmark
+            # would run with no input at all and an empty result crashes
+            # BenchmarkResult.__str__ (consts.py:272).  Emit the same .out case
+            # here so the call form is still measured on this backend.
+            for inp_shape in self.shapes:
+                inp_shape = tuple(inp_shape)
+                k = min(inp_shape[-2], inp_shape[-1])
+                batch_shape = inp_shape[:-2]
+                inp = torch.randn(inp_shape, dtype=dtype, device=self.device)
+                LU = torch.empty(inp.shape, dtype=dtype, device=inp.device)
+                pivots = torch.empty(
+                    (*batch_shape, k), dtype=torch.int32, device=inp.device
+                )
+                info = torch.empty(batch_shape, dtype=torch.int32, device=inp.device)
+                yield inp, {"out": (LU, pivots, info)}
 
+
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::linalg_lu_factor_ex; the native baseline "
+        "falls through to a CPU fallback / inner Triton kernel that cannot run "
+        "on the device, so there is no native baseline"
+    ),
+)
 @pytest.mark.linalg_lu_factor_ex_out
 def test_linalg_lu_factor_ex_out():
     bench = LinalgLuFactorExOutBenchmark(
@@ -269,5 +302,9 @@ def test_linalg_lu_factor_ex_out():
         dtypes=_TEST_DTYPES,
     )
     if VENDOR == "ascend":
+        bench.gems_op = flag_gems.linalg_lu_factor_ex_out
+    if VENDOR == "enflame":
+        # torch_gcu has no PrivateUse1 kernel for aten::linalg_lu_factor_ex;
+        # time the FlagGems out variant instead of the CPU fallback.
         bench.gems_op = flag_gems.linalg_lu_factor_ex_out
     bench.run()

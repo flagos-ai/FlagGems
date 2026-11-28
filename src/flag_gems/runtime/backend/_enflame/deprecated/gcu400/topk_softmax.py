@@ -149,7 +149,7 @@ def topk_softmax(
     gating_output: torch.Tensor,
     renormalize: bool = False,
 ) -> None:
-    logger.debug("GEMS_ENFLAME_GCU400 TOPK_SOFTMAX")
+    logger.debug("GEMS_ENFLAME TOPK_SOFTMAX")
     num_tokens = gating_output.shape[0]
     num_experts = gating_output.shape[1]
     topk = topk_weights.shape[1]

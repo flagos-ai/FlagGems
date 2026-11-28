@@ -27,6 +27,14 @@ logger = logging.getLogger(__name__)
 # grid-strided range of tiles instead of owning exactly one tile.
 _GRID_SIZE = 48
 _BLOCK_SIZE = 8192
+# The linear arm (source and destination coincide element for element) is a pure
+# 1R1W stream, so it follows the 1R1W recipe: a wide 64K-element tile at 48 CTAs.
+# Measured 2026-11-21 with an identical grid-stride body, native baseline in
+# brackets: (2048x8192) fp16 split 512 48.4us(B8192) -> 26.7us [33.8us];
+# (8192x8192) fp16 split 2048 112.5us -> 90.8us [99.6us];
+# (8x8192x8192) fp16 split 2048 888us -> 694us [701us]; same shape fp32
+# 1445us -> 1386us [1401us].
+_LINEAR_BLOCK_SIZE = 65536
 _MIN_BLOCK_SIZE = 256
 _NUM_WARPS = 4
 _MAX_RANK = 8
@@ -310,8 +318,11 @@ def _launch_rows_copy(dst, src, n_chunks, outer, row_len, src_outer_stride, src_
         n_chunks * outer * row_len + src_base + src_outer_stride >= _INT32_LIMIT
     )
     if src_outer_stride == row_len:
-        mode, rows_per_tile, block_size = _MODE_LINEAR, 1, _BLOCK_SIZE
-        single_column, even = True, n_chunks * outer * row_len % _BLOCK_SIZE == 0
+        mode, rows_per_tile, block_size = _MODE_LINEAR, 1, _LINEAR_BLOCK_SIZE
+        single_column, even = (
+            True,
+            n_chunks * outer * row_len % _LINEAR_BLOCK_SIZE == 0,
+        )
     else:
         # Keep one tile at BLOCK_SIZE elements: short rows get grouped so the
         # tile stays wide, long rows are split into column blocks.
@@ -364,7 +375,7 @@ def split_copy(self: torch.Tensor, split_size: int, dim: int = 0):
     ``split_size`` (unless the dimension itself is empty) are rejected with the
     same error messages PyTorch raises.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPLIT_COPY")
+    logger.debug("GEMS_ENFLAME SPLIT_COPY")
 
     if self.dim() == 0:
         raise RuntimeError("split expects at least a 1-dimensional tensor")

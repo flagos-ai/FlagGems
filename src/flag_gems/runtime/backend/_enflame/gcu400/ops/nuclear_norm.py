@@ -17,10 +17,893 @@
 import logging
 
 import torch
+import triton
+import triton.language as tl
 
-from flag_gems.ops.svd import svd
+import flag_gems
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
+
+_K_WHOLE_MAX = 32
+_K_TRIDIAG_MAX = 128
+_ROWS_FUSED_MAX = 8192
+_K_BLOCK_MAX = 1024
+_BLOCK_NB = 32
+_BLOCK_BC = 128
+_GRAM_BM = 64
+_GRAM_BK = 64
+_GRAM_MAX_ITERS = 64
+_WHOLE_MAX_SWEEPS = 12
+_BLOCK_SWEEPS = 8
+_BLOCK_INNER = 1
+_ROW_CHUNK = 64
+
+
+@triton.jit
+def _partner(j, r, m, inv2):
+    pj = (r - j) % m
+    pj = tl.where(pj < 0, pj + m, pj)
+    j0 = (r * inv2) % m
+    pj = tl.where(j == j0, m, pj)
+    pj = tl.where(j == m, j0, pj)
+    return pj
+
+
+@triton.jit
+def _rotation_coeffs(j, pj, alpha, beta, gamma):
+    eps = 1.0e-20
+    active = tl.abs(gamma) > 1.0e-7 * tl.sqrt(alpha * beta + eps)
+    safe_g = tl.where(active, gamma, 1.0)
+    tau = (beta - alpha) / (2.0 * safe_g)
+    sign_tau = tl.where(tau >= 0.0, 1.0, -1.0)
+    t = sign_tau / (tl.abs(tau) + tl.sqrt(1.0 + tau * tau))
+    c = tl.rsqrt(1.0 + t * t)
+    s = t * c
+    c = tl.where(active, c, 1.0)
+    s = tl.where(active, s, 0.0)
+    # For a pair (a, b) each row computes s from its own perspective and the
+    # two values are opposite; the partner-row coefficient needed by the
+    # similarity is -own_s for both rows, independent of the ordering.
+    return c, -s
+
+
+@triton.jit
+def _mix_quad_pass(
+    InBuf, OutBuf, n, r, m, inv2, BLOCK_N: tl.constexpr, CH: tl.constexpr
+):
+    # Single-pass two-sided rotation: with H = J^T G,
+    # G'[j, c] = c_c * (c_j * G[j, c] + t_j * G[pj(j), c])
+    #          + t_c * (c_j * G[j, pc] + t_j * G[pj(j), pc]),
+    # all four source elements are independent loads from the pre-round
+    # buffer, so one round costs one load-set plus one store instead of the
+    # serialized row/col pass chain.
+    cols = tl.arange(0, BLOCK_N)
+    cmask = cols < n
+    pc = _partner(cols, r, m, inv2)
+    ca = tl.load(InBuf + cols * n + cols, mask=cmask, other=0.0)
+    cb = tl.load(InBuf + pc * n + pc, mask=cmask, other=0.0)
+    cg = tl.load(InBuf + cols * n + pc, mask=cmask, other=0.0)
+    ccol, tcol = _rotation_coeffs(cols, pc, ca, cb, cg)
+    for c0 in range(0, n, CH):
+        j = c0 + tl.arange(0, CH)
+        jmask = j < n
+        pj = _partner(j, r, m, inv2)
+        alpha = tl.load(InBuf + j * n + j, mask=jmask, other=0.0)
+        beta = tl.load(InBuf + pj * n + pj, mask=jmask, other=0.0)
+        gamma = tl.load(InBuf + j * n + pj, mask=jmask, other=0.0)
+        crow, trow = _rotation_coeffs(j, pj, alpha, beta, gamma)
+        g00 = tl.load(
+            InBuf + j[:, None] * n + cols[None, :],
+            mask=jmask[:, None] & cmask[None, :],
+            other=0.0,
+        )
+        g10 = tl.load(
+            InBuf + pj[:, None] * n + cols[None, :],
+            mask=jmask[:, None] & cmask[None, :],
+            other=0.0,
+        )
+        g01 = tl.load(
+            InBuf + j[:, None] * n + pc[None, :],
+            mask=jmask[:, None] & cmask[None, :],
+            other=0.0,
+        )
+        g11 = tl.load(
+            InBuf + pj[:, None] * n + pc[None, :],
+            mask=jmask[:, None] & cmask[None, :],
+            other=0.0,
+        )
+        h0 = crow[:, None] * g00 + trow[:, None] * g10
+        h1 = crow[:, None] * g01 + trow[:, None] * g11
+        out = ccol[None, :] * h0 + tcol[None, :] * h1
+        tl.store(
+            OutBuf + j[:, None] * n + cols[None, :],
+            out,
+            mask=jmask[:, None] & cmask[None, :],
+        )
+
+
+@triton.jit
+def _mix_w2_pass(
+    InBuf, OutBuf, CoefBuf, n, r, m, inv2, BLOCK_N: tl.constexpr, CH: tl.constexpr
+):
+    # W <- J^T W row mix, also single pass: W'[j, c] = c_j * W[j, c] + t_j * W[pj(j), c].
+    cols = tl.arange(0, BLOCK_N)
+    cmask = cols < n
+    for c0 in range(0, n, CH):
+        j = c0 + tl.arange(0, CH)
+        jmask = j < n
+        pj = _partner(j, r, m, inv2)
+        alpha = tl.load(CoefBuf + j * n + j, mask=jmask, other=0.0)
+        beta = tl.load(CoefBuf + pj * n + pj, mask=jmask, other=0.0)
+        gamma = tl.load(CoefBuf + j * n + pj, mask=jmask, other=0.0)
+        crow, trow = _rotation_coeffs(j, pj, alpha, beta, gamma)
+        w0 = tl.load(
+            InBuf + j[:, None] * n + cols[None, :],
+            mask=jmask[:, None] & cmask[None, :],
+            other=0.0,
+        )
+        w1 = tl.load(
+            InBuf + pj[:, None] * n + cols[None, :],
+            mask=jmask[:, None] & cmask[None, :],
+            other=0.0,
+        )
+        out = crow[:, None] * w0 + trow[:, None] * w1
+        tl.store(
+            OutBuf + j[:, None] * n + cols[None, :],
+            out,
+            mask=jmask[:, None] & cmask[None, :],
+        )
+
+
+@triton.jit
+def _offdiag_energy(Buf, n, BLOCK_N: tl.constexpr, CH: tl.constexpr):
+    cols = tl.arange(0, BLOCK_N)
+    off2 = tl.full((), 0.0, tl.float32)
+    diag2 = tl.full((), 0.0, tl.float32)
+    for c0 in range(0, n, CH):
+        j = c0 + tl.arange(0, CH)
+        jmask = j < n
+        tile = tl.load(
+            Buf + j[:, None] * n + cols[None, :],
+            mask=jmask[:, None] & (cols < n)[None, :],
+            other=0.0,
+        )
+        off2 += tl.sum(tl.where(j[:, None] != cols[None, :], tile * tile, 0.0))
+        d = tl.load(Buf + j * n + j, mask=jmask, other=0.0)
+        diag2 += tl.sum(d * d)
+    return off2, diag2
+
+
+@triton.jit
+def _rounds_reduce(s_base, SN: tl.constexpr, MAX_SWEEPS):
+    # Single-pass rounds on a two-buffer ping-pong sized at the proven 64x64
+    # working set (too large for the compiler to promote across iterations).
+    idx = tl.arange(0, SN)
+    m_s = SN - 1
+    inv2_s = (m_s + 1) // 2
+    sz = SN * SN
+    par = 0
+    sweep = 0
+    active = tl.full((), 1, tl.int32)
+    while active == 1:
+        for r in range(m_s):
+            _mix_quad_pass(
+                s_base + par * sz, s_base + (1 - par) * sz, SN, r, m_s, inv2_s, SN, SN
+            )
+            par = 1 - par
+        off2, diag2 = _offdiag_energy(s_base + par * sz, SN, SN, SN)
+        tol2 = 1.0e-14 * diag2 + 1.0e-30
+        sweep += 1
+        active = tl.where((off2 > tol2) & (sweep < MAX_SWEEPS), 1, 0)
+    d = tl.load(s_base + par * sz + idx * SN + idx)
+    return tl.sum(tl.sqrt(tl.maximum(d, 0.0)))
+
+
+@libentry()
+@triton.jit
+def _nuclear_whole_kernel(
+    A,
+    BUF,
+    CBUF,
+    TBUF,
+    OUT,
+    M,
+    N,
+    K,
+    ROWS,
+    MAX_SWEEPS,
+    TALL: tl.constexpr,
+    SN: tl.constexpr,
+    CH_R: tl.constexpr,
+):
+    b = tl.program_id(0)
+    a_base = A + b * M * N
+    s_base = BUF + b * 2 * SN * SN
+    s_other = s_base + SN * SN  # noqa: F841
+    c_buf = CBUF + b * SN  # noqa: F841
+    t_buf = TBUF + b * SN  # noqa: F841
+    idx = tl.arange(0, SN)
+    imask = idx < K
+
+    acc = tl.zeros((SN, SN), dtype=tl.float32)
+    for r0 in range(0, ROWS, CH_R):
+        rr = r0 + tl.arange(0, CH_R)
+        rmask = rr < ROWS
+        if TALL:
+            lhs = tl.load(
+                a_base + rr[None, :] * N + idx[:, None],
+                mask=imask[:, None] & rmask[None, :],
+                other=0.0,
+            )
+            rhs = tl.load(
+                a_base + rr[:, None] * N + idx[None, :],
+                mask=rmask[:, None] & imask[None, :],
+                other=0.0,
+            )
+        else:
+            lhs = tl.load(
+                a_base + idx[:, None] * N + rr[None, :],
+                mask=imask[:, None] & rmask[None, :],
+                other=0.0,
+            )
+            rhs = tl.load(
+                a_base + idx[None, :] * N + rr[:, None],
+                mask=imask[None, :] & rmask[:, None],
+                other=0.0,
+            )
+        acc += tl.dot(lhs, rhs, out_dtype=tl.float32, allow_tf32=False)
+    tl.store(s_base + idx[:, None] * SN + idx[None, :], acc)
+
+    val = _rounds_reduce(s_base, SN, MAX_SWEEPS)
+    tl.store(OUT + b, val)
+
+
+@libentry()
+@triton.jit
+def _nuclear_rounds_kernel(GIN, BUF, CBUF, TBUF, OUT, MAX_SWEEPS, SN: tl.constexpr):
+    b = tl.program_id(0)
+    s_base = BUF + b * 2 * SN * SN
+    s_other = s_base + SN * SN  # noqa: F841
+    c_buf = CBUF + b * SN  # noqa: F841
+    t_buf = TBUF + b * SN  # noqa: F841
+    idx = tl.arange(0, SN)
+    tile = tl.load(GIN + b * SN * SN + idx[:, None] * SN + idx[None, :])
+    tl.store(s_base + idx[:, None] * SN + idx[None, :], tile)
+    val = _rounds_reduce(s_base, SN, MAX_SWEEPS)
+    tl.store(OUT + b, val)
+
+
+@libentry()
+@triton.jit
+def _gram_build_kernel(
+    A,
+    OUTBUF,
+    M,
+    N,
+    K,
+    KSTRIDE,
+    ROWS,
+    RSPLIT: tl.constexpr,
+    TALL: tl.constexpr,
+    BM: tl.constexpr,
+    BN: tl.constexpr,
+    BK: tl.constexpr,
+):
+    pid_n = tl.program_id(0)
+    pid_m = tl.program_id(1)
+    pb = tl.program_id(2)
+    rs = pb % RSPLIT
+    b = pb // RSPLIT
+    i0 = pid_m * BM
+    j0 = pid_n * BN
+    offs_i = i0 + tl.arange(0, BM)
+    offs_j = j0 + tl.arange(0, BN)
+    a_base = A + b * M * N
+    iters_total = (ROWS + BK - 1) // BK
+    per = (iters_total + RSPLIT - 1) // RSPLIT
+    r_start = rs * per * BK
+    r_end = tl.minimum((rs + 1) * per * BK, ROWS)
+
+    acc = tl.zeros((BM, BN), dtype=tl.float32)
+    for r0 in range(r_start, r_end, BK):
+        rr = r0 + tl.arange(0, BK)
+        rmask = rr < ROWS
+        if TALL:
+            lhs = tl.load(
+                a_base + rr[None, :] * N + offs_i[:, None],
+                mask=(offs_i < K)[:, None] & rmask[None, :],
+                other=0.0,
+            )
+            rhs = tl.load(
+                a_base + rr[:, None] * N + offs_j[None, :],
+                mask=rmask[:, None] & (offs_j < K)[None, :],
+                other=0.0,
+            )
+        else:
+            lhs = tl.load(
+                a_base + offs_i[:, None] * N + rr[None, :],
+                mask=(offs_i < K)[:, None] & rmask[None, :],
+                other=0.0,
+            )
+            rhs = tl.load(
+                a_base + offs_j[None, :] * N + rr[:, None],
+                mask=(offs_j < K)[None, :] & rmask[:, None],
+                other=0.0,
+            )
+        acc += tl.dot(lhs, rhs, out_dtype=tl.float32, allow_tf32=False)
+
+    out_mask = (offs_i < K)[:, None] & (offs_j < K)[None, :]
+    if RSPLIT == 1:
+        base = (
+            OUTBUF + b * KSTRIDE * KSTRIDE + offs_i[:, None] * KSTRIDE + offs_j[None, :]
+        )
+    else:
+        base = (
+            OUTBUF
+            + (b * RSPLIT + rs) * KSTRIDE * KSTRIDE
+            + offs_i[:, None] * KSTRIDE
+            + offs_j[None, :]
+        )
+    tl.store(base, acc, mask=out_mask)
+
+
+@libentry()
+@triton.jit
+def _gram_reduce_kernel(GPART, G, K, RSPLIT: tl.constexpr, total, BLOCK: tl.constexpr):
+    pid = tl.program_id(0)
+    b = tl.program_id(1)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    acc = tl.zeros((BLOCK,), dtype=tl.float32)
+    for s in range(RSPLIT):
+        acc += tl.load(GPART + (b * RSPLIT + s) * total + offs, mask=mask, other=0.0)
+    tl.store(G + b * total + offs, acc, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _nuclear_reduce_kernel(G, OUT, K, BLOCK: tl.constexpr):
+    b = tl.program_id(0)
+    acc = tl.full((), 0.0, tl.float32)
+    for off in range(0, K, BLOCK):
+        j = off + tl.arange(0, BLOCK)
+        d = tl.load(G + b * K * K + j * K + j, mask=j < K, other=0.0)
+        acc += tl.sum(tl.sqrt(tl.maximum(d, 0.0)))
+    tl.store(OUT + b, acc)
+
+
+@triton.jit
+def _block_pair(slot, step, m, inv2):
+    ps = (step - slot) % m
+    ps = tl.where(ps < 0, ps + m, ps)
+    j0 = (step * inv2) % m
+    ps = tl.where(slot == j0, m, ps)
+    ps = tl.where(slot == m, j0, ps)
+    return ps
+
+
+@libentry()
+@triton.jit
+def _block_eig_kernel(
+    G,
+    SSCR,
+    WSCR,
+    CBUF,
+    TBUF,
+    FLAGS,
+    K,
+    P,
+    P_REAL,
+    step,
+    NB: tl.constexpr,
+    SN: tl.constexpr,
+    INNER: tl.constexpr,
+):
+    b = tl.program_id(0)
+    slot = tl.program_id(1)
+    m = P - 1
+    inv2 = (m + 1) // 2
+    ps = _block_pair(slot, step, m, inv2)
+    lo = tl.minimum(slot, ps)
+    hi = tl.maximum(slot, ps)
+    if slot >= ps:
+        return
+    if (lo >= P_REAL) | (hi >= P_REAL):
+        return
+
+    idx = tl.arange(0, SN)
+    grow = tl.where(idx < NB, lo * NB + idx, hi * NB + idx - NB)
+    gcol = tl.where(idx < NB, lo * NB + idx, hi * NB + idx - NB)
+    gmask = (grow < K)[:, None] & (gcol < K)[None, :]
+    s_tile = tl.load(
+        G + (b * K + grow[:, None]) * K + gcol[None, :], mask=gmask, other=0.0
+    )
+
+    s_base = SSCR + (b * P + slot) * 2 * SN * SN
+    w_base = WSCR + (b * P + slot) * 2 * SN * SN
+    c_buf = CBUF + (b * P + slot) * SN  # noqa: F841
+    t_buf = TBUF + (b * P + slot) * SN  # noqa: F841
+    ident = tl.where(idx[:, None] == idx[None, :], 1.0, 0.0)
+
+    offq = tl.sum(
+        tl.where((idx < NB)[:, None] & (idx >= NB)[None, :], s_tile * s_tile, 0.0)
+    )
+    diag_e = tl.sum(tl.where(idx[:, None] == idx[None, :], s_tile * s_tile, 0.0))
+    if offq <= 1.0e-12 * diag_e + 1.0e-30:
+        tl.store(FLAGS + b * P + slot, 0)
+        return
+
+    tl.store(s_base + idx[:, None] * SN + idx[None, :], s_tile)
+    tl.store(w_base + idx[:, None] * SN + idx[None, :], ident)
+
+    m_s = SN - 1
+    inv2_s = (m_s + 1) // 2
+    inner = 0
+    active = tl.full((), 1, tl.int32)
+    sz = SN * SN
+    par = 0
+    wpar = 0
+    while active == 1:
+        for r in range(m_s):
+            _mix_quad_pass(
+                s_base + par * sz, s_base + (1 - par) * sz, SN, r, m_s, inv2_s, SN, SN
+            )
+            _mix_w2_pass(
+                w_base + wpar * sz,
+                w_base + (1 - wpar) * sz,
+                s_base + par * sz,
+                SN,
+                r,
+                m_s,
+                inv2_s,
+                SN,
+                SN,
+            )
+            par = 1 - par
+            wpar = 1 - wpar
+        inner += 1
+        off2, diag2 = _offdiag_energy(s_base + par * sz, SN, SN, SN)
+        tol2 = 1.0e-14 * diag2 + 1.0e-30
+        active = tl.where((off2 > tol2) & (inner < INNER), 1, 0)
+
+    w = tl.load(w_base + wpar * sz + idx[:, None] * SN + idx[None, :])
+    tl.store(w_base + idx[:, None] * SN + idx[None, :], w)
+
+    tl.store(FLAGS + b * P + slot, 1)
+
+
+@libentry()
+@triton.jit
+def _block_rows_kernel(
+    G,
+    WSCR,
+    FLAGS,
+    K,
+    P,
+    P_REAL,
+    step,
+    NB: tl.constexpr,
+    SN: tl.constexpr,
+    BC: tl.constexpr,
+):
+    b = tl.program_id(0)
+    slot = tl.program_id(1)
+    chunk = tl.program_id(2)
+    m = P - 1
+    inv2 = (m + 1) // 2
+    ps = _block_pair(slot, step, m, inv2)
+    lo = tl.minimum(slot, ps)
+    hi = tl.maximum(slot, ps)
+    if slot >= ps:
+        return
+    if (lo >= P_REAL) | (hi >= P_REAL):
+        return
+    flag = tl.load(FLAGS + b * P + slot)
+    if flag == 0:
+        return
+
+    idx = tl.arange(0, SN)
+    w_base = WSCR + (b * P + slot) * 2 * SN * SN
+    w = tl.load(w_base + idx[:, None] * SN + idx[None, :])
+    grow = tl.where(idx < NB, lo * NB + idx, hi * NB + idx - NB)
+    cols = chunk * BC + tl.arange(0, BC)
+    mask = (grow < K)[:, None] & (cols < K)[None, :]
+    x = tl.load(G + (b * K + grow[:, None]) * K + cols[None, :], mask=mask, other=0.0)
+    xw = tl.dot(w, x, out_dtype=tl.float32, allow_tf32=False)
+    tl.store(G + (b * K + grow[:, None]) * K + cols[None, :], xw, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _block_cols_kernel(
+    G,
+    WSCR,
+    FLAGS,
+    K,
+    P,
+    P_REAL,
+    step,
+    NB: tl.constexpr,
+    SN: tl.constexpr,
+    BC: tl.constexpr,
+):
+    b = tl.program_id(0)
+    slot = tl.program_id(1)
+    chunk = tl.program_id(2)
+    m = P - 1
+    inv2 = (m + 1) // 2
+    ps = _block_pair(slot, step, m, inv2)
+    lo = tl.minimum(slot, ps)
+    hi = tl.maximum(slot, ps)
+    if slot >= ps:
+        return
+    if (lo >= P_REAL) | (hi >= P_REAL):
+        return
+    flag = tl.load(FLAGS + b * P + slot)
+    if flag == 0:
+        return
+
+    idx = tl.arange(0, SN)
+    w_base = WSCR + (b * P + slot) * 2 * SN * SN
+    w = tl.load(w_base + idx[:, None] * SN + idx[None, :])
+    gcol = tl.where(idx < NB, lo * NB + idx, hi * NB + idx - NB)
+    rows = chunk * BC + tl.arange(0, BC)
+    mask = (gcol < K)[:, None] & (rows < K)[None, :]
+    yt = tl.load(G + (b * K + rows[None, :]) * K + gcol[:, None], mask=mask, other=0.0)
+    z = tl.dot(w, yt, out_dtype=tl.float32, allow_tf32=False)
+    tl.store(G + (b * K + rows[None, :]) * K + gcol[:, None], z, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _reg_tridiag_kernel(
+    A,
+    DOUT,
+    EOUT,
+    M,
+    N,
+    K: tl.constexpr,
+    ROWS,
+    TALL: tl.constexpr,
+    BK: tl.constexpr,
+    CH_R: tl.constexpr,
+):
+    # In-register Householder tridiagonalization of the k x k Gram matrix
+    # (k <= BK <= 128).  Eigenvalues only: no orthogonal factor is
+    # accumulated.  One program owns the whole matrix as a register tile; the
+    # tridiagonal is parked in registers and stored once (per-step scalar
+    # stores cost tens of microseconds on this backend).
+    b = tl.program_id(0)
+    a_base = A + b * M * N
+    idx = tl.arange(0, BK)
+    imask = idx < K
+
+    mat = tl.zeros((BK, BK), dtype=tl.float32)
+    for r0 in range(0, ROWS, CH_R):
+        rr = r0 + tl.arange(0, CH_R)
+        rmask = rr < ROWS
+        if TALL:
+            lhs = tl.load(
+                a_base + rr[None, :] * N + idx[:, None],
+                mask=imask[:, None] & rmask[None, :],
+                other=0.0,
+            )
+            rhs = tl.load(
+                a_base + rr[:, None] * N + idx[None, :],
+                mask=rmask[:, None] & imask[None, :],
+                other=0.0,
+            )
+        else:
+            lhs = tl.load(
+                a_base + idx[:, None] * N + rr[None, :],
+                mask=imask[:, None] & rmask[None, :],
+                other=0.0,
+            )
+            rhs = tl.load(
+                a_base + idx[None, :] * N + rr[:, None],
+                mask=imask[None, :] & rmask[:, None],
+                other=0.0,
+            )
+        mat += tl.dot(lhs, rhs, out_dtype=tl.float32, allow_tf32=False)
+
+    tiny = 2.0**-126
+    dvec = tl.zeros((BK,), dtype=tl.float32)
+    evec = tl.zeros((BK,), dtype=tl.float32)
+
+    for i in range(0, K - 2):
+        col = tl.sum(tl.where(idx[None, :] == i, mat, 0.0), axis=1)
+        diag_i = tl.sum(tl.where(idx == i, col, 0.0))
+        x0 = tl.sum(tl.where(idx == i + 1, col, 0.0))
+        tail2 = tl.sum(tl.where(idx > i + 1, col * col, 0.0))
+        norm = tl.sqrt(tail2 + x0 * x0)
+        if norm > tiny:
+            alpha = -tl.where(x0 >= 0.0, 1.0, -1.0) * norm
+            v = tl.where(idx == i + 1, col - alpha, col)
+            v = tl.where(idx <= i, 0.0, v)
+            vmask = (idx > i) & (idx < K)
+            vv2 = tl.sum(tl.where(vmask, v * v, 0.0))
+            beta = 2.0 / tl.maximum(vv2, tiny)
+            p = beta * tl.sum(mat * v[None, :], axis=1)
+            kappa = 0.5 * beta * tl.sum(v * p)
+            w = p - kappa * v
+            mat = mat - v[:, None] * w[None, :] - w[:, None] * v[None, :]
+        else:
+            alpha = 0.0
+        dvec = tl.where(idx == i, diag_i, dvec)
+        evec = tl.where(idx == i, alpha, evec)
+
+    d_km2 = tl.sum(
+        tl.where((idx[:, None] == K - 2) & (idx[None, :] == K - 2), mat, 0.0)
+    )
+    e_km2 = tl.sum(
+        tl.where((idx[:, None] == K - 2) & (idx[None, :] == K - 1), mat, 0.0)
+    )
+    d_km1 = tl.sum(
+        tl.where((idx[:, None] == K - 1) & (idx[None, :] == K - 1), mat, 0.0)
+    )
+    dvec = tl.where(idx == K - 2, d_km2, dvec)
+    evec = tl.where(idx == K - 2, e_km2, evec)
+    dvec = tl.where(idx == K - 1, d_km1, dvec)
+
+    tl.store(DOUT + b * BK + idx, dvec)
+    tl.store(EOUT + b * BK + idx, evec)
+
+
+@libentry()
+@triton.jit
+def _bisect_nuclear_kernel(
+    DBUF,
+    EBUF,
+    OUT,
+    K: tl.constexpr,
+    BK: tl.constexpr,
+    ITERS: tl.constexpr,
+):
+    # Bisection over the tridiagonal spectrum: one program per batch refines
+    # all k eigenvalues in parallel lanes with the Sturm negative-pivot count.
+    b = tl.program_id(0)
+    idx = tl.arange(0, BK)
+    lam = idx
+    lmask = lam < K
+
+    d = tl.load(DBUF + b * BK + idx, mask=idx < K, other=0.0)
+    e = tl.load(EBUF + b * BK + idx, mask=idx < K, other=0.0)
+    abse = tl.abs(e)
+    maxd = tl.max(tl.abs(d), axis=0)
+    maxe = tl.max(abse, axis=0)
+    span = maxd + 2.0 * maxe + 1.0
+    lo = tl.full((BK,), -2.0 * span, dtype=tl.float32)
+    hi = tl.full((BK,), 2.0 * span, dtype=tl.float32)
+    tiny = 2.0**-126
+
+    for it in range(ITERS):
+        mid = 0.5 * (lo + hi)
+        cnt = tl.zeros((BK,), dtype=tl.int32)
+        dp = tl.full((BK,), 1.0, dtype=tl.float32)
+        for i in range(K):
+            di = tl.sum(tl.where(idx == i, d, 0.0)) - mid
+            if i > 0:
+                ei = tl.sum(tl.where(idx == i - 1, abse, 0.0))
+                di = di - ei * ei / tl.where(tl.abs(dp) < tiny, tiny, dp)
+            dp = tl.where(di == 0.0, tiny, di)
+            cnt += tl.where((di < 0.0) & lmask, 1, 0)
+        go_up = cnt <= lam
+        lo = tl.where(go_up, mid, lo)
+        hi = tl.where(go_up, hi, mid)
+
+    val = 0.5 * (lo + hi)
+    part = tl.sum(tl.where(lmask, tl.sqrt(tl.maximum(val, 0.0)), 0.0))
+    tl.store(OUT + b, part)
+
+
+def _nuclear_tridiag_path(a, batch, m, n, k, rows, out):
+    bk = 64 if k <= 64 else 128
+    dbuf = torch.empty((batch, bk), dtype=torch.float32, device=a.device)
+    ebuf = torch.empty((batch, bk), dtype=torch.float32, device=a.device)
+    with torch_device_fn.device(a.device):
+        _reg_tridiag_kernel[(batch,)](
+            a,
+            dbuf,
+            ebuf,
+            m,
+            n,
+            k,
+            rows,
+            TALL=m >= n,
+            BK=bk,
+            CH_R=128,
+            num_warps=8,
+        )
+        _bisect_nuclear_kernel[(batch,)](
+            dbuf,
+            ebuf,
+            out,
+            k,
+            BK=bk,
+            ITERS=64,
+            num_warps=4,
+        )
+    return out
+
+
+def _nuclear_whole_path(a, batch, m, n, k, rows, out):
+    sn = 64
+    buf = torch.zeros((batch, 2, sn, sn), dtype=torch.float32, device=a.device)
+    cbuf = torch.empty((batch, sn), dtype=torch.float32, device=a.device)
+    tbuf = torch.empty((batch, sn), dtype=torch.float32, device=a.device)
+    with torch_device_fn.device(a.device):
+        if rows <= _ROWS_FUSED_MAX:
+            _nuclear_whole_kernel[(batch,)](
+                a,
+                buf,
+                cbuf,
+                tbuf,
+                out,
+                m,
+                n,
+                k,
+                rows,
+                _WHOLE_MAX_SWEEPS,
+                TALL=m >= n,
+                SN=sn,
+                CH_R=128,
+                num_warps=4,
+            )
+        else:
+            gram_iters = (rows + _GRAM_BK - 1) // _GRAM_BK
+            rsplit = (gram_iters + _GRAM_MAX_ITERS - 1) // _GRAM_MAX_ITERS
+            if batch > 0:
+                rsplit = max(1, min(rsplit, 255 // batch))
+            g = torch.zeros((batch, sn, sn), dtype=torch.float32, device=a.device)
+            if rsplit > 1:
+                gpart = torch.zeros(
+                    (batch, rsplit, sn, sn), dtype=torch.float32, device=a.device
+                )
+            else:
+                gpart = g
+            _gram_build_kernel[(1, 1, rsplit * batch)](
+                a,
+                gpart,
+                m,
+                n,
+                k,
+                sn,
+                rows,
+                RSPLIT=rsplit,
+                TALL=m >= n,
+                BM=64,
+                BN=64,
+                BK=_GRAM_BK,
+                num_warps=4,
+            )
+            if rsplit > 1:
+                total = sn * sn
+                _gram_reduce_kernel[((total + 1023) // 1024, batch)](
+                    gpart,
+                    g,
+                    sn,
+                    RSPLIT=rsplit,
+                    total=total,
+                    BLOCK=1024,
+                    num_warps=4,
+                )
+            _nuclear_rounds_kernel[(batch,)](
+                g,
+                buf,
+                cbuf,
+                tbuf,
+                out,
+                _WHOLE_MAX_SWEEPS,
+                SN=sn,
+                num_warps=4,
+            )
+    return out
+
+
+def _nuclear_block_path(a, batch, m, n, k, rows, out):
+    dev = a.device
+    gram_iters = (rows + _GRAM_BK - 1) // _GRAM_BK
+    rsplit = (gram_iters + _GRAM_MAX_ITERS - 1) // _GRAM_MAX_ITERS
+    if batch > 0:
+        rsplit = max(1, min(rsplit, 255 // batch))
+    g = torch.empty((batch, k, k), dtype=torch.float32, device=dev)
+    if rsplit > 1:
+        gpart = torch.empty((batch, rsplit, k, k), dtype=torch.float32, device=dev)
+        gram_target = gpart
+    else:
+        gpart = None
+        gram_target = g
+    p_real = (k + _BLOCK_NB - 1) // _BLOCK_NB
+    p = p_real + (p_real & 1)
+    sn = 2 * _BLOCK_NB
+    sscr = torch.empty((batch, p, 2, sn, sn), dtype=torch.float32, device=dev)
+    wscr = torch.empty((batch, p, 2, sn, sn), dtype=torch.float32, device=dev)
+    cbuf = torch.empty((batch, p, sn), dtype=torch.float32, device=dev)
+    tbuf = torch.empty((batch, p, sn), dtype=torch.float32, device=dev)
+    flags = torch.empty((batch, p), dtype=torch.int32, device=dev)
+    n_chunks = (k + _BLOCK_BC - 1) // _BLOCK_BC
+
+    with torch_device_fn.device(dev):
+        _gram_build_kernel[
+            (
+                (k + _GRAM_BM - 1) // _GRAM_BM,
+                (k + _GRAM_BM - 1) // _GRAM_BM,
+                rsplit * batch,
+            )
+        ](
+            a,
+            gram_target,
+            m,
+            n,
+            k,
+            k,
+            rows,
+            RSPLIT=rsplit,
+            TALL=m >= n,
+            BM=_GRAM_BM,
+            BN=_GRAM_BM,
+            BK=_GRAM_BK,
+            num_warps=4,
+        )
+        if rsplit > 1:
+            total = k * k
+            _gram_reduce_kernel[((total + 1023) // 1024, batch)](
+                gpart,
+                g,
+                k,
+                RSPLIT=rsplit,
+                total=total,
+                BLOCK=1024,
+                num_warps=4,
+            )
+        for _ in range(_BLOCK_SWEEPS):
+            for step in range(p - 1):
+                _block_eig_kernel[(batch, p)](
+                    g,
+                    sscr,
+                    wscr,
+                    cbuf,
+                    tbuf,
+                    flags,
+                    k,
+                    p,
+                    p_real,
+                    step,
+                    NB=_BLOCK_NB,
+                    SN=sn,
+                    INNER=_BLOCK_INNER,
+                    num_warps=4,
+                )
+                _block_rows_kernel[(batch, p, n_chunks)](
+                    g,
+                    wscr,
+                    flags,
+                    k,
+                    p,
+                    p_real,
+                    step,
+                    NB=_BLOCK_NB,
+                    SN=sn,
+                    BC=_BLOCK_BC,
+                    num_warps=4,
+                )
+                _block_cols_kernel[(batch, p, n_chunks)](
+                    g,
+                    wscr,
+                    flags,
+                    k,
+                    p,
+                    p_real,
+                    step,
+                    NB=_BLOCK_NB,
+                    SN=sn,
+                    BC=_BLOCK_BC,
+                    num_warps=4,
+                )
+        _nuclear_reduce_kernel[(batch,)](g, out, k, BLOCK=1024, num_warps=4)
+    return out
 
 
 def nuclear_norm(A: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
@@ -36,24 +919,39 @@ def nuclear_norm(A: torch.Tensor, keepdim: bool = False) -> torch.Tensor:
     Returns:
         Nuclear norm. If keepdim=False, shape is (*,); if keepdim=True, shape is (*, 1, 1).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 NUCLEAR_NORM")
+    logger.debug("GEMS_ENFLAME NUCLEAR_NORM")
     # Only float32 is supported for SVD on CUDA
     assert A.dtype == torch.float32, f"Expected float32, got {A.dtype}"
+    if A.device.type != flag_gems.device:
+        _default_fn = getattr(getattr(torch.ops, "aten"), "nuclear_norm").default
+        return _default_fn(A, keepdim=keepdim)
     if not A.is_contiguous():
         A = A.contiguous()
 
-    try:
-        # Use Triton-based SVD to compute singular values only.
-        # nuclear_norm = sum of singular values
-        result = svd(A, some=True, compute_uv=False)
-        norm = result.S.sum(dim=-1)
+    batch_shape = A.shape[:-2]
+    m, n = A.shape[-2], A.shape[-1]
+    k = min(m, n)
+    rows = max(m, n)
+    batch = 1
+    for dim in batch_shape:
+        batch *= dim
 
-        if keepdim:
-            # Restore the last two dimensions with size 1
-            norm = norm.unsqueeze(-1).unsqueeze(-1)
+    if k == 0 or batch == 0:
+        out_shape = batch_shape + ((1, 1) if keepdim else ())
+        return torch.zeros(out_shape, dtype=torch.float32, device=A.device)
 
-        return norm
-    except NotImplementedError:
-        # Fall back to native torch. Use torch.ops.aten to bypass flag_gems dispatch.
+    out = torch.empty((batch,), dtype=torch.float32, device=A.device)
+    a2 = A.reshape(batch, m, n)
+    if k <= _K_WHOLE_MAX:
+        _nuclear_whole_path(a2, batch, m, n, k, rows, out)
+    elif k <= _K_TRIDIAG_MAX and rows <= _ROWS_FUSED_MAX:
+        _nuclear_tridiag_path(a2, batch, m, n, k, rows, out)
+    elif k <= _K_BLOCK_MAX:
+        _nuclear_block_path(a2, batch, m, n, k, rows, out)
+    else:
         _default_fn = getattr(getattr(torch.ops, "aten"), "nuclear_norm").default
         return _default_fn(A, keepdim=keepdim)
+
+    if keepdim:
+        return out.reshape(batch_shape + (1, 1))
+    return out.reshape(batch_shape)

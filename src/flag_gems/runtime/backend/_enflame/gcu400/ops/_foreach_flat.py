@@ -29,13 +29,17 @@ are delegated by the caller to the common executor, keeping dtype policy / excep
 
 import logging
 from contextlib import nullcontext
+from math import gcd
 
 import torch
 import triton
 import triton.language as tl
+from triton import knobs
+from triton.runtime import driver as _triton_driver
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry, tl_extra_shim
+from flag_gems.utils.foreach import _device_meta
 
 # Triton 3.6 tl tensors have no __pow__; reuse the same GCU libdevice powf as the common implementation.
 _pow = tl_extra_shim.pow
@@ -322,6 +326,44 @@ def fused_unary_kernel(
         tl.store(data_ptr + offs, result, mask=mask)
 
 
+@libentry()
+@triton.jit
+def copy_list_kernel(
+    meta_ptr,
+    NT: tl.constexpr,
+    A_DT: tl.constexpr,
+    B_DT: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    """``_foreach_copy``: the whole paired tensor list on one maskless launch.
+
+    ``meta_ptr`` holds destination pointers, source pointers and element counts
+    (NT entries each, int64) and ``grid.x`` is linearized over ``(tensor, part)``
+    in exact multiples of NT. The destination tile is never loaded and the
+    per-tile bounds mask is compiled out: the host only takes this kernel when
+    every element count divides ``BLOCK``, so the mask would be dead anyway.
+    ``A_DT`` and ``B_DT`` may differ -- the store casts the source value into
+    the destination dtype, which is copy semantics (no promotion).
+    """
+    pid = tl.program_id(0)
+    num_programs = tl.num_programs(0)
+    tensor_id = pid % NT
+    part_id = pid // NT
+    num_parts = tl.cdiv(num_programs, NT)
+
+    out_ptr = tl.load(meta_ptr + tensor_id).to(tl.pointer_type(A_DT))
+    b_ptr = tl.load(meta_ptr + NT + tensor_id).to(tl.pointer_type(B_DT))
+    num_elems = tl.load(meta_ptr + 2 * NT + tensor_id)
+
+    arange = tl.arange(0, BLOCK)
+    # The tile count stays in i32 to keep the address arithmetic narrow, as in
+    # the common executors.
+    num_tiles = tl.cdiv(num_elems, BLOCK).to(tl.int32)
+    for block_id in tl.range(part_id, num_tiles, num_parts):
+        offs = block_id * BLOCK + arange
+        tl.store(out_ptr + offs, tl.load(b_ptr + offs))
+
+
 def can_use_flat(self, operand, mode):
     """Check whether a list has a shape the fast path can handle safely."""
     if not self:
@@ -538,6 +580,237 @@ def run_binary(
                 num_stages=num_stages,
             )
     return None if inplace else outputs
+
+
+# --- TUNING PARAMS START ---
+# ``_foreach_copy``-only tiers (2026-11-19, official do_bench kernel mode w1000/r100, uniform
+# 16-tensor lists, 16x{256,512,1024}^2 x fp32/fp16/bf16 single-config sweep per tier):
+#   * the dead destination-side load is already DCE'd by the compiler on this stack (ship and
+#     noload probes match on every tier), so the real lever is the grid: the shared binary
+#     family fixed_grid 24 yields only 32 programs for a 16-tensor list, leaving a third of the
+#     48 device cores idle; a 48-program grid is -37% at 1024^2 (fp32 80.0->50.6us / fp16
+#     45.8->28.9us, at the 1R1W 2.65TB/s ceiling);
+#   * when every numel divides BLOCK the per-tile bounds mask is dropped, another -2%~-5%;
+#   * BLOCK tiers follow the _foreach_maximum_List family: 8192 for fp32, 16384 for 16-bit
+#     (32 KiB of tile buffer either way); ragged lists fall back to the masked binary kernel.
+COPY_FIXED_GRID = 48
+COPY_BLOCK_32BIT = 8192
+COPY_BLOCK_16BIT = 16384
+COPY_NUM_WARPS = 4
+COPY_NUM_STAGES = 1
+# grid.x hard cap, same as the binary executor (overflow goes to the shared executor).
+COPY_MAX_LIST_LEN = 65535
+# --- TUNING PARAMS END ---
+
+# Replay cache for ``copy_list_kernel``: maps the fully specialized launch to
+# ``(CompiledKernel.run, kernel.function, packed_metadata)`` so a steady-state
+# call skips Triton's JIT dispatch.  Every entry is keyed by everything that
+# selects a compiled variant plus the metadata alignment Triton specializes on,
+# and no device-visible data is cached (``meta`` is read-only and
+# content-addressed upstream).
+_COPY_LAUNCH_CACHE = {}
+
+
+def _launch_copy(grid, nt, meta, a_dt, b_dt, block):
+    """``copy_list_kernel[grid](...)`` with a cached direct launcher.
+
+    The Triton ``kernel[grid]`` entry re-binds the signature, re-derives the
+    specialization key and re-checks the launch hooks on every call; on GCU400
+    that host path costs more than the kernel it launches (measured 25.6us
+    against 4.6us for the replayed launch), which dominates the copy latency
+    because sixteen allocations already keep the host busy.  A replay that
+    raises, or any installed launch hook (topsprof et al.), falls back to the
+    normal dispatch so instrumentation still sees every launch.
+    """
+    runtime = knobs.runtime
+    key = (
+        grid,
+        nt,
+        a_dt,
+        b_dt,
+        block,
+        not (meta.data_ptr() & 15),
+    )
+    entry = _COPY_LAUNCH_CACHE.get(key)
+    if (
+        entry is not None
+        and not runtime.launch_enter_hook.calls
+        and not runtime.launch_exit_hook.calls
+    ):
+        try:
+            entry[0](
+                grid[0],
+                1,
+                1,
+                _triton_driver.active.get_current_stream(meta.device.index),
+                entry[1],
+                entry[2],
+                None,
+                None,
+                None,
+                meta,
+                nt,
+                a_dt,
+                b_dt,
+                block,
+            )
+            return
+        except Exception:
+            _COPY_LAUNCH_CACHE.pop(key, None)
+    compiled = copy_list_kernel[grid](
+        meta,
+        nt,
+        a_dt,
+        b_dt,
+        block,
+        num_warps=COPY_NUM_WARPS,
+        num_stages=COPY_NUM_STAGES,
+    )
+    if compiled is not None:
+        kernel = compiled[0] if isinstance(compiled, tuple) else compiled
+        _COPY_LAUNCH_CACHE[key] = (
+            kernel.run,
+            kernel.function,
+            kernel.packed_metadata,
+        )
+
+
+def _empty_output_list(templates, dtype):
+    """Outputs of one out-of-place call, carved out of a single allocation.
+
+    ATen's own foreach kernels hand out slices of one flat buffer, and on
+    GCU400 the difference is large: sixteen ``empty_like`` calls cost ~81us of
+    host time, while one allocation plus a slice costs ~28us, and that gap is
+    the floor difference between the in-place and the out-of-place overloads of
+    this executor.  Slicing along the leading axis keeps every output a dense
+    contiguous view, so the flat kernel sees the same ``data_ptr``/``numel`` it
+    would otherwise.
+
+    The slice is ``chunk`` rather than ``unbind``: both give back the same dense
+    views, but for sixteen 1024-element outputs ``list(flat.unbind(0))``
+    measured 37.4us against ``list(flat.chunk(16))`` at 18.6us in one process
+    (and ``chunk`` itself is 18.6us against 22.3us for ``split``), because the
+    ``unbind`` wrapper re-validates every slice it produces.
+
+    Mixed shapes (nothing can give them back) and 0-dim operands keep the
+    per-tensor allocation, so the semantics never depend on the fast arm.
+    """
+    num_tensors = len(templates)
+    first = templates[0]
+    shape = first.shape
+    if shape and all(t.shape == shape for t in templates):
+        try:
+            flat = torch.empty((num_tensors,) + shape, dtype=dtype, device=first.device)
+            return list(flat.chunk(num_tensors))
+        except Exception:
+            pass
+    if dtype is first.dtype:
+        return list(map(torch.empty_like, templates))
+    return [torch.empty_like(t, dtype=dtype) for t in templates]
+
+
+def _copy_block(numels, dtype):
+    """The maskless tile for this call, or ``0`` when no tile fits.
+
+    The tuned tile (16384 for 16-bit, 8192 for fp32) is kept whenever every
+    element count is a multiple of it.  Otherwise the launch falls back to the
+    largest power of two that divides *all* the counts, which keeps the fast
+    path for short lists: a list of sixteen 1024-element tensors is a genuine
+    shape (a KV cache row, a per-layer bias) and used to leave the fast path
+    entirely, paying a masked binary launch that re-allocated every output
+    (41us against 29us here).  Tiles below 256 elements stop paying for the
+    vector loads, so those stay on the masked kernel.
+    """
+    block = COPY_BLOCK_32BIT if dtype is torch.float32 else COPY_BLOCK_16BIT
+    common = numels[0]
+    for numel in numels:
+        common = gcd(common, numel)
+        if common == 1:
+            break
+    tile = min(block, common & -common)
+    return tile if tile >= 256 else 0
+
+
+def run_copy(self, src, inplace):
+    """Paired uniform float lists on one cached maskless launch, or ``FALLBACK``.
+
+    Replays the binary executor's takeover conditions for ``copy``: two tensor
+    lists that pair position by position on one flat index, each list uniform
+    in a float dtype, all contiguous and non-empty on one device. The tile is
+    the tuned ``BLOCK`` when every element count is a multiple of it and the
+    largest fitting power of two otherwise (see :func:`_copy_block`); lists
+    with no common fit answer ``FALLBACK`` and keep the masked binary kernel.
+    The metadata table (destination and source addresses plus element counts)
+    rides the read-only content cache: steady-state calls reuse the same int64
+    table with zero H2D.
+    """
+    if not isinstance(self, (list, tuple)) or not self:
+        return FALLBACK
+    num_tensors = len(self)
+    if num_tensors > COPY_MAX_LIST_LEN:
+        return FALLBACK
+    if not isinstance(src, (list, tuple)) or len(src) != num_tensors:
+        return FALLBACK
+    a0 = self[0]
+    if not isinstance(a0, torch.Tensor):
+        return FALLBACK
+    dtype = a0.dtype
+    if dtype not in FLOAT_DTYPES:
+        return FALLBACK
+    b0 = src[0]
+    if not isinstance(b0, torch.Tensor) or b0.dtype not in FLOAT_DTYPES:
+        return FALLBACK
+    device = a0.device
+    b_dtype = b0.dtype
+    block = COPY_BLOCK_32BIT if dtype is torch.float32 else COPY_BLOCK_16BIT
+    numels = []
+    # The tuned tile is decided in the same pass as the checks: the divisor
+    # search below costs ~2us of host time, which is visible on this path
+    # (a 7% regression on every copy shape) because the out-of-place overload
+    # is host-bound until the transfer takes over.
+    aligned = True
+    for tensor in self:
+        if tensor.dtype is not dtype or tensor.device != device:
+            return FALLBACK
+        numel = tensor.numel()
+        if numel == 0 or not tensor.is_contiguous():
+            return FALLBACK
+        if numel % block:
+            aligned = False
+        numels.append(numel)
+    for tensor, numel in zip(src, numels):
+        if (
+            tensor.dtype is not b_dtype
+            or tensor.device != device
+            or not tensor.is_contiguous()
+            or tensor.numel() != numel
+        ):
+            return FALLBACK
+    if not aligned:
+        block = _copy_block(numels, dtype)
+        if not block:
+            return FALLBACK
+
+    out_tensors = self if inplace else _empty_output_list(self, dtype)
+    pointers = (
+        [tensor.data_ptr() for tensor in out_tensors]
+        + [tensor.data_ptr() for tensor in src]
+        + numels
+    )
+    meta = _device_meta(pointers, device)
+    # grid is an exact multiple of the tensor count by construction, so every
+    # tile of every tensor is covered (parts is floored, never ceiled).
+    blocks_per_tensor = -(-max(numels) // block)
+    parts = max(1, min(COPY_FIXED_GRID // num_tensors, blocks_per_tensor))
+    _launch_copy(
+        (num_tensors * parts,),
+        num_tensors,
+        meta,
+        _TL_DTYPES[dtype],
+        _TL_DTYPES[b_dtype],
+        block,
+    )
+    return None if inplace else out_tensors
 
 
 def _run_fused_unary(

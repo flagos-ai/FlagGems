@@ -270,16 +270,20 @@ def sweep(
             pack2 = inclusive_prefix_mask | (exclusive_prefix + local_sum)
             tl.store(status_ptr + status_offset, pack2, cache_modifier=".cg")
 
-            local_ex_cumsum = (
-                tl.cumsum(matches.to(tl.uint32), axis=0) - matches
+            # Keep cumsum/index math in int32 — uint32 cumsum + ptr arith inserts
+            # illegal arith.extui on GCU300.
+            local_ex_cumsum = tl.cumsum(matches.to(tl.int32), axis=0) - matches.to(
+                tl.int32
             )  # (TILE_N, )
             ex_cumsum_in_bin = (
-                exclusive_prefix + local_ex_cumsum
+                exclusive_prefix.to(tl.int32) + local_ex_cumsum
             )  # global ex_cumsum_in_bin (TILE_N, )
 
             # ex_cumsum_bins (m, n_passes, r)
             ex_cumsum_bins = tl.load(
                 excumsum_bins_ptr + pid_m * (n_passes * r) + pass_id * r + bin_index
+            ).to(
+                tl.int32
             )  # scalar
             pos = ex_cumsum_bins + ex_cumsum_in_bin  # (TILE_N, )
 
@@ -353,8 +357,9 @@ def radix_sort(arr, k_bits=8, descending=False):
             num_bins,
         )
 
-        ex_cumsum_bins = torch.cumsum(global_hist, -1) - global_hist
-        ex_cumsum_bins = ex_cumsum_bins.to(torch.uint32)
+        # GCU aten cumsum with INT64 enabled promotes int32 -> Long and then
+        # rejects mismatched out dtype; pin dtype=int32. Sweep loads as tl.int32.
+        ex_cumsum_bins = torch.cumsum(global_hist, -1, dtype=torch.int32) - global_hist
 
         # sort
         arr_in = torch.clone(arr)
@@ -461,7 +466,7 @@ def sort_stable(inp, *, stable, dim=-1, descending=False):
     _ = stable
     sort_elem_cnt = inp.shape[dim]
     if sort_elem_cnt == 1:
-        return inp, torch.zeros_like(inp, dtype=torch.int32)
+        return inp, torch.zeros_like(inp, dtype=torch.int64)
 
     if dim < 0:
         dim = dim + inp.ndim

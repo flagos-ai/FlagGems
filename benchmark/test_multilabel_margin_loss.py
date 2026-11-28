@@ -63,6 +63,12 @@ _FP64 = (
     else []
 )
 _DTYPES = consts.FLOAT_DTYPES + _FP64
+if flag_gems.vendor_name == "enflame":
+    # torch_gcu provides no aten::multilabel_margin_loss kernel for fp16/bf16,
+    # so the baseline side cannot be timed for those dtypes. Keep fp32 (plus
+    # fp64 when the device reports it) so the operator is still measured
+    # against the aten baseline; other vendors keep the full dtype list.
+    _DTYPES = [torch.float32] + _FP64
 
 
 class MultilabelMarginLossBenchmark(base.Benchmark):

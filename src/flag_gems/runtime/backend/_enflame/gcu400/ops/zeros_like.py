@@ -23,6 +23,10 @@ from .zeros import zeros_kernel
 
 logger = logging.getLogger(__name__)
 
+SMALL_THRESHOLD = 524288
+SMALL_BLOCK_SIZE = 4096
+LARGE_BLOCK_SIZE = 1024 * 32
+
 
 def zeros_like(
     x, *, dtype=None, layout=None, device=None, pin_memory=None, memory_format=None
@@ -34,7 +38,8 @@ def zeros_like(
         dtype = x.dtype
     out = torch.empty_like(x, device=device, dtype=dtype)
     N = x.numel()
+    block_size = SMALL_BLOCK_SIZE if N <= SMALL_THRESHOLD else LARGE_BLOCK_SIZE
     grid_fn = lambda meta: (min(triton.cdiv(N, meta["BLOCK_SIZE"]), 24),)
     with torch_device_fn.device(x.device):
-        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=1024 * 16, num_warps=1)
+        zeros_kernel[grid_fn](out, N, BLOCK_SIZE=block_size, num_warps=1)
     return out

@@ -215,7 +215,7 @@ def _thnn_conv2d_direct64(
 
 
 def thnn_conv2d(self, weight, kernel_size, bias=None, stride=1, padding=0):
-    logger.debug("GEMS_ENFLAME_GCU400 THNN_CONV2D")
+    logger.debug("GEMS_ENFLAME THNN_CONV2D")
     x = self
     # Both kernels address their operands with a packed NCHW linear index, which
     # only matches logical element order when the tensor is contiguous. Strided

@@ -117,6 +117,16 @@ class SparseMmReduceImplBackwardBenchmark(base.BlasBenchmark):
         return nnz * n * 4
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame GCU400: the backward launches one program per stored non-zero "
+        "(grid.x = nnz per column block) and grid.x is capped at 65535, while the "
+        "benchmark's 4096x4096 / 10%-sparsity case stores 1.68M non-zeros; the "
+        "native baseline is additionally not registered for the SparseCsr GCU "
+        "backend, so no speedup could be reported either"
+    ),
+)
 @pytest.mark.sparse_mm_reduce_impl_backward
 def test_sparse_mm_reduce_impl_backward(monkeypatch):
     bench = SparseMmReduceImplBackwardBenchmark(

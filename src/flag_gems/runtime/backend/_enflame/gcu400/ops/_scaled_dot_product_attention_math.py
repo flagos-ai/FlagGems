@@ -62,25 +62,43 @@ def _sdpa_math_kernel(
     BLOCK_N: tl.constexpr,
     IS_CAUSAL: tl.constexpr,
     HAS_ATTN_MASK: tl.constexpr,
+    EVEN_M: tl.constexpr,
+    EVEN_N: tl.constexpr,
+    D_FULL: tl.constexpr,
+    FOLD_SCALE: tl.constexpr,
+    GROUP_SIZE: tl.constexpr,
 ):
     start_m = tl.program_id(0)
     off_z = tl.program_id(1)
 
+    # off_z indexes the folded (batch, query head) axis.  K/V are folded over
+    # their own (smaller) head count, so a query head maps to key/value head
+    # ``head_index // GROUP_SIZE`` -- exactly the repeat_interleave expansion the
+    # ATen math reference performs for enable_gqa, and the single kv head that
+    # its matmul broadcast uses when GROUP_SIZE == heads.
+    kv_off_z = off_z // GROUP_SIZE
+
     q_base = Q + off_z * stride_qz
-    k_base = K + off_z * stride_kz
-    v_base = V + off_z * stride_vz
+    k_base = K + kv_off_z * stride_kz
+    v_base = V + kv_off_z * stride_vz
     o_base = Out + off_z * stride_oz
     w_base = Weights + off_z * stride_wz
 
     offs_m = start_m * BLOCK_M + tl.arange(0, BLOCK_M)
     offs_d = tl.arange(0, BLOCK_D)
-    d_mask = offs_d < HEAD_DIM
 
     q_mask = offs_m < Q_CTX
     q_ptrs = q_base + offs_m[:, None] * stride_qm + offs_d[None, :] * stride_qk
     # Keep Q/K/V in their native dtype so tl.dot uses tensor cores; only the
     # softmax statistics and accumulators run in fp32.
-    query = tl.load(q_ptrs, mask=q_mask[:, None] & d_mask[None, :], other=0.0)
+    if D_FULL and EVEN_M:
+        query = tl.load(q_ptrs)
+    elif D_FULL:
+        query = tl.load(q_ptrs, mask=q_mask[:, None], other=0.0)
+    else:
+        query = tl.load(
+            q_ptrs, mask=q_mask[:, None] & (offs_d < HEAD_DIM)[None, :], other=0.0
+        )
 
     LOG2E: tl.constexpr = 1.4426950408889634
 
@@ -95,16 +113,40 @@ def _sdpa_math_kernel(
     else:
         hi = KV_CTX
 
+    # When no additive mask is present, fold sm_scale into the exp2 argument:
+    # exp2((qk - m) * sm_scale * LOG2E) keeps the qk tile in raw units and
+    # drops one per-element multiply per iteration. With an additive mask the
+    # scale must be applied before the mask add, so keep the baseline form.
+    if FOLD_SCALE and not HAS_ATTN_MASK:
+        SL = sm_scale * LOG2E
+    else:
+        SL = LOG2E
+
+    # KV load safety: EVEN_N (KV_CTX % BLOCK_N == 0) also bounds every causal
+    # block end at ceil(hi / BLOCK_N) * BLOCK_N <= KV_CTX, so unmasked loads
+    # never overrun; otherwise the tail block needs the bounds mask.
+    kv_oob = not EVEN_N
+
     # Pass 1: online softmax to compute row max (m_i), row sum (l_i) and the
     # unnormalized output accumulator in a single streaming loop.
     for start_n in range(0, hi, BLOCK_N):
         offs_n = start_n + tl.arange(0, BLOCK_N)
-        kv_mask = offs_n < KV_CTX
 
         k_ptrs = k_base + offs_n[:, None] * stride_kn + offs_d[None, :] * stride_kk
-        key = tl.load(k_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0)
+        if D_FULL and not kv_oob:
+            key = tl.load(k_ptrs)
+        elif D_FULL:
+            key = tl.load(k_ptrs, mask=(offs_n < KV_CTX)[:, None], other=0.0)
+        else:
+            key = tl.load(
+                k_ptrs,
+                mask=(offs_n < KV_CTX)[:, None] & (offs_d < HEAD_DIM)[None, :],
+                other=0.0,
+            )
 
-        qk = tl.dot(query, tl.trans(key)).to(tl.float32) * sm_scale
+        qk = tl.dot(query, tl.trans(key)).to(tl.float32)
+        if not FOLD_SCALE or HAS_ATTN_MASK:
+            qk = qk * sm_scale
 
         if HAS_ATTN_MASK:
             m_ptrs = (
@@ -113,46 +155,77 @@ def _sdpa_math_kernel(
                 + offs_m[:, None] * stride_mm
                 + offs_n[None, :] * stride_mn
             )
-            load_mask = q_mask[:, None] & kv_mask[None, :]
+            load_mask = q_mask[:, None] & (offs_n < KV_CTX)[None, :]
             add_mask = tl.load(m_ptrs, mask=load_mask, other=0.0).to(tl.float32)
             qk += add_mask
 
-        qk = tl.where(kv_mask[None, :], qk, -float("inf"))
-
+        if kv_oob:
+            qk = tl.where((offs_n < KV_CTX)[None, :], qk, -float("inf"))
         if IS_CAUSAL:
             causal = offs_m[:, None] >= offs_n[None, :]
             qk = tl.where(causal, qk, -float("inf"))
 
         m_ij = tl.maximum(m_i, tl.max(qk, 1))
         m_ij_safe = tl.where(m_ij == -float("inf"), 0.0, m_ij)
-        p = tl.exp2((qk - m_ij_safe[:, None]) * LOG2E)
-        alpha = tl.exp2((m_i - m_ij_safe) * LOG2E)
+        p = tl.exp2((qk - m_ij_safe[:, None]) * SL)
+        alpha = tl.exp2((m_i - m_ij_safe) * SL)
         l_i = l_i * alpha + tl.sum(p, 1)
 
         v_ptrs = v_base + offs_n[:, None] * stride_vn + offs_d[None, :] * stride_vk
-        value = tl.load(v_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0)
+        if D_FULL and not kv_oob:
+            value = tl.load(v_ptrs)
+        elif D_FULL:
+            value = tl.load(v_ptrs, mask=(offs_n < KV_CTX)[:, None], other=0.0)
+        else:
+            value = tl.load(
+                v_ptrs,
+                mask=(offs_n < KV_CTX)[:, None] & (offs_d < HEAD_DIM)[None, :],
+                other=0.0,
+            )
 
         acc = acc * alpha[:, None]
         acc += tl.dot(p.to(value.dtype), value).to(tl.float32)
         m_i = m_ij_safe
 
     l_safe = tl.where(l_i == 0.0, 1.0, l_i)
-    acc = acc / l_safe[:, None]
+    inv_l = 1.0 / l_safe
+    acc = acc * inv_l[:, None]
 
     o_ptrs = o_base + offs_m[:, None] * stride_om + offs_d[None, :] * stride_ok
-    tl.store(
-        o_ptrs, acc.to(Out.dtype.element_ty), mask=q_mask[:, None] & d_mask[None, :]
-    )
+    if D_FULL and EVEN_M:
+        tl.store(o_ptrs, acc.to(Out.dtype.element_ty))
+    elif D_FULL:
+        tl.store(o_ptrs, acc.to(Out.dtype.element_ty), mask=q_mask[:, None])
+    elif EVEN_M:
+        tl.store(
+            o_ptrs, acc.to(Out.dtype.element_ty), mask=(offs_d < HEAD_DIM)[None, :]
+        )
+    else:
+        tl.store(
+            o_ptrs,
+            acc.to(Out.dtype.element_ty),
+            mask=q_mask[:, None] & (offs_d < HEAD_DIM)[None, :],
+        )
 
     # Pass 2: recompute normalized probabilities with the finalized m_i / l_i
     # and materialize the full (Q_CTX, KV_CTX) attention weight matrix.
     for start_n in range(0, KV_CTX, BLOCK_N):
         offs_n = start_n + tl.arange(0, BLOCK_N)
-        kv_mask = offs_n < KV_CTX
 
         k_ptrs = k_base + offs_n[:, None] * stride_kn + offs_d[None, :] * stride_kk
-        key = tl.load(k_ptrs, mask=kv_mask[:, None] & d_mask[None, :], other=0.0)
-        qk = tl.dot(query, tl.trans(key)).to(tl.float32) * sm_scale
+        if D_FULL and not kv_oob:
+            key = tl.load(k_ptrs)
+        elif D_FULL:
+            key = tl.load(k_ptrs, mask=(offs_n < KV_CTX)[:, None], other=0.0)
+        else:
+            key = tl.load(
+                k_ptrs,
+                mask=(offs_n < KV_CTX)[:, None] & (offs_d < HEAD_DIM)[None, :],
+                other=0.0,
+            )
+        qk = tl.dot(query, tl.trans(key)).to(tl.float32)
+        if not FOLD_SCALE or HAS_ATTN_MASK:
+            qk = qk * sm_scale
 
         if HAS_ATTN_MASK:
             m_ptrs = (
@@ -161,21 +234,29 @@ def _sdpa_math_kernel(
                 + offs_m[:, None] * stride_mm
                 + offs_n[None, :] * stride_mn
             )
-            load_mask = q_mask[:, None] & kv_mask[None, :]
+            load_mask = q_mask[:, None] & (offs_n < KV_CTX)[None, :]
             add_mask = tl.load(m_ptrs, mask=load_mask, other=0.0).to(tl.float32)
             qk += add_mask
 
-        keep = kv_mask[None, :]
         if IS_CAUSAL:
             causal = offs_m[:, None] >= offs_n[None, :]
-            keep = keep & causal
+            qk = tl.where(causal, qk, -float("inf"))
 
-        p = tl.exp2((qk - m_i[:, None]) * LOG2E)
-        p = tl.where(keep, p, 0.0) / l_safe[:, None]
+        p = tl.exp2((qk - m_i[:, None]) * SL)
+        if not IS_CAUSAL and not HAS_ATTN_MASK and EVEN_N:
+            p = p * inv_l[:, None]
+        else:
+            keep = offs_n < KV_CTX
+            if IS_CAUSAL:
+                keep = keep & (offs_m[:, None] >= offs_n[None, :])
+            p = tl.where(keep, p, 0.0) * inv_l[:, None]
 
         w_ptrs = w_base + offs_m[:, None] * stride_wm + offs_n[None, :] * stride_wn
-        store_mask = q_mask[:, None] & kv_mask[None, :]
-        tl.store(w_ptrs, p.to(Weights.dtype.element_ty), mask=store_mask)
+        if EVEN_M and EVEN_N:
+            tl.store(w_ptrs, p.to(Weights.dtype.element_ty))
+        else:
+            store_mask = q_mask[:, None] & (offs_n < KV_CTX)[None, :]
+            tl.store(w_ptrs, p.to(Weights.dtype.element_ty), mask=store_mask)
 
 
 def _scaled_dot_product_attention_math(
@@ -185,17 +266,51 @@ def _scaled_dot_product_attention_math(
     attn_mask=None,
     dropout_p=0.0,
     is_causal=False,
+    dropout_mask=None,
     scale=None,
+    enable_gqa=False,
 ):
     """Computes scaled dot-product attention with an explicit softmax and
-    returns both the attention output and the full attention weight matrix."""
-    logger.debug("GEMS_ENFLAME_GCU400 _SCALED_DOT_PRODUCT_ATTENTION_MATH")
+    returns both the attention output and the full attention weight matrix.
+
+    ``dropout_mask`` and ``enable_gqa`` mirror the ATen math signature.  The
+    mask is only consumed by the reference when ``dropout_p > 0``, which this
+    kernel rejects, so it is accepted and ignored.  ``enable_gqa`` selects the
+    grouped-query head mapping described below.
+    """
+    logger.debug("GEMS_ENFLAME _SCALED_DOT_PRODUCT_ATTENTION_MATH")
 
     assert dropout_p == 0.0, "dropout_p != 0.0 is not supported"
     assert query.dim() == 4, "expected 4D (batch, heads, seq_len, head_dim) tensors"
 
     batch, heads, q_seq_len, head_dim = query.shape
+    key_heads = key.shape[1]
+    value_heads = value.shape[1]
     kv_seq_len = key.shape[2]
+
+    # Grouped-query attention: query head h reads key/value head
+    # h // GROUP_SIZE.  With enable_gqa=True this is the repeat_interleave
+    # expansion the ATen math reference does; with a single key/value head the
+    # reference obtains the same mapping from matmul broadcasting, so
+    # enable_gqa=False is accepted there too.
+    assert key_heads == value_heads, (
+        "expected key and value to have the same number of heads, "
+        f"but got {key_heads} and {value_heads}"
+    )
+    if key_heads != heads:
+        assert enable_gqa or key_heads == 1, (
+            "enable_gqa=True is required when the key/value head count "
+            f"({key_heads}) differs from the query head count ({heads}) and is "
+            "larger than one"
+        )
+        assert (
+            heads % key_heads == 0
+        ), f"query heads ({heads}) must be a multiple of key heads ({key_heads})"
+    group_size = heads // key_heads if key_heads else 1
+    logger.debug(
+        "GEMS_ENFLAME _SCALED_DOT_PRODUCT_ATTENTION_MATH group_size=%d",
+        group_size,
+    )
 
     if scale is None:
         scale = 1.0 / math.sqrt(head_dim)
@@ -212,10 +327,11 @@ def _scaled_dot_product_attention_math(
     )
 
     # Fold (batch, heads) into one grid axis; contiguous reshape gives a clean
-    # per-(b, h) leading stride for pointer arithmetic in the kernel.
+    # per-(b, h) leading stride for pointer arithmetic in the kernel.  K/V fold
+    # over their own head count so the kernel can pick the grouped head.
     q2 = query.reshape(batch * heads, q_seq_len, head_dim)
-    k2 = key.reshape(batch * heads, kv_seq_len, head_dim)
-    v2 = value.reshape(batch * heads, kv_seq_len, head_dim)
+    k2 = key.reshape(batch * key_heads, kv_seq_len, head_dim)
+    v2 = value.reshape(batch * key_heads, kv_seq_len, head_dim)
     o2 = out.reshape(batch * heads, q_seq_len, head_dim)
     w2 = weights.reshape(batch * heads, q_seq_len, kv_seq_len)
 
@@ -230,11 +346,18 @@ def _scaled_dot_product_attention_math(
         am2 = query  # unused placeholder; HAS_ATTN_MASK guards all accesses
         m_strides = (0, 0, 0)
 
-    # BLOCK_M/BLOCK_N = 32 to stay within shared memory limits (166KB on T4/A10).
-    # The two-pass algorithm (forward + materialize weights) requires ~2x memory
-    # vs. a single-pass kernel, so smaller blocks are necessary.
-    BLOCK_M = 32
-    BLOCK_N = 32
+    # GCU400 (L600) tile sizing: BLOCK_M/BLOCK_N = 64 x kv-dependent gives the
+    # best MMA utilization for this two-pass kernel. 16-bit dtypes keep the
+    # full 256-wide KV tile inside the ~448KB per-program DSM budget (peak
+    # ~408KB at head_dim 64); fp32 tiles cost 2x the bytes, so the KV tile is
+    # capped at 128 (peak ~288KB). tl.arange needs a power-of-2 span >= 16 for
+    # tl.dot, so tiny KV lengths pad up to 16.
+    BLOCK_M = 64
+    if query.dtype in (torch.float16, torch.bfloat16):
+        bn_cap = 256
+    else:
+        bn_cap = 128
+    BLOCK_N = max(16, min(bn_cap, triton.next_power_of_2(kv_seq_len)))
     # tl.arange over the head dim requires a power-of-2 span; pad and mask.
     BLOCK_D = triton.next_power_of_2(head_dim)
 
@@ -275,6 +398,12 @@ def _scaled_dot_product_attention_math(
             BLOCK_N=BLOCK_N,
             IS_CAUSAL=is_causal,
             HAS_ATTN_MASK=has_attn_mask,
+            EVEN_M=(q_seq_len % BLOCK_M == 0),
+            EVEN_N=(kv_seq_len % BLOCK_N == 0),
+            D_FULL=(BLOCK_D == head_dim),
+            FOLD_SCALE=(not has_attn_mask),
+            GROUP_SIZE=group_size,
+            num_warps=4,
         )
 
     return out, weights

@@ -30,16 +30,6 @@ logger = logging.getLogger(__name__)
 
 
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config({"BLOCK": 64}, num_warps=2, num_stages=2),
-        triton.Config({"BLOCK": 128}, num_warps=2, num_stages=2),
-        triton.Config({"BLOCK": 256}, num_warps=4, num_stages=2),
-        triton.Config({"BLOCK": 512}, num_warps=4, num_stages=3),
-        triton.Config({"BLOCK": 1024}, num_warps=8, num_stages=3),
-    ],
-    key=["N"],
-)
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset", "N"])
 def bernoulli_kernel(
     out_ptr,
@@ -52,40 +42,50 @@ def bernoulli_kernel(
     UNROLL: tl.constexpr = 4  # philox generate 128 random bits at a time
     philox_seed = philox_seed.to(tl.int64)
     philox_offset = philox_offset.to(tl.int64)
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
     c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    i4 = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    c0 += i4
-    _O = c0 * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0)
-    r1 = uint_to_uniform_float(r1)
-    r2 = uint_to_uniform_float(r2)
-    r3 = uint_to_uniform_float(r3)
 
-    off_0 = tl.program_id(0) * BLOCK * UNROLL + tl.arange(0, BLOCK)
-    off_1 = off_0 + BLOCK
-    off_2 = off_1 + BLOCK
-    off_3 = off_2 + BLOCK
+    # Deterministic tile (no triton.autotune): the libtuner do_bench aborts
+    # the device on its first launch on gcu400. The grid is capped and the
+    # kernel walks the remaining blocks; the philox counter is rebuilt from
+    # block_id so every element keeps a unique stream position.
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    num_blocks = (N + BLOCK * UNROLL - 1) // (BLOCK * UNROLL)
 
-    x0 = tl.load(X_ptr + off_0, mask=off_0 < N, other=0.0)
-    x1 = tl.load(X_ptr + off_1, mask=off_1 < N, other=0.0)
-    x2 = tl.load(X_ptr + off_2, mask=off_2 < N, other=0.0)
-    x3 = tl.load(X_ptr + off_3, mask=off_3 < N, other=0.0)
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
+        i4 = block_id * BLOCK + tl.arange(0, BLOCK)
+        c0 += i4
+        _O = c0 * 0
+        r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
+        r0 = uint_to_uniform_float(r0)
+        r1 = uint_to_uniform_float(r1)
+        r2 = uint_to_uniform_float(r2)
+        r3 = uint_to_uniform_float(r3)
 
-    y0 = tl.where(r0 < x0, 1.0, 0.0)
-    y1 = tl.where(r1 < x1, 1.0, 0.0)
-    y2 = tl.where(r2 < x2, 1.0, 0.0)
-    y3 = tl.where(r3 < x3, 1.0, 0.0)
+        off_0 = block_id * BLOCK * UNROLL + tl.arange(0, BLOCK)
+        off_1 = off_0 + BLOCK
+        off_2 = off_1 + BLOCK
+        off_3 = off_2 + BLOCK
 
-    tl.store(out_ptr + off_0, y0, mask=off_0 < N)
-    tl.store(out_ptr + off_1, y1, mask=off_1 < N)
-    tl.store(out_ptr + off_2, y2, mask=off_2 < N)
-    tl.store(out_ptr + off_3, y3, mask=off_3 < N)
+        x0 = tl.load(X_ptr + off_0, mask=off_0 < N, other=0.0)
+        x1 = tl.load(X_ptr + off_1, mask=off_1 < N, other=0.0)
+        x2 = tl.load(X_ptr + off_2, mask=off_2 < N, other=0.0)
+        x3 = tl.load(X_ptr + off_3, mask=off_3 < N, other=0.0)
+
+        y0 = tl.where(r0 < x0, 1.0, 0.0)
+        y1 = tl.where(r1 < x1, 1.0, 0.0)
+        y2 = tl.where(r2 < x2, 1.0, 0.0)
+        y3 = tl.where(r3 < x3, 1.0, 0.0)
+
+        tl.store(out_ptr + off_0, y0, mask=off_0 < N)
+        tl.store(out_ptr + off_1, y1, mask=off_1 < N)
+        tl.store(out_ptr + off_2, y2, mask=off_2 < N)
+        tl.store(out_ptr + off_3, y3, mask=off_3 < N)
 
 
 def bernoulli(self, *, generator=None):
-    logger.debug("GEMS_ENFLAME_GCU400 BERNOULLI")
+    logger.debug("GEMS_ENFLAME BERNOULLI")
     assert self.dtype in (
         torch.float16,
         torch.bfloat16,
@@ -96,11 +96,12 @@ def bernoulli(self, *, generator=None):
     out = torch.empty_like(self)
     N = self.numel()
     UNROLL = 4
-    grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
+    BLOCK = 1024
+    grid = (min(triton.cdiv(N, BLOCK * UNROLL), 65535),)
     increment = triton.cdiv(N, UNROLL)
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator
     )
     with torch_device_fn.device(device):
-        bernoulli_kernel[grid_fn](out, self, N, philox_seed, philox_offset)
+        bernoulli_kernel[grid](out, self, N, philox_seed, philox_offset, BLOCK=BLOCK)
     return out

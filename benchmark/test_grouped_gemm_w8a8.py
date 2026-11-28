@@ -376,10 +376,45 @@ class GroupedGemmBenchmark(Benchmark):
         return self.native_inputs[2]
 
 
+_EXPERT_SPAN_CACHE = {}
+
+
+def _expert_spans(A, m_rows):
+    """Return the per-expert [start, end) row spans of A, cached per call site."""
+    key = (A.data_ptr(), m_rows.data_ptr(), int(m_rows.numel()), int(A.shape[0]))
+    spans = _EXPERT_SPAN_CACHE.get(key)
+    if spans is None:
+        spans = []
+        start = 0
+        for count in m_rows.cpu().tolist():
+            spans.append((start, start + count))
+            start += count
+        _EXPERT_SPAN_CACHE[key] = spans
+    return spans
+
+
+def aten_int8_grouped_gemm_baseline(A, As, B, Bs, C, m_indices, m_rows):
+    """Baseline: per-expert aten INT8 matmul plus the FP32 scale epilogue.
+
+    ``torch._int_mm`` is the aten INT8 GEMM on GCU; the scales are applied on the
+    INT32 accumulator exactly like the fused kernel epilogue, so both legs do the
+    same arithmetic and only the fusion differs. The public API of this module
+    offers no grouped INT8 GEMM to compare against, so this is the native
+    reference leg for the enflame backend.
+    """
+    for expert, (start, end) in enumerate(_expert_spans(A, m_rows)):
+        if end == start:
+            continue
+        acc = torch._int_mm(A[start:end], B[expert].t())
+        C[start:end] = (acc.float() * As[start:end] * Bs[expert, :, 0]).to(
+            torch.bfloat16
+        )
+
+
 @pytest.mark.grouped_gemm_w8a8
 @pytest.mark.skipif(
     not (
-        flag_gems.vendor_name in ("ascend", "metax", "thead")
+        flag_gems.vendor_name in ("ascend", "enflame", "metax", "thead")
         and "grouped_gemm_w8a8" in vars(flag_gems)
         or flag_gems.vendor_name == "nvidia"
         and "grouped_gemm_w8a8_fp8" in vars(flag_gems)
@@ -395,6 +430,13 @@ def test_grouped_gemm_w8a8():
             dtypes=[torch.int8, torch.float8_e4m3fn],
         )
         bench.torch_op = bench.mctlass_reference
+    elif flag_gems.vendor_name == "enflame":
+        bench = GroupedGEMMW8A8Benchmark(
+            op_name="grouped_gemm_w8a8",
+            torch_op=aten_int8_grouped_gemm_baseline,
+            gems_op=flag_gems.grouped_gemm_w8a8,
+            dtypes=[torch.bfloat16],
+        )
     else:
         block_scaled = flag_gems.vendor_name == "nvidia"
         if block_scaled:

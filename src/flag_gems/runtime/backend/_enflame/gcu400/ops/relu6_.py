@@ -71,14 +71,16 @@ def _relu6_flat_kernel(X, N, BLOCK: tl.constexpr, EVEN: tl.constexpr):
             tl.store(X + offs, tl.minimum(tl.maximum(x, 0), 6), mask=mask)
 
 
-def _relu6_flat_block(numel, itemsize):
+def _relu6_flat_config(numel, dtype):
     if numel <= 4096:
-        return max(triton.next_power_of_2(numel), 256)
+        return max(triton.next_power_of_2(numel), 256), 2
     if numel <= 65536:
-        return 2048
+        return 2048, 2
     if numel <= (1 << 21):
-        return 8192 if itemsize <= 2 else 16384
-    return 65536
+        return (8192 if dtype.itemsize <= 2 else 16384), 2
+    if dtype is torch.bfloat16 and numel <= (1 << 26):
+        return 131072, 4
+    return 65536, 2
 
 
 def _use_flat_path(A, numel):
@@ -113,14 +115,14 @@ def relu6_(A):
     logger.debug("GEMS_ENFLAME RELU6_")
     numel = A.numel()
     if _use_flat_path(A, numel):
-        block = _relu6_flat_block(numel, A.element_size())
+        block, num_warps = _relu6_flat_config(numel, A.dtype)
         grid = (min(triton.cdiv(numel, block), _FLAT_GRID_CAP),)
         _relu6_flat_kernel[grid](
             A,
             numel,
             BLOCK=block,
             EVEN=(numel % block == 0),
-            num_warps=2,
+            num_warps=num_warps,
         )
         return A
     if numel <= _FLAT_MAX_NUMEL and _max_flat_offset(A) < _INT32_LIMIT:

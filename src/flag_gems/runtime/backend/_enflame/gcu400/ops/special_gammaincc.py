@@ -20,6 +20,8 @@ import triton.language as tl
 
 from flag_gems.utils import pointwise_dynamic, tl_extra_shim
 
+from .igammac import igammac
+
 logger = logging.getLogger(__name__)
 
 
@@ -107,13 +109,13 @@ def special_gammaincc_func(a, x):
 def special_gammaincc(self, other):
     """Computes the regularized upper incomplete gamma function Q(a, x).
 
-    Single pointwise kernel with two convergence regimes: a power series for
-    P(a, x) when x < a + 1 (Q = 1 - P, no cancellation there since Q >= ~0.4),
-    and Lentz's continued fraction for Q(a, x) directly when x >= a + 1 (where
-    Q can be tiny). Both regimes run in float32; broadcasting follows the
-    pointwise_dynamic promotion machinery.
+    Mathematically special_gammaincc and igammac are the same operator (Q(a, x)). This backend
+    reuses the igammac implementation: the pointwise_dynamic kernel above, like igamma, hits
+    the GCU backend issue where an oversized block corrupts every result (measured with
+    a, x in [0.1, 1.1]: 100% of elements mismatched, max absolute error 20.6), while the
+    dedicated igammac kernel is validated at BLOCK_SIZE=256 (test_igammac.py fully passes).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_GAMMAINCC")
+    logger.debug("GEMS_ENFLAME SPECIAL_GAMMAINCC")
     # The kernel only supports floating point dtypes; igammac_cuda does
     # not support Half/BFloat16 either. Reject them explicitly.
     supported_dtypes = (torch.float32, torch.float64)
@@ -122,4 +124,4 @@ def special_gammaincc(self, other):
             f"special_gammaincc Triton kernel supports dtypes {supported_dtypes}, "
             f"but got self.dtype={self.dtype}, other.dtype={other.dtype}"
         )
-    return special_gammaincc_func(self, other)
+    return igammac(self, other)

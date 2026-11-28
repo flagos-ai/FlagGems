@@ -58,7 +58,7 @@ def shifted_chebyshev_polynomial_t_kernel_scalar_n(x, n):
 
 
 def special_shifted_chebyshev_polynomial_t(x, n):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T")
+    logger.debug("GEMS_ENFLAME SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_T")
     # Matches the eager CUDA kernel, which has no Half/BFloat16 implementation.
     if x.dtype in (torch.float16, torch.bfloat16):
         raise ValueError(

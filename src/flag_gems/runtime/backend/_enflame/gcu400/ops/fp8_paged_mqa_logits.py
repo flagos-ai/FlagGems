@@ -24,7 +24,7 @@ logger = logging.getLogger(__name__)
 
 
 def cdiv(x: int, y: int) -> int:
-    logger.debug("GEMS_ENFLAME_GCU400 CDIV")
+    logger.debug("GEMS_ENFLAME CDIV")
     return (x + y - 1) // y
 
 
@@ -225,7 +225,7 @@ def fp8_paged_mqa_logits(
     block_tables: torch.Tensor,
     max_model_len: int,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 FP8_PAGED_MQA_LOGITS")
+    logger.debug("GEMS_ENFLAME FP8_PAGED_MQA_LOGITS")
     assert q.is_cuda and kv_cache.is_cuda and weights.is_cuda
     assert context_lens.is_cuda and block_tables.is_cuda
 

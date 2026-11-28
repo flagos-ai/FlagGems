@@ -424,6 +424,11 @@ def test_put__index_out_of_range(bad):
     # the failure is exercised in an isolated subprocess.
     if flag_gems.vendor_name in {"mthreads", "metax", "iluvatar"}:
         pytest.skip("native put_ does not enforce device-side index bounds")
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "enflame native aten::put_ rejects an out-of-range index with a "
+            "host-side IndexError instead of a device-side assert/trap"
+        )
     code = textwrap.dedent(f"""
         import torch
         import flag_gems

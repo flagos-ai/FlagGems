@@ -55,6 +55,16 @@ _FAST_TILE_MAX = 8192
 _FAST_TILE_MAX_LANES = 32768
 _FAST_GRID_MAX = 65535
 _FAST_NUM_WARPS = 1
+_FAST_GRID_CAP = 48
+
+
+def _packed_num_warps(lanes, es):
+    # Measured on GCU400 (Triton GCU 4.1.6): nw=2 is the best num_warps for
+    # the packed kernels' fused word-store loops, and nw=1 must never be used
+    # -- at num_warps=1 the packed two-tensor kernel compiles into a binary
+    # that raises a device-level Sip exception (KMD abort, deterministic);
+    # nw in {2, 4, 8} all run correctly and bitwise-identically.
+    return 2
 
 
 @triton.jit(do_not_specialize=["M"])
@@ -86,10 +96,15 @@ def _cartesian_prod_fwd_kernel(
     pr6: tl.constexpr,
     pr7: tl.constexpr,
     N: tl.constexpr,
+    NCOL: tl.constexpr,
+    COL0: tl.constexpr,
     WIDE: tl.constexpr,
     BLOCK_ROWS: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
+    # The grid is one column chunk wide: the NCOL pointers hold columns
+    # [COL0, COL0 + NCOL) of the full N-column output, so shapes with more than
+    # _MAX_TENSORS inputs are covered by several launches.
     pid = tl.program_id(0)
     if WIDE:
         # only when the flat output offset would overflow int32
@@ -105,7 +120,7 @@ def _cartesian_prod_fwd_kernel(
 
     out_ty = out_ptr.dtype.element_ty
     acc = tl.zeros([BLOCK_ROWS, BLOCK_N], dtype=out_ty)
-    for k in tl.static_range(N):
+    for k in tl.static_range(NCOL):
         if prs[k] % BLOCK_ROWS == 0:
             # PR[k] spans several whole blocks, so every row of this program has
             # the same quotient and the input index collapses to one uniform
@@ -118,8 +133,8 @@ def _cartesian_prod_fwd_kernel(
         v = tl.load(ptrs[k] + tl.where(row_mask, idx, 0))
         acc = tl.where(cols[None, :] == k, v.to(out_ty)[:, None], acc)
 
-    off = rows[:, None] * N + cols[None, :]
-    mask = row_mask[:, None] & (cols[None, :] < N)
+    off = rows[:, None] * N + (COL0 + cols)[None, :]
+    mask = row_mask[:, None] & (cols[None, :] < NCOL)
     tl.store(out_ptr + off, acc, mask=mask)
 
 
@@ -217,6 +232,141 @@ def _cartesian_prod_fwd_tile3(
     tl.store(out_ptr + base + offs + (N - 1), tl.reshape(vb, (B,)))
 
 
+# ---------------------------------------------------------------------------
+# Packed persistent fast paths (second-generation).
+#
+# The tile2/tile3 kernels above give every program exactly one radix tile of
+# B rows and write each column with a stride-N 1D store. Two GCU pathologies
+# make that expensive once the radix is small (e.g. 16x128x64x16 has
+# B = 1024 and 2048 tiles): (1) a stride-N store is a scatter -- per-lane
+# transactions at ~50-140G elem/s, an order of magnitude under the ~3TB/s
+# flat write roof -- and (2) grids beyond 48 programs pay ~2.4us of CTA
+# dispatch per wave (2048 tiles ~= 43 waves).
+#
+# The packed kernels instead cap the grid at 48 programs and let each one
+# loop over its radix tiles with a grid-stride loop, and merge adjacent
+# output columns into machine words so each program's whole tile is written
+# with fully contiguous flat word stores:
+#   N == 2: both columns form one word (uint32 for 16-bit dtypes, uint64
+#           for 32-bit),
+#   N == 4: all four 16-bit columns form one uint64 word.
+# Column values are reinterpreted with unsigned bitcasts and packed with
+# shifts and ors; zero-extending the *unsigned* reinterpretation is
+# bit-exact for every dtype (NaN payloads, -0.0 and negative integers keep
+# their bits). All tile-invariant pieces (the outer product of the last two
+# columns, already reshaped flat) are hoisted out of the loop; the per-tile
+# data is one scalar per uniform column (or one short contiguous run for
+# the G-axis form), and the next tile's loads are prefetched before the
+# current tile's store by register rotation so the tiny load latency never
+# lands on the critical path.
+#
+# Routing (measured on GCU400, Triton GCU 4.1.6): the two-column packed
+# form and the four-column 16-bit form are the winners; the three-column
+# pair packing, the four-column 32-bit (two-word) form and the 64-bit
+# element form all measured slower than -- or, for 64-bit layouts,
+# physically unsafe under -- the per-column strided stores and keep the
+# tile3 kernel. num_warps must stay >= 2: at num_warps=1 the packed
+# two-tensor kernel produces a binary that raises a device-level Sip
+# exception (see the compiler issue note in the job log).
+# ---------------------------------------------------------------------------
+
+
+@triton.jit(do_not_specialize=["M", "TILES"])
+def _cartesian_prod_fwd_packed2(
+    out_ptr,
+    M,
+    TILES,
+    p0,
+    p1,
+    s0: tl.constexpr,
+    A0: tl.constexpr,
+    A1: tl.constexpr,
+    ES: tl.constexpr,
+    WS: tl.constexpr,
+):
+    # Two-tensor G-axis form, host-guaranteed: B = A0 * A1 with A0 = G | s0
+    # (G >= 2), A1 = s1, so column 0 takes the A0 contiguous values starting
+    # at in0[(t * A0) % s0] inside tile t and column 1 is the broadcast
+    # partner; both merge into one machine word (uint32 for 16-bit dtypes,
+    # uint64 for 32-bit). vb is tile-invariant; va is a short contiguous run
+    # per tile, prefetched ahead of the store by register rotation.
+    pid = tl.program_id(0)
+    nprog = tl.num_programs(0)
+    q0 = tl.arange(0, A0)
+    q1 = tl.arange(0, A1)
+    B: tl.constexpr = A0 * A1
+    if WS == 4:
+        wptr = out_ptr.to(tl.pointer_type(tl.uint32))
+        wty = tl.uint32
+    else:
+        wptr = out_ptr.to(tl.pointer_type(tl.uint64))
+        wty = tl.uint64
+    if ES == 2:
+        vb_w = tl.load(p1 + q1).to(tl.uint16, bitcast=True).to(wty)
+    else:
+        vb_w = tl.load(p1 + q1).to(tl.uint32, bitcast=True).to(wty)
+    vb_hi = vb_w << (ES * 8)
+    offs = tl.arange(0, B)
+    t_cur = pid
+    if ES == 2:
+        va_c = tl.load(p0 + (t_cur * A0) % s0 + q0).to(tl.uint16, bitcast=True).to(wty)
+    else:
+        va_c = tl.load(p0 + (t_cur * A0) % s0 + q0).to(tl.uint32, bitcast=True).to(wty)
+    for t in range(pid, TILES, nprog):
+        tn = t + nprog
+        if ES == 2:
+            va_n = tl.load(p0 + (tn * A0) % s0 + q0).to(tl.uint16, bitcast=True).to(wty)
+        else:
+            va_n = tl.load(p0 + (tn * A0) % s0 + q0).to(tl.uint32, bitcast=True).to(wty)
+        word = va_c[:, None] | vb_hi[None, :]
+        tl.store(wptr + t * B + offs, tl.reshape(word, (B,)))
+        va_c = va_n
+
+
+@triton.jit(do_not_specialize=["M", "TILES"])
+def _cartesian_prod_fwd_packed4(
+    out_ptr,
+    M,
+    TILES,
+    p0,
+    p1,
+    p2,
+    p3,
+    s0: tl.constexpr,
+    s1: tl.constexpr,
+    A0: tl.constexpr,
+    A1: tl.constexpr,
+):
+    # Four-tensor 16-bit form: B = A0 * A1 rows per tile (A0 = s2, A1 = s3)
+    # and each row packs into one uint64 word [u0, u1, va, vb]. Cols 0/1 are
+    # one scalar each per tile (PR1 = B, PR0 = s1 * B); cols 2/3 repeat every
+    # tile, so their packed contribution is hoisted (already reshaped flat)
+    # out of the loop and only the uniform-column scalars are prefetched per
+    # tile by register rotation.
+    pid = tl.program_id(0)
+    nprog = tl.num_programs(0)
+    q0 = tl.arange(0, A0)
+    q1 = tl.arange(0, A1)
+    B: tl.constexpr = A0 * A1
+    wptr = out_ptr.to(tl.pointer_type(tl.uint64))
+    va_w = tl.load(p2 + q0).to(tl.uint16, bitcast=True).to(tl.uint64)
+    vb_w = tl.load(p3 + q1).to(tl.uint16, bitcast=True).to(tl.uint64)
+    word_hi = tl.reshape((va_w[:, None] << 32) | ((vb_w << 48)[None, :]), (B,))
+    offs = tl.arange(0, B)
+    t_cur = pid
+    u0_c = tl.load(p0 + (t_cur // s1) % s0)
+    u1_c = tl.load(p1 + t_cur % s1)
+    for t in range(pid, TILES, nprog):
+        tn = t + nprog
+        u0_n = tl.load(p0 + (tn // s1) % s0)
+        u1_n = tl.load(p1 + tn % s1)
+        u0_w = u0_c.to(tl.uint16, bitcast=True).to(tl.uint64)
+        u1_w = u1_c.to(tl.uint16, bitcast=True).to(tl.uint64)
+        tl.store(wptr + t * B + offs, word_hi | (u0_w | (u1_w << 16)))
+        u0_c = u0_n
+        u1_c = u1_n
+
+
 @triton.jit(do_not_specialize=["M"])
 def _cartesian_prod_bwd_kernel(
     gout_ptr,
@@ -246,9 +396,14 @@ def _cartesian_prod_bwd_kernel(
     pr6: tl.constexpr,
     pr7: tl.constexpr,
     N: tl.constexpr,
+    NCOL: tl.constexpr,
+    COL0: tl.constexpr,
+    NEEDS: tl.constexpr,
     WIDE: tl.constexpr,
     BLOCK_ROWS: tl.constexpr,
 ):
+    # Columns [COL0, COL0 + NCOL) of the full N-column grad are scattered by
+    # this launch; NEEDS[k] says whether column COL0 + k has a live input.
     pid = tl.program_id(0)
     if WIDE:
         rows = pid.to(tl.int64) * BLOCK_ROWS + tl.arange(0, BLOCK_ROWS).to(tl.int64)
@@ -261,16 +416,17 @@ def _cartesian_prod_bwd_kernel(
     prs = (pr0, pr1, pr2, pr3, pr4, pr5, pr6, pr7)
 
     # each output element feeds exactly one input element, so this is a scatter-add
-    for k in tl.static_range(N):
-        if prs[k] % BLOCK_ROWS == 0:
-            # PR[k] spans whole row blocks: this program writes a single index
-            base = (pid // (prs[k] // BLOCK_ROWS)) % sizes[k]
-            idx = tl.zeros([BLOCK_ROWS], dtype=tl.int32) + base
-        else:
-            idx = (rows // prs[k]) % sizes[k]
-        # accumulate in fp32 (fp64 for fp64) and cast once, like the reference
-        v = tl.load(gout_ptr + tl.where(row_mask, rows * N + k, 0))
-        tl.atomic_add(qs[k] + idx, v.to(qs[k].dtype.element_ty), mask=row_mask)
+    for k in tl.static_range(NCOL):
+        if NEEDS[k]:
+            if prs[k] % BLOCK_ROWS == 0:
+                # PR[k] spans whole row blocks: this program writes a single index
+                base = (pid // (prs[k] // BLOCK_ROWS)) % sizes[k]
+                idx = tl.zeros([BLOCK_ROWS], dtype=tl.int32) + base
+            else:
+                idx = (rows // prs[k]) % sizes[k]
+            # accumulate in fp32 (fp64 for fp64) and cast once, like the reference
+            v = tl.load(gout_ptr + tl.where(row_mask, rows * N + (COL0 + k), 0))
+            tl.atomic_add(qs[k] + idx, v.to(qs[k].dtype.element_ty), mask=row_mask)
 
 
 def _normalize(args, kwargs):
@@ -316,14 +472,21 @@ def _plan(m, n):
     return _BLOCK_ROWS, _NUM_WARPS, False
 
 
-def _fast_plan(sizes, m, n):
+def _fast_plan(sizes, m, n, itemsize):
     """Radix-tile plan, or None to keep the generic gather kernel.
 
     The fast kernels need every load to be a scalar or a contiguous vector
     and every program to cover whole radix cycles: the trailing sizes must
     be powers of two, M must divide evenly (guaranteed by structure), the
     flat output must stay inside int32 and the grid inside the x limit.
+    Shapes eligible for the packed kernels (N in {2, 4} with a clean word
+    packing of the row bytes) take the persistent flat-store path; the rest
+    keep the per-column strided tile2/tile3 kernels.
     """
+    if n > _MAX_TENSORS:
+        # the packed/tile kernels are hardwired to _MAX_TENSORS pointers;
+        # wider products stay on the (column-chunked) generic gather.
+        return None
     if m * n > _INT32_SAFE:
         return None
     if n == 2:
@@ -340,6 +503,13 @@ def _fast_plan(sizes, m, n):
             b = g * s1
             grid = m // b
             if grid and grid <= _FAST_GRID_MAX and m % b == 0:
+                # 16-bit and 32-bit dtypes pack both columns into one machine
+                # word; 64-bit elements stay on the element-typed tile3 path
+                # (their GCU physical layout depends on
+                # TORCH_GCU_ENABLE_INT64_AND_UINT64, and the packed word
+                # writes assume logical == physical row bytes).
+                if itemsize in (2, 4):
+                    return ("packed2", (g, s1), min(grid, _FAST_GRID_CAP))
                 return ("tile3", (g, s1), grid)
         # odd s0 (G == 1): direct two-column form with B | s1
         b = s1 if s1 <= b_cap else b_cap
@@ -359,6 +529,12 @@ def _fast_plan(sizes, m, n):
         grid = m // b
         if grid == 0 or grid > _FAST_GRID_MAX or m % b:
             return None
+        # Packed four-column words only pay off for 16-bit dtypes (one
+        # uint64 per row); the two-word (32-bit) variant measured slower
+        # than the per-column strided stores, and the three-column pair
+        # packing lost everywhere, so those shapes keep tile3.
+        if n == 4 and itemsize == 2:
+            return ("packed4", (a0, a1), min(grid, _FAST_GRID_CAP))
         return ("tile3", (a0, a1), grid)
     return None
 
@@ -375,7 +551,7 @@ class _CartesianProd(torch.autograd.Function):
         if m == 0:
             return out
 
-        fast = _fast_plan(sizes, m, n)
+        fast = _fast_plan(sizes, m, n, tensors[0].dtype.itemsize)
         if fast is not None:
             kind, b, grid = fast
             if kind == "tile2":
@@ -389,6 +565,39 @@ class _CartesianProd(torch.autograd.Function):
                     N=n,
                     B=b,
                     num_warps=_FAST_NUM_WARPS,
+                )
+            elif kind == "packed2":
+                a0, a1 = b
+                es = tensors[0].dtype.itemsize
+                ws = 4 if es == 2 else 8
+                _cartesian_prod_fwd_packed2[(grid,)](
+                    out,
+                    m,
+                    m // (a0 * a1),
+                    tensors[0],
+                    tensors[1],
+                    sizes[0],
+                    A0=a0,
+                    A1=a1,
+                    ES=es,
+                    WS=ws,
+                    num_warps=_packed_num_warps(a0 * a1, ws),
+                )
+            elif kind == "packed4":
+                a0, a1 = b
+                _cartesian_prod_fwd_packed4[(grid,)](
+                    out,
+                    m,
+                    m // (a0 * a1),
+                    tensors[0],
+                    tensors[1],
+                    tensors[2],
+                    tensors[3],
+                    sizes[0],
+                    sizes[1],
+                    A0=a0,
+                    A1=a1,
+                    num_warps=_packed_num_warps(a0 * a1, 2),
                 )
             else:
                 a0, a1 = b
@@ -409,30 +618,39 @@ class _CartesianProd(torch.autograd.Function):
                 )
             return out
 
-        pad = _MAX_TENSORS - n
-        ptrs = tensors + (tensors[0],) * pad
-        szs = sizes + (1,) * pad
-        prs = tuple(_suffix_products(sizes)) + (1,) * pad
         block_rows, num_warps, wide = _plan(m, n)
-        _cartesian_prod_fwd_kernel[(triton.cdiv(m, block_rows),)](
-            out,
-            m,
-            *ptrs,
-            *szs,
-            *prs,
-            N=n,
-            WIDE=wide,
-            BLOCK_ROWS=block_rows,
-            BLOCK_N=triton.next_power_of_2(n),
-            num_warps=num_warps,
-        )
+        # Columns are independent, so a product wider than the kernel's
+        # _MAX_TENSORS pointer slots is written by several launches, each
+        # covering one chunk of columns of the same (m, n) output.
+        col_prs = tuple(_suffix_products(sizes))
+        for col0 in range(0, n, _MAX_TENSORS):
+            chunk = tensors[col0 : col0 + _MAX_TENSORS]
+            ncol = len(chunk)
+            cpad = _MAX_TENSORS - ncol
+            cptrs = tuple(chunk) + (chunk[0],) * cpad
+            cszs = sizes[col0 : col0 + _MAX_TENSORS] + (1,) * cpad
+            cprs = col_prs[col0 : col0 + _MAX_TENSORS] + (1,) * cpad
+            _cartesian_prod_fwd_kernel[(triton.cdiv(m, block_rows),)](
+                out,
+                m,
+                *cptrs,
+                *cszs,
+                *cprs,
+                N=n,
+                NCOL=ncol,
+                COL0=col0,
+                WIDE=wide,
+                BLOCK_ROWS=block_rows,
+                BLOCK_N=triton.next_power_of_2(ncol),
+                num_warps=num_warps,
+            )
         return out
 
     @staticmethod
     def backward(ctx, grad_out):
         n = ctx.n
         sizes = ctx.sizes
-        needs = ctx.needs_input_grad[2:]
+        needs = tuple(bool(need) for need in ctx.needs_input_grad[2:])
         acc_dtype = torch.float64 if grad_out.dtype == torch.float64 else torch.float32
         accs = [
             (
@@ -449,28 +667,43 @@ class _CartesianProd(torch.autograd.Function):
         live = next((a for a in accs if a is not None), None)
         if m > 0 and live is not None:
             gout = grad_out.contiguous()
-            pad = _MAX_TENSORS - n
-            qs = tuple(a if a is not None else live for a in accs) + (live,) * pad
-            szs = tuple(sizes) + (1,) * pad
-            prs = tuple(_suffix_products(sizes)) + (1,) * pad
-            _cartesian_prod_bwd_kernel[(triton.cdiv(m, _BLOCK_ROWS_BWD),)](
-                gout,
-                m,
-                *qs,
-                *szs,
-                *prs,
-                N=n,
-                WIDE=m * n > _INT32_SAFE,
-                BLOCK_ROWS=_BLOCK_ROWS_BWD,
-                num_warps=_NUM_WARPS,
-            )
+            col_prs = tuple(_suffix_products(sizes))
+            wide = m * n > _INT32_SAFE
+            # Same column chunking as the forward; NEEDS keeps columns whose
+            # input does not require grad out of the accumulation entirely
+            # (they are padded with a live pointer only to fill the slots).
+            for col0 in range(0, n, _MAX_TENSORS):
+                ncol = min(_MAX_TENSORS, n - col0)
+                cpad = _MAX_TENSORS - ncol
+                qchunk = tuple(
+                    accs[col0 + i] if accs[col0 + i] is not None else live
+                    for i in range(ncol)
+                )
+                qs = qchunk + (live,) * cpad
+                cszs = sizes[col0 : col0 + ncol] + (1,) * cpad
+                cprs = col_prs[col0 : col0 + ncol] + (1,) * cpad
+                cneeds = needs[col0 : col0 + ncol] + (False,) * cpad
+                _cartesian_prod_bwd_kernel[(triton.cdiv(m, _BLOCK_ROWS_BWD),)](
+                    gout,
+                    m,
+                    *qs,
+                    *cszs,
+                    *cprs,
+                    N=n,
+                    NCOL=ncol,
+                    COL0=col0,
+                    NEEDS=cneeds,
+                    WIDE=wide,
+                    BLOCK_ROWS=_BLOCK_ROWS_BWD,
+                    num_warps=_NUM_WARPS,
+                )
         return (None, None) + tuple(
             None if a is None else a.to(grad_out.dtype) for a in accs
         )
 
 
 def run(*args, **kwargs):
-    logger.debug("GEMS_ENFLAME_GCU400 RUN")
+    logger.debug("GEMS_ENFLAME RUN")
     tensors = _normalize(args, kwargs)
     n = len(tensors)
     if n == 0:
@@ -487,6 +720,13 @@ def run(*args, **kwargs):
         # reference returns the single tensor unchanged: shape (s0,)
         return tensors[0]
 
+    dev = tensors[0].device
+    for t in tensors[1:]:
+        if t.device != dev:
+            # reference forbids mixed devices (ATen meshgrid check); the CPU
+            # companion would otherwise be dereferenced by a GCU kernel.
+            raise RuntimeError("meshgrid expects all tensors to have the same device")
+
     dtype = tensors[0].dtype
     for t in tensors[1:]:
         if t.dtype != dtype:
@@ -496,42 +736,3 @@ def run(*args, **kwargs):
     tensors = [t if t.is_contiguous() else t.contiguous() for t in tensors]
     sizes = tuple(t.shape[0] for t in tensors)
     return _CartesianProd.apply(n, sizes, *tensors)
-
-
-# ---------------------------------------------------------------------------
-# aten dispatch registration
-# ---------------------------------------------------------------------------
-# aten::cartesian_prod is CompositeImplicitAutograd: the dispatcher runs its
-# meshgrid+stack decomposition at the autograd key and never reaches the
-# PrivateUse1 backend kernel. torch_gcu's stack kernel does not record
-# autograd, so torch.cartesian_prod(*gcu_tensors) silently returned a tensor
-# without grad_fn for every float dtype (bf16 backward tests failed on the
-# reference side, and no use_gems() registration could ever fire). Register
-# this module's run() on the GCU autograd + backend keys so dispatcher calls
-# land on the Triton kernel, whose custom autograd Function keeps the graph.
-# Only the private-backend keys are touched: CPU and other backends keep the
-# native composite. Idempotent: a later use_gems()/enable() cycle re-attempts
-# the same registration through the general registrar and is skipped with a
-# warning (same function object), like the batch_norm_stats precedent.
-_CARTESIAN_PROD_ATEN_LIBRARY = None
-
-
-def _install_aten_kernels():
-    try:
-        library = torch.library.Library("aten", "IMPL")
-        for dispatch_key in ("AutogradPrivateUse1", "PrivateUse1"):
-            try:
-                library.impl("cartesian_prod", run, dispatch_key)
-            except RuntimeError as error:
-                logger.warning(
-                    "cartesian_prod: aten registration cartesian_prod@%s skipped: %s",
-                    dispatch_key,
-                    error,
-                )
-        return library
-    except Exception as error:
-        logger.warning("cartesian_prod: aten registration unavailable: %s", error)
-        return None
-
-
-_CARTESIAN_PROD_ATEN_LIBRARY = _install_aten_kernels()

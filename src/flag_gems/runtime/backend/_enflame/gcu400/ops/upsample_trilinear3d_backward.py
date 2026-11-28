@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import math
 from typing import Optional, Sequence
 
 import torch
@@ -124,6 +125,123 @@ def upsample_trilinear3d_backward_kernel(
         tl.atomic_add(grad_in_ptr + in_base + rel_111, g * td * th * tw, mask=m)
 
 
+@triton.jit
+def _backward_weight(o, i, scale, bias, in_sz):
+    # Weight of output coordinate `o` contributing to input coordinate `i`.
+    src = o * scale + bias
+    src = tl.maximum(0.0, tl.minimum(src, in_sz - 1.0))
+    i0 = tl.floor(src).to(tl.int32)
+    t = src - i0.to(tl.float32)
+    w = tl.where(i0 == i, 1.0 - t, 0.0)
+    w = w + tl.where(i0 + 1 == i, t, 0.0)
+    return w
+
+
+@triton.jit
+def upsample_trilinear3d_backward_gather_kernel(
+    grad_out_ptr,
+    grad_in_ptr,
+    NC,
+    ID,
+    IH,
+    IW,
+    OD,
+    OH,
+    OW,
+    scale_d,
+    scale_h,
+    scale_w,
+    bias_d,
+    bias_h,
+    bias_w,
+    NROWS,
+    RPP,
+    HT,
+    BH: tl.constexpr,
+    BW: tl.constexpr,
+):
+    # Input-anchored scatter-free backward: each program owns a [BH, BW] input
+    # tile of one (nc, id) plane and accumulates every output voxel whose
+    # trilinear stencil touches it, replacing 8 atomics per output voxel with
+    # gathered loads and coalesced single-writer stores. The 2D lane tile keeps
+    # the per-program loop trip count identical while covering BH times more
+    # elements per load instruction. Programs cover up to RPP consecutive rows
+    # so grid.x stays below the 65535 hardware limit.
+    pid = tl.program_id(0)
+    num_wtiles = tl.cdiv(IW, BW)
+    wt = pid % num_wtiles
+    row0 = (pid // num_wtiles) * RPP
+    row_end = tl.minimum(row0 + RPP, NROWS)
+
+    iw = wt * BW + tl.arange(0, BW)
+    iwf = iw.to(tl.float32)
+    lm_w = iw < IW
+    o_lo_w = tl.maximum(0, (-tl.floor(-(iwf - 1.0 - bias_w) / scale_w)).to(tl.int32))
+    o_hi_w = tl.minimum(
+        OW - 1, (-tl.floor(-(iwf + 1.0 - bias_w) / scale_w) - 1.0).to(tl.int32)
+    )
+    win_w = tl.maximum(0, o_hi_w - o_lo_w + 1)
+    win_w = tl.where(lm_w, win_w, 0)
+    win_max = tl.max(win_w, axis=0)
+    total_out = OD * OH * OW
+
+    for row in range(row0, row_end):
+        nc = row // (ID * HT)
+        rid = row % (ID * HT)
+        id_ = rid // HT
+        it = rid % HT
+        idf = id_.to(tl.float32)
+
+        ih_vec = it * BH + tl.arange(0, BH)
+        ihf = ih_vec.to(tl.float32)
+        lm_h = ih_vec < IH
+        o_lo_h = tl.maximum(
+            0, (-tl.floor(-(ihf - 1.0 - bias_h) / scale_h)).to(tl.int32)
+        )
+        o_hi_h = tl.minimum(
+            OH - 1,
+            (-tl.floor(-(ihf + 1.0 - bias_h) / scale_h) - 1.0).to(tl.int32),
+        )
+        win_h = tl.maximum(0, o_hi_h - o_lo_h + 1)
+        win_h = tl.where(lm_h, win_h, 0)
+        win_h_max = tl.max(win_h, axis=0)
+
+        od_lo = tl.maximum(0, (-tl.floor(-(idf - 1.0 - bias_d) / scale_d)).to(tl.int32))
+        od_hi = tl.minimum(
+            OD - 1,
+            (-tl.floor(-(idf + 1.0 - bias_d) / scale_d) - 1.0).to(tl.int32),
+        )
+
+        acc = tl.zeros([BH, BW], dtype=tl.float32)
+        in_base = nc * (ID * IH * IW)
+
+        for dw in range(0, win_max):
+            o_w = o_lo_w + dw
+            m_w = (dw < win_w) & lm_w
+            w_w = _backward_weight(o_w.to(tl.float32), iwf, scale_w, bias_w, IW)
+            for od in range(od_lo, od_hi + 1):
+                wd = _backward_weight(od.to(tl.float32), idf, scale_d, bias_d, ID)
+                base_d = nc * total_out + od * (OH * OW)
+                for dh in range(0, win_h_max):
+                    o_h = o_lo_h + dh
+                    m_h = (dh < win_h) & lm_h
+                    w_h = _backward_weight(o_h.to(tl.float32), ihf, scale_h, bias_h, IH)
+                    m2 = m_h[:, None] & m_w[None, :]
+                    g = tl.load(
+                        grad_out_ptr + base_d + o_h[:, None] * OW + o_w[None, :],
+                        mask=m2,
+                        other=0.0,
+                    ).to(tl.float32)
+                    acc += g * (wd * (w_h[:, None] * w_w[None, :]))
+
+        in_off = in_base + id_ * (IH * IW) + ih_vec[:, None] * IW + iw[None, :]
+        tl.store(
+            grad_in_ptr + in_off,
+            acc.to(grad_in_ptr.dtype.element_ty),
+            mask=lm_h[:, None] & lm_w[None, :],
+        )
+
+
 def _calc_scale_and_bias(in_sz, out_sz, align_corners, scale):
     if align_corners:
         if out_sz > 1:
@@ -141,6 +259,14 @@ def _calc_scale_and_bias(in_sz, out_sz, align_corners, scale):
     return scale_val, bias_val
 
 
+def _max_window_len(in_sz, out_sz, scale):
+    # Conservative upper bound of the per-input-voxel output window width;
+    # ceil(2/s)+2 always covers the true window including edge ceil jitter.
+    if out_sz <= 0 or scale <= 0:
+        return out_sz
+    return min(out_sz, math.ceil(2.0 / scale) + 2)
+
+
 def upsample_trilinear3d_backward(
     grad_output: torch.Tensor,
     output_size: Sequence[int],
@@ -150,7 +276,7 @@ def upsample_trilinear3d_backward(
     scales_h: Optional[float] = None,
     scales_w: Optional[float] = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 UPSAMPLE_TRILINEAR3D_BACKWARD")
+    logger.debug("GEMS_ENFLAME UPSAMPLE_TRILINEAR3D_BACKWARD")
 
     N, C, ID, IH, IW = input_size
     OD, OH, OW = output_size
@@ -170,6 +296,60 @@ def upsample_trilinear3d_backward(
     scale_d, bias_d = _calc_scale_and_bias(ID, OD, align_corners, scales_d)
     scale_h, bias_h = _calc_scale_and_bias(IH, OH, align_corners, scales_h)
     scale_w, bias_w = _calc_scale_and_bias(IW, OW, align_corners, scales_w)
+
+    win_d = _max_window_len(ID, OD, scale_d)
+    win_h = _max_window_len(IH, OH, scale_h)
+    win_w = _max_window_len(IW, OW, scale_w)
+
+    if scale_d > 0 and scale_h > 0 and scale_w > 0 and max(win_d, win_h, win_w) <= 32:
+        # Scatter-free input-anchored path: each input voxel gathers from the
+        # output window covering it; single-writer stores replace all atomics,
+        # so grad_in needs no zero-init and no post-cast.
+        grad_in = torch.empty(
+            (NC, ID, IH, IW),
+            device=grad_output.device,
+            dtype=grad_output.dtype,
+        )
+        itemsize = grad_output.element_size()
+        # W-lane width: 256 lanes for 2-byte dtypes; fp32 must stay at 128 —
+        # fp32 x BW=256 tiles hit the ld.lld ICALL relocation defect (P03).
+        BW_CAP = 256 if itemsize <= 2 else 128
+        BW = min(BW_CAP, max(16, triton.next_power_of_2(IW)))
+        # 2D lane tile, num_warps=2: larger tiles amortize the fixed
+        # per-iteration loop cost of the gather window loops; nw=2 measured
+        # 2x faster than 4/8 for this kernel on GCU400.
+        BH = min(32, max(1, triton.next_power_of_2(IH)))
+        HT = triton.cdiv(IH, BH)
+        nrows = NC * ID * HT
+        wtiles = triton.cdiv(IW, BW)
+        # Keep grid.x below the 65535 hardware limit by covering several input
+        # rows per program.
+        RPP = max(1, -(-nrows * wtiles // 60000))
+        grid = (triton.cdiv(nrows, RPP) * wtiles,)
+        upsample_trilinear3d_backward_gather_kernel[grid](
+            grad_out,
+            grad_in,
+            NC,
+            ID,
+            IH,
+            IW,
+            OD,
+            OH,
+            OW,
+            scale_d,
+            scale_h,
+            scale_w,
+            bias_d,
+            bias_h,
+            bias_w,
+            nrows,
+            RPP,
+            HT,
+            BH=BH,
+            BW=BW,
+            num_warps=2,
+        )
+        return grad_in.view(N, C, ID, IH, IW)
 
     total_out = OD * OH * OW
     # BLOCK=256 (num_warps=4) empirically best: each program scatters into 8

@@ -35,7 +35,6 @@ def _thnn_fused_lstm_cell_kernel(
     hy_ptr,
     cy_ptr,
     workspace_ptr,
-    batch_size: tl.constexpr,
     hidden_size: tl.constexpr,
     has_input_bias: tl.constexpr,
     has_hidden_bias: tl.constexpr,
@@ -179,7 +178,7 @@ def _thnn_fused_lstm_cell(
         cy: New cell state of shape (batch, hidden_size)
         workspace: Workspace tensor for backward of shape (batch, 4 * hidden_size)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_LSTM_CELL")
+    logger.debug("GEMS_ENFLAME _THNN_FUSED_LSTM_CELL")
 
     batch_size, gates_dim = input_gates.shape
     assert gates_dim % 4 == 0, "gates_dim must be divisible by 4"
@@ -203,24 +202,29 @@ def _thnn_fused_lstm_cell(
             4 * hidden_size,
         ), f"hidden_bias must have shape ({4 * hidden_size},)"
 
-    # Allocate outputs
-    hy = torch.empty(
-        (batch_size, hidden_size), device=input_gates.device, dtype=input_gates.dtype
-    )
-    cy = torch.empty(
-        (batch_size, hidden_size), device=input_gates.device, dtype=input_gates.dtype
-    )
-    workspace = torch.empty(
-        (batch_size, gates_dim), device=input_gates.device, dtype=input_gates.dtype
-    )
+    # One allocation sliced into hy / cy / workspace: all three slices stay
+    # contiguous views, and two device allocations are saved in a path where the
+    # allocation cost is of the same order as the kernel itself.
+    hy_numel = batch_size * hidden_size
+    workspace_numel = batch_size * gates_dim
+    output_buffer = input_gates.new_empty(hy_numel * 2 + workspace_numel)
+    hy = output_buffer[:hy_numel].view(batch_size, hidden_size)
+    cy = output_buffer[hy_numel : 2 * hy_numel].view(batch_size, hidden_size)
+    workspace = output_buffer[2 * hy_numel :].view(batch_size, gates_dim)
 
     # Determine bias flags
     has_input_bias = input_bias is not None
     has_hidden_bias = hidden_bias is not None
 
-    # Choose BLOCK_SIZE based on hidden_size
+    # Pick the column tile: the row width rounded up to a power of two, capped so
+    # a wide hidden axis is split across the grid instead of inflating the tile.
     BLOCK_SIZE = triton.next_power_of_2(hidden_size)
     BLOCK_SIZE = max(32, min(BLOCK_SIZE, 128))
+
+    # Without a bias the corresponding pointer stays unused (has_* is False), so
+    # cx is passed as a placeholder instead of allocating a zero-length tensor.
+    input_bias_ptr = input_bias if has_input_bias else cx
+    hidden_bias_ptr = hidden_bias if has_hidden_bias else cx
 
     # Launch kernel: one program per (batch, hidden block); BLOCK_SIZE is
     # capped at 128, so hidden_size > BLOCK_SIZE is covered by the second
@@ -230,12 +234,11 @@ def _thnn_fused_lstm_cell(
         input_gates,
         hidden_gates,
         cx,
-        input_bias if input_bias is not None else input_gates.new_empty(0),
-        hidden_bias if hidden_bias is not None else input_gates.new_empty(0),
+        input_bias_ptr,
+        hidden_bias_ptr,
         hy,
         cy,
         workspace,
-        batch_size,
         hidden_size,
         has_input_bias,
         has_hidden_bias,

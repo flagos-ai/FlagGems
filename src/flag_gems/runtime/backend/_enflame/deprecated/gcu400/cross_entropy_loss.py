@@ -822,7 +822,7 @@ def _cross_entropy_loss_fast(inp, target, reduction_enum, ignore_index):
 def cross_entropy_loss(
     inp, target, weight=None, reduction="mean", ignore_index=-100, label_smoothing=0.0
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 CROSS_ENTROPY_LOSS")
+    logger.debug("GEMS_ENFLAME CROSS_ENTROPY_LOSS")
     reduction_enum = _Reduction.get_enum(reduction)
     # Fast path for the common inference case (2D logits, class indices, mean
     # or sum reduction, no weight/smoothing).  Skips autograd.Function and the
