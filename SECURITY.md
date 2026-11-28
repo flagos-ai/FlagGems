@@ -16,13 +16,82 @@
 
 # Security Policy
 
-## Reporting a Vulnerability
+## Supported versions
 
-If you believe you have found a security vulnerability in FlagGems, please report it to us through coordinated disclosure.
+FlagGems provides security fixes for the latest release line. Older release
+lines may receive fixes at the maintainers' discretion; users should upgrade
+to a supported release before reporting an issue.
 
-Please do not report security vulnerabilities through public GitHub issues, discussions, or pull requests.
+| Version | Supported | Notes |
+|---|---|---|
+| v5.4.x | Yes | Latest release line |
+| v5.3.x | Best effort | Upgrade recommended |
+| < v5.3 | No | Unsupported |
 
-Instead, please send an email to security@flagos.io.
+This table is reviewed at each release. It describes the project's practice,
+not a commercial support contract.
+
+## Reporting a vulnerability
+
+If you believe you have found a security vulnerability in FlagGems, please
+report it to us through coordinated disclosure.
+
+Please do not report security vulnerabilities through public GitHub issues,
+discussions, or pull requests.
+
+Instead, please send an email to **security@flagos.io**.
+
+If you need encrypted communication, say so in your first email and we will
+share a PGP key out of band. Do not send sensitive details before we confirm
+the channel.
+
+### What to include
+
+- Affected FlagGems version or commit.
+- Backend and hardware (for example NVIDIA, Ascend, or CPU) plus driver and
+  runtime versions.
+- A minimal reproducer, or the exact command that triggers the issue.
+- Observed impact, and whether the issue is already public.
+- Your preferred credit name, or a request to remain anonymous.
+
+### Our process
+
+1. We aim to acknowledge receipt within **3 business days**.
+2. We triage severity and confirm the affected versions within **10 business
+   days**.
+3. We agree on a disclosure date with the reporter. Our default is **90 days**
+   after the report, or earlier if a fix is available and users are protected.
+4. We credit reporters in the release notes unless they ask us not to.
+
+These are best-effort targets for an open-source project, not a commercial
+support contract or a legal commitment.
+
+### Scope
+
+In scope:
+
+- FlagGems source code, build scripts, and CI configuration in this repository.
+- Vulnerabilities that affect users of a supported release.
+
+Out of scope:
+
+- Vulnerabilities in third-party dependencies; please report them upstream.
+- Misconfiguration of a user's environment or model.
+- Issues that require an unsupported version or a non-default build.
+- Social engineering and physical attacks.
+
+### Relationship to the Cyber Resilience Act (CRA)
+
+FlagGems is an upstream open-source component, not a product manufacturer.
+Integrators that ship FlagGems in a product remain responsible for their own
+obligations under the EU Cyber Resilience Act, including incident reporting.
+We will cooperate with integrators and share the information we have, but we
+do not act as their notified body or legal adviser.
+
+### Hall of fame
+
+We thank reporters who follow coordinated disclosure. Names are added here
+with permission.
 
 ---
 
