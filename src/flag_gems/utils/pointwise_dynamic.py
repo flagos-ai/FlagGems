@@ -1438,8 +1438,7 @@ class ModuleGenerator:
         code.writeline("    stride_order,")
         code.writeline(")")
         code.writeline("from flag_gems.utils.tensor_wrapper import StridedBuffer")
-        if not self.config.enable_trident_jit:
-            code.writeline("from flag_gems.utils.libentry import libentry")
+        code.writeline("from flag_gems.utils.libentry import libentry")
         code.writeline("from flag_gems.runtime import torch_device_fn")
         if self.config.balance_grid:
             code.writeline(
