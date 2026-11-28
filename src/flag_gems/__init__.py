@@ -2115,7 +2115,12 @@ _FULL_CONFIG = (
     ("prelu", prelu),
     ("prod", prod),
     ("prod.dim_int", prod_dim),
-    ("put", put),
+    (
+        "put",
+        put,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("put.out", put_out),
     ("put_", put_),
     ("quantile", quantile),

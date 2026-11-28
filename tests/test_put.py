@@ -1,3 +1,17 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
 import os
 import subprocess
 import sys
@@ -137,6 +151,134 @@ def test_put_dtypes(shape, dtype, accumulate):
     res_out = flag_gems.put(inp, index, source, accumulate=accumulate)
 
     assert_put_close(res_out, ref_out, dtype, accumulate)
+
+
+@pytest.mark.put_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+# Odd extents cover partial tiles; the 3-D case also exercises flat indexing.
+@pytest.mark.parametrize("shape,count", [((17,), 5), ((9, 13), 7), ((4, 5, 7), 16)])
+@pytest.mark.parametrize("accumulate", [False, True])
+def test_put_backward(dtype, shape, count, accumulate):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    source = torch.randn((count,), dtype=dtype, device=flag_gems.device)
+    if accumulate:
+        index = torch.randint(0, inp.numel(), (count,), device=flag_gems.device)
+    else:
+        index = torch.randperm(inp.numel(), device=flag_gems.device)[:count]
+    if len(shape) == 3:
+        # Negative flat indices must wrap identically in both returned gradients.
+        index[::2] -= inp.numel()
+    grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    ref_inp = utils.to_reference(inp, True).requires_grad_()
+    ref_source = utils.to_reference(source, True).requires_grad_()
+    ref_out = torch.put(
+        ref_inp, utils.to_reference(index), ref_source, accumulate=accumulate
+    )
+    ref_grads = torch.autograd.grad(
+        ref_out, (ref_inp, ref_source), utils.to_reference(grad)
+    )
+
+    inp.requires_grad_()
+    source.requires_grad_()
+    out = flag_gems.put(inp, index, source, accumulate=accumulate)
+    grads = torch.autograd.grad(out, (inp, source), grad)
+    for result, reference in zip(grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.put_backward
+@pytest.mark.parametrize("input_name", ["self", "source"])
+@pytest.mark.parametrize("accumulate", [False, True])
+def test_put_backward_selective_gradient(input_name, accumulate):
+    inp = torch.randn((7, 11), device=flag_gems.device)
+    source = torch.randn((9,), device=flag_gems.device)
+    index = torch.randperm(inp.numel(), device=flag_gems.device)[: source.numel()]
+    selected = inp if input_name == "self" else source
+    selected.requires_grad_()
+    out = flag_gems.put(inp, index, source, accumulate=accumulate)
+    (gradient,) = torch.autograd.grad(out, (selected,), torch.randn_like(out))
+    assert gradient.shape == selected.shape
+
+
+@pytest.mark.put_backward
+def test_put_backward_noncontiguous():
+    dtype = torch.float32
+    inp = torch.randn((13, 9), dtype=dtype, device=flag_gems.device).t()
+    source_storage = torch.randn((24,), dtype=dtype, device=flag_gems.device)
+    source = source_storage[::2].reshape(3, 4)
+    index = (
+        torch.randperm(inp.numel(), device=flag_gems.device)[: source.numel()]
+        .reshape(4, 3)
+        .t()
+    )
+    grad = torch.randn((13, 9), dtype=dtype, device=flag_gems.device).t()
+
+    ref_inp = utils.to_reference(inp, True).requires_grad_()
+    ref_source = utils.to_reference(source, True).requires_grad_()
+    ref_out = torch.put(ref_inp, utils.to_reference(index), ref_source)
+    ref_grads = torch.autograd.grad(
+        ref_out, (ref_inp, ref_source), utils.to_reference(grad)
+    )
+
+    inp.requires_grad_()
+    source.requires_grad_()
+    out = flag_gems.put(inp, index, source)
+    grads = torch.autograd.grad(out, (inp, source), grad)
+    for result, reference in zip(grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.put_backward
+@pytest.mark.parametrize("accumulate", [False, True])
+def test_put_backward_complex(accumulate):
+    dtype = torch.complex64
+    inp = torch.randn((5, 7), dtype=dtype, device=flag_gems.device)
+    source = torch.randn((8,), dtype=dtype, device=flag_gems.device)
+    index = torch.randint(0, inp.numel(), (source.numel(),), device=flag_gems.device)
+    if not accumulate:
+        index = torch.randperm(inp.numel(), device=flag_gems.device)[: source.numel()]
+    grad = torch.randn_like(inp)
+
+    ref_inp = utils.to_reference(inp, True).requires_grad_()
+    ref_source = utils.to_reference(source, True).requires_grad_()
+    ref_out = torch.put(
+        ref_inp, utils.to_reference(index), ref_source, accumulate=accumulate
+    )
+    ref_grads = torch.autograd.grad(
+        ref_out, (ref_inp, ref_source), utils.to_reference(grad)
+    )
+
+    inp.requires_grad_()
+    source.requires_grad_()
+    out = flag_gems.put(inp, index, source, accumulate=accumulate)
+    grads = torch.autograd.grad(out, (inp, source), grad)
+    for result, reference in zip(grads, ref_grads):
+        utils.gems_assert_close(result, reference, dtype)
+
+
+@pytest.mark.put_backward
+def test_put_backward_single_kernel():
+    from torch.profiler import ProfilerActivity, profile
+
+    inp = torch.randn((64, 64), device=flag_gems.device, requires_grad=True)
+    index = torch.randperm(inp.numel(), device=flag_gems.device)[:32]
+    source = torch.randn((32,), device=flag_gems.device, requires_grad=True)
+    out = flag_gems.put(inp, index, source)
+    grad = torch.randn_like(out)
+
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        torch.autograd.grad(out, (inp, source), grad)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [item for item in launches if "put_backward_kernel" in item[0]]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches
 
 
 @pytest.mark.put
