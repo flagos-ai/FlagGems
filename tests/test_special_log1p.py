@@ -19,6 +19,25 @@ def test_special_log1p(shape, dtype):
 
 
 @pytest.mark.special_log1p
+@pytest.mark.skipif(
+    flag_gems.device != "cuda" or not utils.FP8_DTYPES,
+    reason="float8 accuracy coverage requires CUDA and PyTorch float8 support",
+)
+@pytest.mark.parametrize("dtype", utils.FP8_DTYPES)
+def test_special_log1p_float8(dtype):
+    """ATen log1p is not implemented for float8; verify the uint8 byte pattern."""
+    utils.init_seed(0)
+    inp = torch.rand(32, 17, dtype=torch.float32, device=flag_gems.device).to(dtype)
+
+    res_out = flag_gems.special_log1p(inp)
+
+    assert res_out.dtype == dtype
+    # Reference: compute in fp32, then re-encode as fp8.
+    ref_out = torch.special.log1p(inp.cpu().float()).to(dtype)
+    utils.gems_assert_equal(res_out.view(torch.uint8), ref_out.view(torch.uint8))
+
+
+@pytest.mark.special_log1p
 @pytest.mark.parametrize("inp", [1.0, 5, -0.5])
 def test_special_log1p_non_tensor(inp):
     ref_out = torch.special.log1p(torch.tensor(inp, dtype=torch.float32))

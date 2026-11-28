@@ -54,6 +54,19 @@ sub_func_scalar_tensor.register_complex(
     mode=ComplexMode.ELEMENTWISE, tensorize_scalars=True, fallback_target=sub_func
 )
 
+_ALPHA_MUST_NOT_BE_FLOAT = (
+    "For integral input tensors, argument alpha must not be a floating point number."
+)
+
+
+def _check_alpha(alpha, integral: bool):
+    """ATen rejects a floating alpha for integral inputs; mirror that instead of
+    silently truncating alpha inside the kernel."""
+    if not integral:
+        return
+    if isinstance(alpha, float) and float(alpha) != int(alpha):
+        raise RuntimeError(_ALPHA_MUST_NOT_BE_FLOAT)
+
 
 def sub(A, B, *, alpha=1):
     logger.debug("GEMS SUB")
@@ -96,10 +109,19 @@ def sub(A, B, *, alpha=1):
             out_real = sub_func(Ar, Br, alpha)
             return torch.view_as_complex(out_real).to(torch.result_type(A, B))
     elif isinstance(A, torch.Tensor) and isinstance(B, torch.Tensor):
+        _check_alpha(
+            alpha, A.dtype.is_floating_point is False and A.dtype.is_complex is False
+        )
         return sub_func(A, B, alpha)
     elif isinstance(A, torch.Tensor):
+        _check_alpha(
+            alpha, A.dtype.is_floating_point is False and A.dtype.is_complex is False
+        )
         return sub_func_tensor_scalar(A, B, alpha)
     elif isinstance(B, torch.Tensor):
+        _check_alpha(
+            alpha, B.dtype.is_floating_point is False and B.dtype.is_complex is False
+        )
         return sub_func_scalar_tensor(A, B, alpha)
     else:
         # Both scalar
@@ -108,6 +130,9 @@ def sub(A, B, *, alpha=1):
 
 def sub_(A, B, *, alpha=1):
     logger.debug("GEMS SUB_")
+    _check_alpha(
+        alpha, A.dtype.is_floating_point is False and A.dtype.is_complex is False
+    )
     if isinstance(B, torch.Tensor):
         return sub_func(A, B, alpha, out0=A)
     else:

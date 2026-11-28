@@ -20,6 +20,41 @@ def test_special_erfc(shape, dtype):
     utils.gems_assert_close(act_out, ref_out, dtype, equal_nan=True)
 
 
+@pytest.mark.special_erfc
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.BYTE_DTYPES)
+def test_special_erfc_small_int(shape, dtype):
+    x = torch.randint(-10, 10, shape, dtype=torch.int32, device=flag_gems.device).to(
+        dtype
+    )
+    ref_x = utils.to_reference(x)
+    ref_out = torch.ops.aten.special_erfc(ref_x)
+    act_out = flag_gems.special_erfc(x)
+    utils.gems_assert_close(act_out, ref_out, torch.float32, equal_nan=True)
+
+
+@pytest.mark.special_erfc
+@pytest.mark.skipif(
+    flag_gems.device != "cuda" or not utils.FP8_DTYPES,
+    reason="float8 accuracy coverage requires CUDA and PyTorch float8 support",
+)
+@pytest.mark.parametrize("dtype", utils.FP8_DTYPES)
+def test_special_erfc_float8(dtype):
+    """ATen erfc is not implemented for float8; verify the uint8 byte pattern."""
+    # Seed so the bitwise byte-pattern comparison is deterministic; the fp8
+    # cast of the fp32 reference can land on a rounding boundary for a
+    # handful of values when drawn at random.
+    utils.init_seed(7)
+    x = torch.randn(32, 17, dtype=torch.float32, device=flag_gems.device).to(dtype)
+
+    res_out = flag_gems.special_erfc(x)
+
+    assert res_out.dtype == dtype
+    # Reference: compute in fp32, then re-encode as fp8.
+    ref_out = torch.ops.aten.special_erfc(x.cpu().float()).to(dtype)
+    utils.gems_assert_equal(res_out.view(torch.uint8), ref_out.view(torch.uint8))
+
+
 @pytest.mark.erfc
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)

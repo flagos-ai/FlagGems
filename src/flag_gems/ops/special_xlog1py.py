@@ -23,7 +23,7 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, 1, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, 1, "INT_TO_FLOAT")])
 @triton.jit
 def xlog1py_func(x, y):
     # xlog1py(x, y) = x * log1p(y) = x * log(1 + y)
@@ -47,7 +47,7 @@ def xlog1py_func(x, y):
     # Result: x * log1p(y), but if x is 0 and y is not NaN, result is 0
     # This avoids 0 * inf = nan or 0 * -inf = nan
     result = tl.where(x_is_zero & ~y_is_nan, 0.0, x_f32 * log1p_y)
-    return result.to(x.dtype)
+    return result
 
 
 def special_xlog1py(A, B):

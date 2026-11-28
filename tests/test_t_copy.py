@@ -26,24 +26,37 @@ else:
     T_COPY_SHAPES = [(2, 3), (128, 256), (512, 512)]
 
 
+T_COPY_DTYPES = utils.FLOAT_DTYPES + utils.BYTE_DTYPES + utils.FP8_DTYPES
+
+
+def _make_t_copy_input(shape, dtype):
+    # randn only supports float dtypes, so build in fp32 and cast down.
+    x = torch.randn(shape, dtype=torch.float32, device=flag_gems.device)
+    return x.to(dtype)
+
+
 @pytest.mark.t_copy
 @pytest.mark.parametrize("shape", T_COPY_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", T_COPY_DTYPES)
 def test_accuracy_t_copy(shape, dtype):
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    x = _make_t_copy_input(shape, dtype)
     ref_x = utils.to_reference(x)
     ref_out = torch.ops.aten.t_copy(ref_x)
 
     act_out = flag_gems.t_copy(x)
 
-    utils.gems_assert_close(act_out, ref_out, dtype)
+    if dtype in utils.FP8_DTYPES:
+        # Bitwise copy op: fp8 tensors must match exactly.
+        utils.gems_assert_equal(act_out, ref_out)
+    else:
+        utils.gems_assert_close(act_out, ref_out, dtype)
 
 
 @pytest.mark.t_copy_out
 @pytest.mark.parametrize("shape", T_COPY_SHAPES)
-@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("dtype", T_COPY_DTYPES)
 def test_accuracy_t_copy_out(shape, dtype):
-    x = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    x = _make_t_copy_input(shape, dtype)
     ref_x = utils.to_reference(x)
     out_shape = (shape[1], shape[0])
     ref_out_buf = torch.empty(out_shape, dtype=dtype, device=ref_x.device)
@@ -52,4 +65,8 @@ def test_accuracy_t_copy_out(shape, dtype):
 
     act_out = flag_gems.t_copy_out(x, act_out_buf)
 
-    utils.gems_assert_close(act_out, ref_out, dtype)
+    if dtype in utils.FP8_DTYPES:
+        # Bitwise copy op: fp8 tensors must match exactly.
+        utils.gems_assert_equal(act_out, ref_out)
+    else:
+        utils.gems_assert_close(act_out, ref_out, dtype)

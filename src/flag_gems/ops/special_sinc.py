@@ -24,7 +24,7 @@ from flag_gems.utils import pointwise_dynamic
 logger = logging.getLogger(__name__)
 
 
-@pointwise_dynamic(promotion_methods=[(0, "DEFAULT")])
+@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")])
 @triton.jit
 def special_sinc_func(x):
     # Compute normalized special_sinc: sin(pi * x) / (pi * x)
