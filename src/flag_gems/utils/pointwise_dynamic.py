@@ -37,6 +37,7 @@ from flag_gems.utils.shape_utils import (
     broadcasted_stride,
     check_tensor_attributes,
     has_internal_overlapping,
+    heuristics_for_num_warps,
 )
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 from flag_gems.utils.type_utils import ELEMENTWISE_TYPE_PROMOTION_KIND, type_promotion
@@ -1583,6 +1584,49 @@ class PointwiseDynamicFunction:
         # the same buffers are reused so that no dynamic allocation is needed.
         self._capture_output_pool: dict = {}
 
+        # Precomputed schema metadata and caches for the integrated Trident
+        # contiguous fast path (allocation + tile selection + launch in Trident).
+        self._num_inputs: int = op_desc.num_inputs()
+        self._num_outputs: int = op_desc.num_output_tensors()
+        self._tensor_input_indices: Tuple[int, ...] = tuple(
+            i for i in range(self._num_inputs) if op_desc.is_tensor(i)
+        )
+        self._scalar_input_indices: Tuple[int, ...] = tuple(
+            i for i in range(self._num_inputs) if not op_desc.is_tensor(i)
+        )
+        self._expected_scalar_dtypes: Tuple[Tuple[int, type], ...] = tuple(
+            (i, op_desc._dtypes[i])
+            for i in self._scalar_input_indices
+            if op_desc._dtypes is not None and op_desc._dtypes[i] is not None
+        )
+        self._is_unary_single_tensor: bool = (
+            self._num_inputs == 1 and len(self._tensor_input_indices) == 1
+        )
+        self._is_binary_two_tensors: bool = (
+            self._num_inputs == 2 and len(self._tensor_input_indices) == 2
+        )
+        self._is_binary_tensor_plus_scalar: bool = (
+            self._num_inputs == 3
+            and self._tensor_input_indices == (0, 1)
+            and not self._expected_scalar_dtypes
+        )
+        self._int32_max: int = torch.iinfo(torch.int32).max
+        self._max_tile_size: int = self.config.max_tile_size
+        self._half_max_tile: int = self._max_tile_size >> 1
+        self._max_one_tile_tasks: int = (
+            self._max_tile_size * self.config.max_grid_size[0]
+        )
+        self._promo_cache: dict = {}
+        self._trident_contiguous_alloc_overloads: dict = {}
+        self._trident_contiguous_out_overloads: dict = {}
+        self._unary_alloc_cache: dict = {}
+        self._binary_alloc_cache: dict = {}
+        self._unary_out_cache: dict = {}
+        self._skip_trident_alloc_fast_path: bool = (
+            not self._tensor_input_indices
+            or self._scalar_fn.__name__.find("fill_scalar") != -1
+        )
+
     # -------------------- operand index inference --------------------
 
     def _infer_operand_indices(self):
@@ -1623,8 +1667,662 @@ class PointwiseDynamicFunction:
             return self._call_complex_dispatch(*args, **kwargs)
         return self._call_real_impl(*args, **kwargs)
 
+    def _compute_trident_tile_params(self, numel: int) -> Tuple[int, bool]:
+        max_tile_size = self.config.max_tile_size
+        if numel > self._half_max_tile:
+            tile_size = max_tile_size
+        elif numel <= 1:
+            tile_size = 1
+        else:
+            tile_size = 1 << (numel - 1).bit_length()
+        one_tile = (
+            not self.config.balance_grid
+            and numel <= tile_size * self.config.max_grid_size[0]
+        )
+        return tile_size, one_tile
+
+    def _emit_trident_contiguous_launch_body(
+        self,
+        code: IndentedBuffer,
+        jit_fn_name: str,
+        in_params: List[str],
+        out_args: List[str],
+        return_expr: str,
+        tile_size: int,
+        one_tile: bool,
+    ):
+        schema = self.fx
+        num_warps = heuristics_for_num_warps(tile_size)
+        max_grid_size0 = self.config.max_grid_size[0]
+        code.writeline("num_tasks = in0.numel()")
+        if one_tile:
+            code.writeline(f"num_ctas = triton.cdiv(num_tasks, {tile_size})")
+            tiles_per_cta_expr = "1"
+            one_tile_expr = "True"
+        elif self.config.balance_grid:
+            code.writeline(f"num_tiles = triton.cdiv(num_tasks, {tile_size})")
+            code.writeline(
+                f"num_ctas, tiles_per_cta = _balanced_grid_partition(num_tiles, {max_grid_size0})"
+            )
+            code.writeline("one_tile_per_cta = tiles_per_cta == 1")
+            tiles_per_cta_expr = "tiles_per_cta"
+            one_tile_expr = "one_tile_per_cta"
+        else:
+            code.writeline(f"num_tiles = triton.cdiv(num_tasks, {tile_size})")
+            code.writeline(f"num_ctas = {max_grid_size0}")
+            code.writeline(f"tiles_per_cta = triton.cdiv(num_tiles, {max_grid_size0})")
+            tiles_per_cta_expr = "tiles_per_cta"
+            one_tile_expr = "False"
+        code.writeline("grid = (num_ctas, 1, 1)")
+
+        all_args = list(in_params) + list(out_args)
+        total_tensors = schema.num_input_tensors() + schema.num_output_tensors()
+        ones = ", ".join(["1"] * total_tensors)
+        code.writeline("with torch_device_fn.device(in0.device.index):")
+        with code.indent():
+            code.writeline(f"{jit_fn_name}[grid](")
+            with code.indent():
+                code.writeline(f"{_cs(all_args)},")
+                code.writeline(f"{ones},")
+                code.writeline("num_tasks,")
+                code.writeline("num_tasks,")
+                code.writeline(f"tiles_per_cta={tiles_per_cta_expr},")
+                code.writeline(f"tile_size0={tile_size},")
+                code.writeline(f"one_tile_per_cta={one_tile_expr},")
+                code.writeline(f"num_warps={num_warps},")
+            code.writeline(")")
+        code.writeline(f"return {return_expr}")
+
+    def _instantiate_trident_contiguous_alloc(
+        self,
+        in_dtypes: Tuple[torch.dtype, ...],
+        out_dtypes: Tuple[torch.dtype, ...],
+        scalar_types: Tuple[type, ...],
+        tile_size: int,
+        one_tile: bool,
+        ndim: int,
+    ):
+        """Generate a single @trident.jit contiguous entry owning allocation,
+        task partitioning, and launch for a fixed (dtypes, tile_size, ndim)."""
+        cache_key = (in_dtypes, out_dtypes, scalar_types, tile_size, one_tile, ndim)
+        cached = self._trident_contiguous_alloc_overloads.get(cache_key)
+        if cached is not None:
+            return cached
+
+        mat = self.materialize(1, specialize_contiguous_strides=True)
+        jit_fn_name = mat.kernel_info.kernel_name
+        schema = self.fx
+        in_tag = "_".join(str(d).removeprefix("torch.") for d in in_dtypes)
+        out_tag = "_".join(str(d).removeprefix("torch.") for d in out_dtypes)
+        scalar_tag = (
+            "_" + "_".join(t.__name__ for t in scalar_types) if scalar_types else ""
+        )
+        tile_tag = f"_t{tile_size}_{'1t' if one_tile else 'mt'}_d{ndim}"
+        wrapper_name = (
+            f"{self._scalar_fn.__name__}_trident_contiguous_alloc_"
+            f"{in_tag}_to_{out_tag}{scalar_tag}{tile_tag}"
+        )
+        file_name = (
+            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{wrapper_name}"
+            f"{'_balanced' if self.config.balance_grid else ''}"
+            f"{'_static' if not self.config.trident_dynamic else ''}"
+            ".py"
+        )
+        file_path = str(code_cache_dir() / file_name)
+
+        code = IndentedBuffer()
+        code.writeline("import torch")
+        code.writeline("import triton")
+        code.writeline("import trident")
+        code.writeline("from flag_gems.runtime import torch_device_fn")
+        if self.config.balance_grid:
+            code.writeline(
+                "from flag_gems.utils.pointwise_dynamic import _balanced_grid_partition"
+            )
+        code.newline()
+
+        decorator = (
+            "@trident.jit"
+            if self.config.trident_dynamic
+            else "@trident.jit(dynamic=False)"
+        )
+        code.writeline(decorator)
+        in_params = [
+            f"{'in' if schema.is_tensor(i) else 'val'}{schema.input_index(i)}"
+            for i in range(schema.num_inputs())
+        ]
+        code.writeline(f"def {wrapper_name}({_cs(in_params)}):")
+        with code.indent():
+            for out_i, dt in enumerate(out_dtypes):
+                dt_expr = f"torch.{str(dt).removeprefix('torch.')}"
+                code.writeline(f"out{out_i} = torch.empty_like(in0, dtype={dt_expr})")
+            out_names = [f"out{i}" for i in range(schema.num_output_tensors())]
+            return_expr = _cs(out_names)
+            self._emit_trident_contiguous_launch_body(
+                code,
+                jit_fn_name,
+                in_params,
+                out_names,
+                return_expr,
+                tile_size,
+                one_tile,
+            )
+
+        write_atomic(file_path, code.getvalue())
+        spec = importlib.util.spec_from_file_location(
+            f"_gen_trident_alloc_{self._scalar_fn_cache_key}_{in_tag}_{out_tag}{scalar_tag}{tile_tag}",
+            file_path,
+        )
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        m.__dict__[jit_fn_name] = mat.entry
+        overload = getattr(m, wrapper_name)
+        self._trident_contiguous_alloc_overloads[cache_key] = overload
+        return overload
+
+    def _instantiate_trident_contiguous_out(
+        self,
+        in_dtypes: Tuple[torch.dtype, ...],
+        out_dtype: torch.dtype,
+        scalar_types: Tuple[type, ...],
+        alias_index: Optional[int],
+        tile_size: int,
+        one_tile: bool,
+        ndim: int,
+    ):
+        """Generate a single @trident.jit contiguous entry for pre-allocated
+        single-output / in-place calls.
+
+        Separating aliased in-place (out0 is in{alias_index}) from distinct
+        out0 avoids Dynamo tensor-identity guards between in_i and out0."""
+        cache_key = (
+            in_dtypes,
+            out_dtype,
+            scalar_types,
+            alias_index,
+            tile_size,
+            one_tile,
+            ndim,
+        )
+        cached = self._trident_contiguous_out_overloads.get(cache_key)
+        if cached is not None:
+            return cached
+
+        mat = self.materialize(1, specialize_contiguous_strides=True)
+        jit_fn_name = mat.kernel_info.kernel_name
+        schema = self.fx
+        in_tag = "_".join(str(d).removeprefix("torch.") for d in in_dtypes)
+        out_tag = str(out_dtype).removeprefix("torch.")
+        scalar_tag = (
+            "_" + "_".join(t.__name__ for t in scalar_types) if scalar_types else ""
+        )
+        alias_tag = f"_inplace{alias_index}" if alias_index is not None else "_out"
+        tile_tag = f"_t{tile_size}_{'1t' if one_tile else 'mt'}_d{ndim}"
+        wrapper_name = (
+            f"{self._scalar_fn.__name__}_trident_contiguous{alias_tag}_"
+            f"{in_tag}_to_{out_tag}{scalar_tag}{tile_tag}"
+        )
+        file_name = (
+            f"pointwise_dynamic_{self._scalar_fn_cache_key}_{wrapper_name}"
+            f"{'_balanced' if self.config.balance_grid else ''}"
+            f"{'_static' if not self.config.trident_dynamic else ''}"
+            ".py"
+        )
+        file_path = str(code_cache_dir() / file_name)
+
+        code = IndentedBuffer()
+        code.writeline("import torch")
+        code.writeline("import triton")
+        code.writeline("import trident")
+        code.writeline("from flag_gems.runtime import torch_device_fn")
+        if self.config.balance_grid:
+            code.writeline(
+                "from flag_gems.utils.pointwise_dynamic import _balanced_grid_partition"
+            )
+        code.newline()
+
+        decorator = (
+            "@trident.jit"
+            if self.config.trident_dynamic
+            else "@trident.jit(dynamic=False)"
+        )
+        code.writeline(decorator)
+        in_params = [
+            f"{'in' if schema.is_tensor(i) else 'val'}{schema.input_index(i)}"
+            for i in range(schema.num_inputs())
+        ]
+        if alias_index is not None:
+            sig_params = in_params
+            out_args = [f"in{alias_index}"]
+        else:
+            sig_params = in_params + ["out0"]
+            out_args = ["out0"]
+        code.writeline(f"def {wrapper_name}({_cs(sig_params)}):")
+        with code.indent():
+            self._emit_trident_contiguous_launch_body(
+                code,
+                jit_fn_name,
+                in_params,
+                out_args,
+                out_args[0],
+                tile_size,
+                one_tile,
+            )
+
+        write_atomic(file_path, code.getvalue())
+        spec = importlib.util.spec_from_file_location(
+            f"_gen_trident{alias_tag}_{self._scalar_fn_cache_key}_{in_tag}_{out_tag}{scalar_tag}{tile_tag}",
+            file_path,
+        )
+        m = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(m)
+        m.__dict__[jit_fn_name] = mat.entry
+        overload = getattr(m, wrapper_name)
+        self._trident_contiguous_out_overloads[cache_key] = overload
+        return overload
+
+    def _validate_trident_contiguous_inputs(self, args):
+        """Return (t0, promo_key, scalar_types) if args qualify for the
+        integrated contiguous Trident fast path, otherwise None."""
+        if (
+            self._skip_trident_alloc_fast_path
+            or self.config.prefer_1d_tile
+            or len(args) != self._num_inputs
+        ):
+            return None
+
+        if self._is_unary_single_tensor:
+            t0 = args[0]
+            if (
+                type(t0) is not torch.Tensor
+                or not t0.is_contiguous()
+                or t0.ndim == 0
+                or t0.is_complex()
+                or t0.device.type == "cpu"
+            ):
+                return None
+            numel = t0.numel()
+            if numel == 0 or numel > self._int32_max:
+                return None
+            return t0, t0.dtype, ()
+
+        if self._is_binary_two_tensors:
+            t0, t1 = args
+            if (
+                type(t0) is not torch.Tensor
+                or type(t1) is not torch.Tensor
+                or not t0.is_contiguous()
+                or not t1.is_contiguous()
+                or t0.shape != t1.shape
+                or t0.device != t1.device
+                or t0.ndim == 0
+                or t0.is_complex()
+                or t1.is_complex()
+                or t0.device.type == "cpu"
+            ):
+                return None
+            numel = t0.numel()
+            if numel == 0 or numel > self._int32_max:
+                return None
+            return t0, (t0.dtype, t1.dtype), ()
+
+        t_indices = self._tensor_input_indices
+        t0 = args[t_indices[0]]
+        if (
+            type(t0) is not torch.Tensor
+            or not t0.is_contiguous()
+            or t0.ndim == 0
+            or t0.is_complex()
+            or t0.device.type == "cpu"
+        ):
+            return None
+        numel = t0.numel()
+        if numel == 0 or numel > self._int32_max:
+            return None
+        shape0 = t0.shape
+        device0 = t0.device
+        for i in t_indices[1:]:
+            ti = args[i]
+            if (
+                type(ti) is not torch.Tensor
+                or not ti.is_contiguous()
+                or ti.shape != shape0
+                or ti.device != device0
+                or ti.is_complex()
+            ):
+                return None
+        scalar_types_list = []
+        for i in self._scalar_input_indices:
+            v = args[i]
+            tv = type(v)
+            if isinstance(v, (torch.Tensor, complex)):
+                return None
+            if tv is int and not (-9223372036854775808 <= v <= 9223372036854775807):
+                return None
+            scalar_types_list.append(tv)
+        for i, expected_dt in self._expected_scalar_dtypes:
+            if not isinstance(args[i], expected_dt):
+                return None
+        scalar_types = tuple(scalar_types_list)
+        promo_key = tuple(
+            args[i].dtype if self.fx.is_tensor(i) else type(args[i])
+            for i in range(self._num_inputs)
+        )
+        return t0, promo_key, scalar_types
+
+    def _try_trident_contiguous_fast_path(self, args):
+        """Fast path when enable_trident_jit is active and no out= is passed:
+        moves output allocation, tile selection, and zero-elem check into Trident."""
+        if self._capture_output_pool and self._is_capturing():
+            return None
+        validated = self._validate_trident_contiguous_inputs(args)
+        if validated is None:
+            return None
+        t0, promo_key, scalar_types = validated
+
+        out_dtypes = self._promo_cache.get(promo_key)
+        if out_dtypes is None:
+            computed = []
+            for i in range(self._num_outputs):
+                *arg_indices, method = self.fx._promotion_methods[i]
+                _, dtype = type_promotion(
+                    *(args[j] for j in arg_indices), type_promotion=method
+                )
+                computed.append(dtype)
+            out_dtypes = tuple(computed)
+            self._promo_cache[promo_key] = out_dtypes
+
+        in_dtypes = tuple(args[i].dtype for i in self._tensor_input_indices)
+        tile_size, one_tile = self._compute_trident_tile_params(t0.numel())
+        ndim = t0.ndim
+        cache_key = (in_dtypes, out_dtypes, scalar_types, tile_size, one_tile, ndim)
+        fast_fn = self._trident_contiguous_alloc_overloads.get(cache_key)
+        if fast_fn is None:
+            fast_fn = self._instantiate_trident_contiguous_alloc(
+                in_dtypes, out_dtypes, scalar_types, tile_size, one_tile, ndim
+            )
+        return fast_fn(*args)
+
+    def _try_trident_contiguous_out_fast_path(self, args, out0):
+        """Fast path for single-output contiguous out0=/in-place calls:
+        preserves original out0 object identity and skips allocation."""
+        if (
+            self._num_outputs != 1
+            or type(out0) is not torch.Tensor
+            or not out0.is_contiguous()
+            or out0.is_complex()
+        ):
+            return None
+        validated = self._validate_trident_contiguous_inputs(args)
+        if validated is None:
+            return None
+        t0, _, scalar_types = validated
+        if out0.shape != t0.shape or out0.device != t0.device:
+            return None
+
+        alias_index: Optional[int] = None
+        for t_pos, arg_idx in enumerate(self._tensor_input_indices):
+            if out0 is args[arg_idx]:
+                if alias_index is not None:
+                    return None
+                alias_index = t_pos
+
+        in_dtypes = tuple(args[i].dtype for i in self._tensor_input_indices)
+        tile_size, one_tile = self._compute_trident_tile_params(t0.numel())
+        ndim = t0.ndim
+        cache_key = (
+            in_dtypes,
+            out0.dtype,
+            scalar_types,
+            alias_index,
+            tile_size,
+            one_tile,
+            ndim,
+        )
+        fast_fn = self._trident_contiguous_out_overloads.get(cache_key)
+        if fast_fn is None:
+            fast_fn = self._instantiate_trident_contiguous_out(
+                in_dtypes,
+                out0.dtype,
+                scalar_types,
+                alias_index,
+                tile_size,
+                one_tile,
+                ndim,
+            )
+        if alias_index is not None:
+            fast_fn(*args)
+        else:
+            fast_fn(*args, out0)
+        return out0
+
     def _call_real_impl(self, *args, **kwargs):
         """Single entry point for real kernel invocation."""
+        if self.config.enable_trident_jit:
+            if not kwargs:
+                # Ultra-fast inline unary contiguous path: single dict lookup.
+                if (
+                    self._is_unary_single_tensor
+                    and not self._skip_trident_alloc_fast_path
+                    and not self.config.prefer_1d_tile
+                    and not self._capture_output_pool
+                    and len(args) == 1
+                ):
+                    t0 = args[0]
+                    if (
+                        type(t0) is torch.Tensor
+                        and t0.is_contiguous()
+                        and t0.ndim > 0
+                        and not t0.is_complex()
+                        and t0.device.type != "cpu"
+                    ):
+                        numel = t0.numel()
+                        if (
+                            0 < numel <= self._max_one_tile_tasks
+                            and not self.config.balance_grid
+                        ):
+                            tile_size = (
+                                self._max_tile_size
+                                if numel > self._half_max_tile
+                                else (
+                                    1
+                                    if numel <= 1
+                                    else (1 << (numel - 1).bit_length())
+                                )
+                            )
+                            ukey = (t0.dtype, t0.ndim, tile_size)
+                            fast_fn = self._unary_alloc_cache.get(ukey)
+                            if fast_fn is not None:
+                                return fast_fn(t0)
+                            fast_out = self._try_trident_contiguous_fast_path(args)
+                            if fast_out is not None:
+                                out_dtypes = self._promo_cache.get(t0.dtype)
+                                if out_dtypes is not None:
+                                    fn = self._trident_contiguous_alloc_overloads.get(
+                                        (
+                                            (t0.dtype,),
+                                            out_dtypes,
+                                            (),
+                                            tile_size,
+                                            True,
+                                            t0.ndim,
+                                        )
+                                    )
+                                    if fn is not None:
+                                        self._unary_alloc_cache[ukey] = fn
+                                return fast_out
+                        elif 0 < numel <= self._int32_max:
+                            fast_out = self._try_trident_contiguous_fast_path(args)
+                            if fast_out is not None:
+                                return fast_out
+                elif (
+                    (self._is_binary_two_tensors or self._is_binary_tensor_plus_scalar)
+                    and not self._skip_trident_alloc_fast_path
+                    and not self.config.prefer_1d_tile
+                    and not self._capture_output_pool
+                    and not self.config.balance_grid
+                    and len(args) == self._num_inputs
+                ):
+                    t0 = args[0]
+                    t1 = args[1]
+                    if (
+                        type(t0) is torch.Tensor
+                        and type(t1) is torch.Tensor
+                        and t0.is_contiguous()
+                        and t1.is_contiguous()
+                        and t0.shape == t1.shape
+                        and t0.device == t1.device
+                        and t0.ndim > 0
+                        and not t0.is_complex()
+                        and not t1.is_complex()
+                        and t0.device.type != "cpu"
+                    ):
+                        numel = t0.numel()
+                        if 0 < numel <= self._max_one_tile_tasks:
+                            s_ok = True
+                            s_type = None
+                            if self._is_binary_tensor_plus_scalar:
+                                s = args[2]
+                                s_type = type(s)
+                                if s_type is int:
+                                    s_ok = (
+                                        -9223372036854775808
+                                        <= s
+                                        <= 9223372036854775807
+                                    )
+                                elif s_type is not float and s_type is not bool:
+                                    s_ok = False
+                            if s_ok:
+                                tile_size = (
+                                    self._max_tile_size
+                                    if numel > self._half_max_tile
+                                    else (
+                                        1
+                                        if numel <= 1
+                                        else (1 << (numel - 1).bit_length())
+                                    )
+                                )
+                                bkey = (t0.dtype, t1.dtype, s_type, t0.ndim, tile_size)
+                                fast_fn = self._binary_alloc_cache.get(bkey)
+                                if fast_fn is not None:
+                                    return fast_fn(*args)
+                                fast_out = self._try_trident_contiguous_fast_path(args)
+                                if fast_out is not None:
+                                    promo_key = (
+                                        (t0.dtype, t1.dtype)
+                                        if s_type is None
+                                        else (t0.dtype, t1.dtype, s_type)
+                                    )
+                                    out_dtypes = self._promo_cache.get(promo_key)
+                                    if out_dtypes is not None:
+                                        scalar_types = (
+                                            () if s_type is None else (s_type,)
+                                        )
+                                        fn = self._trident_contiguous_alloc_overloads.get(
+                                            (
+                                                (t0.dtype, t1.dtype),
+                                                out_dtypes,
+                                                scalar_types,
+                                                tile_size,
+                                                True,
+                                                t0.ndim,
+                                            )
+                                        )
+                                        if fn is not None:
+                                            self._binary_alloc_cache[bkey] = fn
+                                    return fast_out
+                        elif 0 < numel <= self._int32_max:
+                            fast_out = self._try_trident_contiguous_fast_path(args)
+                            if fast_out is not None:
+                                return fast_out
+                    else:
+                        fast_out = self._try_trident_contiguous_fast_path(args)
+                        if fast_out is not None:
+                            return fast_out
+                else:
+                    fast_out = self._try_trident_contiguous_fast_path(args)
+                    if fast_out is not None:
+                        return fast_out
+            elif len(kwargs) == 1:
+                out0 = kwargs.get("out0")
+                if out0 is not None:
+                    if (
+                        self._is_unary_single_tensor
+                        and self._num_outputs == 1
+                        and not self._skip_trident_alloc_fast_path
+                        and not self.config.prefer_1d_tile
+                        and not self.config.balance_grid
+                        and len(args) == 1
+                    ):
+                        t0 = args[0]
+                        if (
+                            type(t0) is torch.Tensor
+                            and type(out0) is torch.Tensor
+                            and t0.is_contiguous()
+                            and out0.is_contiguous()
+                            and out0.shape == t0.shape
+                            and out0.device == t0.device
+                            and t0.ndim > 0
+                            and not t0.is_complex()
+                            and not out0.is_complex()
+                            and t0.device.type != "cpu"
+                        ):
+                            numel = t0.numel()
+                            if 0 < numel <= self._max_one_tile_tasks:
+                                tile_size = (
+                                    self._max_tile_size
+                                    if numel > self._half_max_tile
+                                    else (
+                                        1
+                                        if numel <= 1
+                                        else (1 << (numel - 1).bit_length())
+                                    )
+                                )
+                                alias_idx = 0 if out0 is t0 else None
+                                okey = (
+                                    t0.dtype,
+                                    out0.dtype,
+                                    alias_idx,
+                                    t0.ndim,
+                                    tile_size,
+                                )
+                                fast_fn = self._unary_out_cache.get(okey)
+                                if fast_fn is not None:
+                                    if alias_idx is not None:
+                                        fast_fn(t0)
+                                    else:
+                                        fast_fn(t0, out0)
+                                    return out0
+                                fast_out = self._try_trident_contiguous_out_fast_path(
+                                    args, out0
+                                )
+                                if fast_out is not None:
+                                    fn = self._trident_contiguous_out_overloads.get(
+                                        (
+                                            (t0.dtype,),
+                                            out0.dtype,
+                                            (),
+                                            alias_idx,
+                                            tile_size,
+                                            True,
+                                            t0.ndim,
+                                        )
+                                    )
+                                    if fn is not None:
+                                        self._unary_out_cache[okey] = fn
+                                    return fast_out
+                            elif 0 < numel <= self._int32_max:
+                                fast_out = self._try_trident_contiguous_out_fast_path(
+                                    args, out0
+                                )
+                                if fast_out is not None:
+                                    return fast_out
+                    else:
+                        fast_out = self._try_trident_contiguous_out_fast_path(
+                            args, out0
+                        )
+                        if fast_out is not None:
+                            return fast_out
         ndim, args, kwargs = self.prepare_args(*args, **kwargs)
         specialize_contiguous_strides = getattr(
             kwargs, "specialize_contiguous_strides", False
@@ -1643,7 +2341,7 @@ class PointwiseDynamicFunction:
             )
         # Record allocated outputs so that a subsequent graph-capture run can
         # reuse the same buffers instead of calling empty_like / empty.
-        if not self._is_capturing():
+        if not self.config.enable_trident_jit and not self._is_capturing():
             results = out if isinstance(out, (tuple, list)) else (out,)
             for t in results:
                 if isinstance(t, torch.Tensor):

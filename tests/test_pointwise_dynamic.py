@@ -1348,3 +1348,59 @@ def test_complex_real_inputs_bypass(dtype):
     alpha = 1.0
     out = add_func(a, b, alpha)
     torch.testing.assert_close(out, a + b * alpha)
+
+
+@pytest.mark.skipif(flag_gems.vendor_name != "nvidia", reason="NVIDIA Trident runtime")
+def test_trident_integrated_contiguous_fast_path_semantics():
+    pytest.importorskip("trident", reason="Trident runtime is not installed")
+
+    @pointwise_dynamic(
+        num_inputs=1,
+        promotion_methods=[(0, "DEFAULT")],
+        enable_trident=True,
+        dynamic=True,
+    )
+    @triton.jit
+    def neg_unary(x):
+        return -x
+
+    @pointwise_dynamic(
+        is_tensor=[True, False],
+        promotion_methods=[(0, 1, "DEFAULT")],
+        enable_trident=True,
+        dynamic=True,
+    )
+    @triton.jit
+    def add_scalar(x, alpha):
+        return x + alpha
+
+    for shape in [(44,), (134,), (2048,), (4, 8)]:
+        x = torch.randn(shape, device=flag_gems.device, dtype=torch.float32)
+        y = neg_unary(x)
+        torch.testing.assert_close(y, -x)
+        assert y.shape == x.shape and y.is_contiguous()
+
+        out = torch.empty_like(x)
+        y_out = neg_unary(x, out0=out)
+        assert y_out is out
+        torch.testing.assert_close(y_out, -x)
+
+        x_ip = x.clone()
+        y_ip = neg_unary(x_ip, out0=x_ip)
+        assert y_ip is x_ip
+        torch.testing.assert_close(y_ip, -x)
+
+        out2 = torch.empty_like(x)
+        y_out2 = neg_unary(x, out0=out2)
+        assert y_out2 is out2
+        torch.testing.assert_close(y_out2, -x)
+
+    x0 = torch.empty((0,), device=flag_gems.device, dtype=torch.float32)
+    assert neg_unary(x0).shape == (0,)
+
+    x_nc = torch.randn((8, 16), device=flag_gems.device, dtype=torch.float32).t()
+    torch.testing.assert_close(neg_unary(x_nc), -x_nc)
+
+    xs = torch.randn((128,), device=flag_gems.device, dtype=torch.float32)
+    torch.testing.assert_close(add_scalar(xs, 2), xs + 2)
+    torch.testing.assert_close(add_scalar(xs, 2.5), xs + 2.5)
