@@ -68,3 +68,44 @@ def test_sparse_coo_tensor_with_dims_and_tensors():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+class SparseCooTensorWithDimsAndTensorsBackwardBenchmark(
+    SparseCooTensorWithDimsAndTensorsBenchmark
+):
+    """Times the values gradient of the COO constructor.
+
+    ``is_backward=True`` makes the base class build the descriptor once per
+    case (outside the timed closure) and time
+    ``torch.autograd.grad(..., retain_graph=True)``, so the measured region is
+    the backward only. The candidate resolves through ``gems_op``: the
+    FlagGems entry routes differentiable payloads through its autograd wrapper,
+    whose backward is the fused Triton gather.
+    """
+
+    def _benchmark_callable(self, op, *args, **kwargs):
+        # The descriptor is sparse, so ``torch.randn_like`` cannot materialise
+        # an upstream gradient for it (``aten::normal_`` has no SparseCUDA
+        # kernel). Build a dense gradient of the logical shape instead; ATen
+        # accepts a dense ``grad_output`` for a sparse output.
+        out = op(*args, **kwargs)
+        dout = torch.randn(tuple(out.shape), dtype=out.dtype, device=out.device)
+        xs = [arg for arg in args if torch.is_tensor(arg) and arg.requires_grad]
+        return (
+            lambda: torch.autograd.grad(
+                (out,), tuple(xs), grad_outputs=(dout,), retain_graph=True
+            ),
+            xs,
+        )
+
+
+@pytest.mark.sparse_coo_tensor_with_dims_and_tensors_backward
+def test_sparse_coo_tensor_with_dims_and_tensors_backward():
+    bench = SparseCooTensorWithDimsAndTensorsBackwardBenchmark(
+        op_name="sparse_coo_tensor_with_dims_and_tensors",
+        torch_op=torch.ops.aten._sparse_coo_tensor_with_dims_and_tensors,
+        gems_op=flag_gems.sparse_coo_tensor_with_dims_and_tensors,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

@@ -2862,5 +2862,6 @@ __all__ = [
     "only_enable",
     "slow_conv2d_forward_backward",
     "sparse_addmm_backward",
+    "sparse_coo_tensor_with_dims_and_tensors_backward",
     "use_gems",
 ]

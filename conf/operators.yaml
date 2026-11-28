@@ -20223,6 +20223,22 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: sparse_coo_tensor_with_dims_and_tensors_backward
+  description: 'First-order values gradient of the sparse COO constructor: every stored
+    entry receives the dense upstream gradient at its own coordinate through a fused
+    Triton gather, exercised through the forward operator autograd. Coordinates are
+    non-differentiable and duplicates stay separate unreduced payload rows.
+
+    '
+  for:
+  - _sparse_coo_tensor_with_dims_and_tensors
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - beta: '5.5.0'
 - id: sparse_csc_tensor
   description: 'Assembles a compressed sparse column (CSC) tensor from its stored
     components: the column-pointer vector (ccol_indices), the row indices (row_indices)
