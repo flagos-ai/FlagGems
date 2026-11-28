@@ -1315,6 +1315,7 @@ _FULL_CONFIG = (
     ("concat", concat),
     ("concatenate", concatenate),
     ("conj", conj),
+    ("conj_backward", conj_backward),
     ("conj_physical", conj_physical),
     ("conj_physical_", conj_physical_),
     ("constant_pad_nd", constant_pad_nd),
