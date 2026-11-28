@@ -6700,6 +6700,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_c2r_backward
+  description: >-
+    Backward of the onesided complex-to-real inverse FFT (aten::_fft_c2r, used
+    by torch.fft.irfft), computed as the onesided rfft of grad_output with the
+    interior bins doubled.
+  for:
+  - fft_c2r_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: fft_ifftshift
   description: Shifts the zero-frequency component to the beginning of the tensor,
     the inverse of torch.fft.fftshift().
