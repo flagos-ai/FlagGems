@@ -2859,6 +2859,7 @@ __all__ = [
     "linalg_svd_backward",
     "maximum_backward",
     "native_batch_norm_legit_no_training_backward",
+    "nested_from_padded_backward",
     "only_enable",
     "slow_conv2d_forward_backward",
     "sparse_addmm_backward",

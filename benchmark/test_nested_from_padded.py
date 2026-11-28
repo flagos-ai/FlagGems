@@ -87,3 +87,20 @@ def test_nested_from_padded():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.nested_from_padded_backward
+def test_nested_from_padded_backward():
+    # Same class, shapes, generator and dtypes as the forward benchmark, so the
+    # backward case list is exactly the forward one. is_backward makes the
+    # harness build the graph once and time only torch.autograd.grad over the
+    # nested output; gems_op is the FlagGems entry that installs the Triton
+    # backward, so both sides run the same autograd traversal.
+    bench = NestedFromPaddedBenchmark(
+        op_name="nested_from_padded",
+        torch_op=torch.ops.aten._nested_from_padded,
+        gems_op=flag_gems._nested_from_padded,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

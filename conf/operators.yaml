@@ -15540,6 +15540,21 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: nested_from_padded_backward
+  description: The backward computation of `_nested_from_padded()`, exercised through
+    the autograd of the forward operator. The forward copies each component's
+    left-aligned prefix box out of the padded tensor, so the gradient scatters the
+    flat values gradient back into those boxes and leaves every padding position
+    zero, un-permuting again when `fuse_transform_0213` is set.
+  for:
+  - _nested_from_padded
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - beta: '5.5.0'
 - id: nested_from_padded_tensor
   description: 'Constructs a nested tensor from a padded tensor and offsets.
 
