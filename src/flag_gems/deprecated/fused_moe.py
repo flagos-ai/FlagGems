@@ -1874,10 +1874,10 @@ def fused_experts_impl(
     w2_bias: Optional[torch.Tensor] = None,
 ) -> torch.Tensor:
     logger.debug("GEMS FUSED_MOE")
-    assert (
-        activation == "silu"
-    ), f"Only 'silu' activation is supported, got {activation}"
-
+    # Only the activations fused into the first GEMM (SiLU / SwiGLU-OAI) use
+    # the fused kernel; every other supported activation is applied by
+    # apply_moe_activation() below. Parse the name eagerly so that unknown
+    # values raise a clear ValueError instead of being silently accepted.
     activation_enum = MoEActivation.from_str(activation)
 
     # Check constraints

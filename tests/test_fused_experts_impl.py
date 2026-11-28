@@ -224,49 +224,68 @@ def test_dispatch_fused_moe_kernel_matches_ref(config, dtype):
     torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
 
 
+def _moe_activation_reference(x: torch.Tensor, activation: str) -> torch.Tensor:
+    """Elementwise part of a MoE activation (without the gated multiply)."""
+    name = activation.removesuffix("_no_mul")
+    if name == "silu":
+        return x * torch.sigmoid(x)
+    if name == "gelu":
+        return torch.nn.functional.gelu(x)
+    if name == "relu2":
+        return torch.relu(x).square()
+    raise ValueError(f"Unsupported reference activation: {activation}")
+
+
 def torch_fused_moe_reference(
     hidden_states: torch.Tensor,
     w1: torch.Tensor,
     w2: torch.Tensor,
     topk_weights: torch.Tensor,
     topk_ids: torch.Tensor,
+    activation: str = "silu",
 ) -> torch.Tensor:
     """Pure PyTorch reference implementation of fused MoE (no vLLM dependency).
 
     Computes:
-        Y_m = sum_j  A_mj * W2[e_mj] @ SiLU(W1[e_mj] @ H_m)_{:D} ) * (W1[e_mj] @ H_m)_{D:})
+        Y_m = sum_j  A_mj * W2[e_mj] @ activation(W1[e_mj] @ H_m)
 
     Args:
         hidden_states: (M, K)
-        w1: (E, 2D, K)  -- gate + up projection concatenated
+        w1: (E, 2D, K) for gated activations, (E, D, K) for ``*_no_mul``
         w2: (E, K, D)   -- down projection
         topk_weights: (M, topk)
         topk_ids: (M, topk)
+        activation: MoE activation name (silu/relu2/gelu and ``*_no_mul``)
 
     Returns:
         output: (M, K)
     """
     M, K = hidden_states.shape
     topk = topk_ids.shape[1]
-    output = torch.zeros(M, K, device=hidden_states.device, dtype=hidden_states.dtype)
+    gated = not activation.endswith("_no_mul")
+    # Accumulate in fp32 to mirror the kernel's fp32 accumulation, then cast
+    # once at the end (per-term bf16 rounding would exceed the test tolerance).
+    output = torch.zeros(M, K, device=hidden_states.device, dtype=torch.float32)
 
     for m in range(M):
         for j in range(topk):
             e = topk_ids[m, j].item()
             weight = topk_weights[m, j]
-            # GEMM1: up-projection  (1, K) @ (K, 2D) -> (1, 2D)
+            # GEMM1: up-projection  (1, K) @ (K, W1_out) -> (1, W1_out)
             z = hidden_states[m].to(torch.float32) @ w1[e].T.to(torch.float32)
-            # SiLU-and-Mul: split into gate and up, apply SwiGLU
-            D = z.shape[-1] // 2
-            gate = z[:D]
-            up = z[D:]
-            s = (gate * torch.sigmoid(gate)) * up  # SiLU(gate) * up
+            if gated:
+                # Gated activation: split into gate and up halves.
+                D = z.shape[-1] // 2
+                gate = _moe_activation_reference(z[:D], activation)
+                s = gate * z[D:]
+            else:
+                s = _moe_activation_reference(z, activation)
             # GEMM2: down-projection  (1, D) @ (D, K) -> (1, K)
             r = s @ w2[e].T.to(torch.float32)
             # Weighted accumulation
-            output[m] += (weight.to(torch.float32) * r).to(output.dtype)
+            output[m] += weight.to(torch.float32) * r
 
-    return output
+    return output.to(hidden_states.dtype)
 
 
 @pytest.mark.fused_experts_impl
@@ -313,6 +332,68 @@ def test_fused_moe_vs_ref(config, dtype):
 
     # Fused bf16/fp16 kernels accumulate rounding errors across two GEMMs
     # and an activation; use tolerances proportional to output magnitude.
+    rtol = 1e-1
+    atol = max(1e-2, ref.abs().max().item() * 1e-5)
+
+    torch.testing.assert_close(result, ref, rtol=rtol, atol=atol)
+
+
+@pytest.mark.fused_experts_impl
+@pytest.mark.parametrize(
+    "activation",
+    ["relu2_no_mul", "gelu_no_mul", "silu_no_mul", "relu2"],
+)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
+@pytest.mark.skipif(
+    flag_gems.vendor_name not in ("nvidia", "thead"),
+    reason="vendor fused_experts_impl overrides still support SiLU only",
+)
+def test_fused_moe_non_silu_activation(activation, dtype):
+    """Issue #9057: non-SiLU activations must be dispatched, not rejected."""
+    num_tokens, num_experts, hidden_size, intermediate_size, topk = (
+        16,
+        8,
+        256,
+        512,
+        2,
+    )
+    device = flag_gems.device
+    gated = not activation.endswith("_no_mul")
+
+    torch.manual_seed(0)
+
+    hidden_states = torch.randn(num_tokens, hidden_size, device=device, dtype=dtype)
+    w1 = torch.randn(
+        num_experts,
+        intermediate_size * (2 if gated else 1),
+        hidden_size,
+        device=device,
+        dtype=dtype,
+    ).mul_(1.0 / hidden_size**0.5)
+    w2 = torch.randn(
+        num_experts, hidden_size, intermediate_size, device=device, dtype=dtype
+    ).mul_(1.0 / intermediate_size**0.5)
+
+    gating = torch.randn(num_tokens, num_experts, device=device, dtype=torch.float32)
+    topk_weights, topk_ids = torch.topk(torch.softmax(gating, dim=-1), topk, dim=-1)
+    topk_weights = topk_weights / topk_weights.sum(dim=-1, keepdim=True)
+    topk_weights = topk_weights.to(dtype)
+
+    result = flag_gems.fused_experts_impl(
+        hidden_states,
+        w1,
+        w2,
+        topk_weights,
+        topk_ids,
+        activation=activation,
+    )
+
+    ref = torch_fused_moe_reference(
+        hidden_states, w1, w2, topk_weights, topk_ids, activation=activation
+    )
+
+    torch_device_fn.synchronize()
+
     rtol = 1e-1
     atol = max(1e-2, ref.abs().max().item() * 1e-5)
 
