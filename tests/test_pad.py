@@ -89,3 +89,23 @@ def test_pad(shape, dtype, pad_mode, contiguous):
         ref_out = ref_out.to(res_out.dtype)
 
     gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.pad
+@pytest.mark.parametrize("size", [4, 20, 1000])
+@pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+def test_pad_reflect_1d_tail_lanes(size, dtype):
+    x = torch.randn(size, dtype=dtype, device=flag_gems.device)
+    pad = (3, 3)
+
+    ref_x = to_reference(x)
+    if ref_x.dtype == torch.float16:
+        ref_x = ref_x.to(torch.float32)
+    ref_out = torch.nn.functional.pad(ref_x[None, None], pad, mode="reflect")[0, 0]
+    if dtype == torch.float16:
+        ref_out = ref_out.to(dtype)
+
+    with flag_gems.use_gems():
+        res_out = torch.nn.functional.pad(x, pad, mode="reflect")
+
+    gems_assert_equal(res_out, ref_out)
