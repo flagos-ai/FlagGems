@@ -57,7 +57,7 @@ def test__ctc_loss_accuracy(T, N, S, C, dtype):
     gems_args, ref_args = _make_inputs(T, N, S, C, dtype)
 
     ref_nll, ref_log_alpha = torch.ops.aten._ctc_loss(*ref_args, 0, False)
-    res_nll, res_log_alpha = flag_gems.ops._ctc_loss(*gems_args, 0, False)
+    res_nll, res_log_alpha = flag_gems._ctc_loss(*gems_args, 0, False)
 
     # _ctc_loss returns (neg_log_likelihood, log_alpha); both must match.
     # log_alpha accumulates over T timesteps, so its absolute error grows with
@@ -88,7 +88,7 @@ def test__ctc_loss_blank_and_zero_infinity(dtype):
     ref_nll, ref_log_alpha = torch.ops.aten._ctc_loss(
         ref_log_probs, ref_targets, input_lengths, target_lengths, C - 1, True
     )
-    res_nll, res_log_alpha = flag_gems.ops._ctc_loss(
+    res_nll, res_log_alpha = flag_gems._ctc_loss(
         log_probs, targets, input_lengths, target_lengths, C - 1, True
     )
 
@@ -113,7 +113,7 @@ def test__ctc_loss_tensor_overload(dtype):
     ref_nll, ref_log_alpha = torch.ops.aten._ctc_loss.Tensor(
         ref_args[0], ref_args[1], *ref_lengths, 0, False
     )
-    res_nll, res_log_alpha = flag_gems.ops._ctc_loss(
+    res_nll, res_log_alpha = flag_gems._ctc_loss(
         gems_args[0], gems_args[1], *gems_lengths, 0, False
     )
 
@@ -133,7 +133,7 @@ def test__ctc_loss_out(dtype):
 
     res_out0 = torch.empty_like(ref_nll, device=flag_gems.device)
     res_out1 = torch.empty_like(ref_log_alpha, device=flag_gems.device)
-    got0, got1 = flag_gems.ops._ctc_loss_out(
+    got0, got1 = (flag_gems._ctc_loss_out)(
         *gems_args, 0, False, out0=res_out0, out1=res_out1
     )
 
@@ -155,7 +155,7 @@ def test__ctc_loss_out_resize(dtype):
 
     res_out0 = torch.empty(0, dtype=dtype, device=flag_gems.device)
     res_out1 = torch.empty(0, dtype=dtype, device=flag_gems.device)
-    flag_gems.ops._ctc_loss_out(*gems_args, 0, False, out0=res_out0, out1=res_out1)
+    (flag_gems._ctc_loss_out)(*gems_args, 0, False, out0=res_out0, out1=res_out1)
 
     assert res_out0.shape == ref_nll.shape
     assert res_out1.shape == ref_log_alpha.shape

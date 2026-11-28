@@ -988,7 +988,7 @@ def grouped_gemv_int8_kernel(
     b_words += cols[:, None] * (K // 4) + words[None, :]
     acc = tl.zeros((BLOCK_N, BLOCK_K4), tl.int32)
     if TLE_PIPELINE:
-        for tile in tle.gpu.pipeline(0, tl.cdiv(K // 4, BLOCK_K4), num_stages=STAGES):
+        for tile in tl.range(0, tl.cdiv(K // 4, BLOCK_K4), num_stages=STAGES):
             offset = tile * BLOCK_K4
             acc = packed_gemv_step(
                 a_words + offset,
@@ -1096,7 +1096,7 @@ def grouped_gemm_compute_tile(
     else:
         acc = tl.zeros((BLOCK_M, BLOCK_N), tl.int32)
     if TLE_PIPELINE:
-        for _ in tle.gpu.pipeline(0, tl.cdiv(K, BLOCK_K), num_stages=STAGES):
+        for _ in tl.range(0, tl.cdiv(K, BLOCK_K), num_stages=STAGES):
             a_ptr, b_ptr, acc = grouped_dot_step(
                 a_ptr, b_ptr, acc, BLOCK_K, SWAP, ASYNC_A, ASYNC_B
             )

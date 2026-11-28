@@ -19,6 +19,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 DTYPES = utils.ALL_FLOAT_DTYPES
 SHAPES = [(1, 4), (2, 17), (8, 64), (33, 129), (513, 129)]
@@ -30,9 +31,23 @@ GRAD_MODES = [(True, True), (True, False), (False, True), (False, False)]
 
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize(
-    "dtype", [torch.int32, torch.int64, torch.complex64, torch.complex128]
+    "dtype",
+    [
+        torch.int32,
+        torch.int64,
+        torch.complex64,
+        pytest.param(torch.complex128, marks=_SKIP_FP64),
+    ],
 )
 def test_thnn_fused_lstm_cell_backward_rejects_unsupported_dtype(dtype):
+    if flag_gems.vendor_name == "kunlunxin":
+        if dtype == torch.complex128:
+            pytest.skip("Kunlunxin target storage converts complex128 to complex64")
+        if not cfg.TO_CPU:
+            pytest.skip(
+                "Kunlunxin native fused LSTM backward accepts integers and raises "
+                "ValueError for complex inputs instead of the expected RuntimeError"
+            )
     state = torch.zeros((2, 3), dtype=dtype, device=flag_gems.device)
     workspace = torch.zeros((2, 12), dtype=dtype, device=flag_gems.device)
     args = (state, state, state, state, workspace, True)
@@ -117,6 +132,10 @@ def _assert_outputs(result, reference, dtype, batch_size):
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame: no aten reference for fused LSTM backward",
+)
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("shape", SHAPES)
@@ -132,6 +151,10 @@ def test_thnn_fused_lstm_cell_backward(dtype, shape, has_bias):
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame: no aten reference for fused LSTM backward",
+)
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("has_grad_hy,has_grad_cy", GRAD_MODES)
@@ -152,6 +175,10 @@ def test_thnn_fused_lstm_cell_backward_optional_grads(dtype, has_grad_hy, has_gr
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame: no aten reference for fused LSTM backward",
+)
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 def test_thnn_fused_lstm_cell_backward_noncontiguous(dtype):
@@ -170,6 +197,10 @@ def test_thnn_fused_lstm_cell_backward_noncontiguous(dtype):
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame: no aten reference for fused LSTM backward",
+)
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("dtype", DTYPES)
 @pytest.mark.parametrize("has_bias", [False, True])
@@ -211,6 +242,10 @@ def test_thnn_fused_lstm_cell_backward_end_to_end(dtype, has_bias):
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame: no aten reference for fused LSTM backward",
+)
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("workspace_shape", [(1, 80), (10, 8), (20, 4)])
 def test_thnn_fused_lstm_cell_backward_reshaped_workspace(workspace_shape):
@@ -228,6 +263,10 @@ def test_thnn_fused_lstm_cell_backward_reshaped_workspace(workspace_shape):
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame: no aten reference for fused LSTM backward",
+)
 @pytest.mark.thnn_fused_lstm_cell_backward
 @pytest.mark.parametrize("shape", [(0, 8), (2, 0)])
 def test_thnn_fused_lstm_cell_backward_empty(shape):
@@ -241,6 +280,10 @@ def test_thnn_fused_lstm_cell_backward_empty(shape):
 
 
 @pytest.mark.skipif(cfg.TO_CPU, reason="native fused LSTM cell is CUDA-only")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="enflame: no aten reference for fused LSTM backward",
+)
 @pytest.mark.thnn_fused_lstm_cell_backward
 def test_thnn_fused_lstm_cell_backward_special_values():
     device = flag_gems.device

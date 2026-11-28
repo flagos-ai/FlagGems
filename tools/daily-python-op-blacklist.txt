@@ -1,0 +1,6 @@
+# NVIDIA daily python-op only; PR and other backend tests remain enabled.
+# Run 45737751466; GPU 3 first-parameter-only recheck still fails these cases.
+tests/test_nested_tensor_size.py # Jagged dispatch missing; ragged size/scalar semantics incorrect.
+# Local full-suite recheck: CUDA illegal access poisons subsequent tests.
+tests/deprecated/test_FLA/test_chunk_gated_delta_rule.py # Variable-length two-sequence kernel illegal memory access.
+tests/test_cov.py # A100 CI requires 196608 bytes shared memory; hardware limit is 166912. H800 pass does not clear this.

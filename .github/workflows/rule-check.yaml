@@ -25,6 +25,9 @@ on:
       - opened
       - reopened
       - synchronize
+  merge_group:
+    branches:
+      - master
 
 permissions:
   contents: read
@@ -46,12 +49,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        if: github.event_name != 'merge_group'
         with:
           # fetch-depth 0 required by derive_changed_operators.py (base...head
           # diff). On ubuntu-latest a full clone is fast via GitHub's own network.
           fetch-depth: 0
 
       - name: Set up Python
+        if: github.event_name != 'merge_group'
         uses: actions/setup-python@ece7cb06caefa5fff74198d8649806c4678c61a1  # v6.3.0
         with:
           python-version: '3.11'
@@ -62,6 +67,7 @@ jobs:
       # install step is skipped entirely; on a miss the venvs are built once and
       # saved for subsequent runs.
       - name: Cache pre-commit hook environments
+        if: github.event_name != 'merge_group'
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.cache/pre-commit
@@ -71,6 +77,7 @@ jobs:
       # Pinned so a new pre-commit/pyyaml release can't silently change hook
       # behavior or break on a cache miss; bump deliberately when needed.
       - name: Install pre-commit and pyyaml
+        if: github.event_name != 'merge_group'
         run: pip install "pre-commit==4.2.0" "pyyaml==6.0.2"
 
       # On PRs lint only the files the PR touched; hooks with pass_filenames:
@@ -84,13 +91,15 @@ jobs:
             --from-ref "${{ github.event.pull_request.base.sha }}" \
             --to-ref "${{ github.event.pull_request.head.sha }}"
 
+      # Skipped in the merge queue (merge_group): the PR was already linted, and
+      # the job still reports success so the required check is satisfied.
       - name: Run pre-commit (code style, all files)
-        if: github.event_name != 'pull_request'
+        if: github.event_name == 'push'
         run: pre-commit run --show-diff-on-failure --color=always --all-files
 
       # rule-check steps only make sense on pull_request events (they need a
       # base SHA to diff against). On push-to-master the code-style check above
-      # is sufficient.
+      # is sufficient; in the merge queue every step is skipped.
       - name: Derive changed operators
         id: derive
         if: github.event_name == 'pull_request'
@@ -185,9 +194,23 @@ jobs:
           STEPS_JSON: ${{ toJSON(steps) }}
         run: |
           failed=0
-          for step_id in check-operators-yaml check-init-exports check-backend-imports check-kernelgen-tests check-operator-markers check-aten-operators check-no-torch-fallback; do
+          # Each entry is "step-id|Step name" — the name must match the `name:` field
+          # of the corresponding step above so the gate output lines up with what
+          # GitHub displays in the job summary.
+          checks=(
+            "check-operators-yaml|Check operators.yaml"
+            "check-init-exports|Check __init__.py exports and registry"
+            "check-backend-imports|Check vendor backend imports against shared code"
+            "check-kernelgen-tests|Check changed test files for use_gems"
+            "check-operator-markers|Check operator test files and markers"
+            "check-aten-operators|Check aten operator names"
+            "check-no-torch-fallback|Check no torch compute calls in operator code"
+          )
+          for entry in "${checks[@]}"; do
+            step_id="${entry%%|*}"
+            step_name="${entry##*|}"
             result=$(echo "$STEPS_JSON" | jq -r --arg id "$step_id" '.[$id].outcome // "skipped"')
-            echo "$step_id: $result"
+            echo "$step_name: $result"
             if [ "$result" = "failure" ]; then
               failed=1
             fi

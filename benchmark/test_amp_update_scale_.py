@@ -3,6 +3,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
 
 # ``growth_interval`` is kept within the signed int32 range. For the no-inf
@@ -83,6 +85,10 @@ class AmpUpdateScaleBenchmark(base.Benchmark):
         )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.amp_update_scale_
 def test_amp_update_scale_():
     bench = AmpUpdateScaleBenchmark(

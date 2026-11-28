@@ -79,6 +79,14 @@ class CudnnConvTransposeBenchmark(base.GenericBenchmark):
 
 
 @pytest.mark.cudnn_convolution_transpose
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "GCU is built without cuDNN, so aten::cudnn_convolution_transpose has no "
+        "PrivateUse1 kernel and cannot be timed as the native baseline; the "
+        "Triton candidate is still timed"
+    ),
+)
 def test_cudnn_convolution_transpose():
     torch.backends.cudnn.allow_tf32 = False
     bench = CudnnConvTransposeBenchmark(

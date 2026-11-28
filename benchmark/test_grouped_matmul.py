@@ -27,8 +27,8 @@ except ImportError:
     torch_npu = None
 
 ascend_only = pytest.mark.skipif(
-    flag_gems.vendor_name != "ascend",
-    reason="the optimized Grouped MatMul implementation targets Ascend",
+    flag_gems.vendor_name not in ("ascend", "enflame"),
+    reason="the optimized Grouped MatMul implementation targets Ascend or GCU",
 )
 
 GROUPED_MATMUL_SHAPES = (
@@ -108,6 +108,13 @@ class GroupedMatmulBenchmark(base.Benchmark):
 
 @pytest.mark.grouped_matmul
 @ascend_only
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_npu.npu_grouped_matmul is unavailable on GCU, so there is no "
+        "native baseline; time the Triton kernel only"
+    ),
+)
 def test_grouped_matmul_perf():
     benchmark = GroupedMatmulBenchmark(
         op_name="grouped_matmul",

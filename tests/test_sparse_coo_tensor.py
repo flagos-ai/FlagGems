@@ -21,6 +21,7 @@ import torch
 import flag_gems
 
 from . import accuracy_utils as utils
+from .accuracy_utils import _SKIP_FP64
 
 
 def _components(nnz=37, sparse_dim=2, dense_shape=(), dtype=torch.float32):
@@ -39,6 +40,10 @@ def _assert_components(actual, expected):
     torch.testing.assert_close(actual._values(), expected._values())
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="sparse COO tensor not supported on this device",
+)
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize("nnz", [0, 1, 37, 2051])
 @pytest.mark.parametrize("sparse_dim,dense_shape", [(1, ()), (2, (3, 2)), (0, (2,))])
@@ -56,9 +61,23 @@ def test_sparse_coo_tensor_infer_size(nnz, sparse_dim, dense_shape, dtype):
 
 @pytest.mark.sparse_coo_tensor
 @pytest.mark.parametrize(
-    "index_dtype", [torch.int64, torch.int32, torch.float32, torch.complex64]
+    "index_dtype",
+    [
+        torch.int64,
+        torch.int32,
+        torch.float32,
+        pytest.param(
+            torch.complex64,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name == "enflame",
+                reason="enflame: device cast to complex64 aborts (topsatenCopy)",
+            ),
+        ),
+    ],
 )
-@pytest.mark.parametrize("dtype", [None, torch.float64, torch.float16])
+@pytest.mark.parametrize(
+    "dtype", [None, pytest.param(torch.float64, marks=_SKIP_FP64), torch.float16]
+)
 @pytest.mark.parametrize("explicit", [False, True])
 def test_sparse_coo_tensor_conversion_and_strides(index_dtype, dtype, explicit):
     indices, values = _components(74, 2, (3,))
@@ -71,7 +90,7 @@ def test_sparse_coo_tensor_conversion_and_strides(index_dtype, dtype, explicit):
 
 
 @pytest.mark.sparse_coo_tensor
-@pytest.mark.parametrize("dtype", [None, torch.float64])
+@pytest.mark.parametrize("dtype", [None, pytest.param(torch.float64, marks=_SKIP_FP64)])
 @pytest.mark.parametrize("explicit", [False, True])
 def test_sparse_coo_tensor_scalar_values(dtype, explicit):
     indices = torch.tensor([[2], [4]], device=flag_gems.device)
@@ -119,6 +138,13 @@ def test_sparse_coo_tensor_coalesced(coalesced):
 
 
 @pytest.mark.sparse_coo_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::sparse_coo_tensor"
+    ),
+)
 def test_sparse_coo_tensor_dispatch():
     indices, values = _components()
     ref = torch.sparse_coo_tensor(indices, values)
@@ -196,7 +222,9 @@ def test_sparse_coo_tensor_mismatched_devices():
 
 
 @pytest.mark.sparse_coo_tensor
-@pytest.mark.parametrize("dtype", [None, torch.float64, torch.float16])
+@pytest.mark.parametrize(
+    "dtype", [None, pytest.param(torch.float64, marks=_SKIP_FP64), torch.float16]
+)
 def test_sparse_coo_tensor_autograd(dtype):
     indices, values = _components()
     values.requires_grad_()

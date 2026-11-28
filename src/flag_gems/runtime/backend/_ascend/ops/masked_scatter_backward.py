@@ -19,6 +19,7 @@ import math
 import torch
 import triton
 import triton.language as tl
+import triton.runtime.driver as driver
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
@@ -142,6 +143,109 @@ def _scan_f16_gather(
         acc = acc + shifted
     group_offsets = acc - group_counts  # exclusive
     return (tl.reshape(within_group + group_offsets[:, None], (BLOCK_SIZE,)), acc)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def _count_persistent_kernel(
+    mask_ptr, counts_ptr, N, BLOCK_SIZE: tl.constexpr, GROUP_TOTALS: tl.constexpr
+):
+    n_blocks = (N + BLOCK_SIZE - 1) // BLOCK_SIZE
+    if GROUP_TOTALS:
+        tiles_per_program = tl.cdiv(n_blocks, tl.num_programs(axis=0))
+        start = ext.program_id(axis=0) * tiles_per_program
+        stop = tl.minimum(start + tiles_per_program, n_blocks)
+        step = 1
+        total = tl.full((), 0, tl.int32)
+    else:
+        start = ext.program_id(axis=0)
+        stop = n_blocks
+        step = tl.num_programs(axis=0)
+    for pid in range(start, stop, step):
+        offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask_val = tl.load(mask_ptr + offsets, mask=offsets < N, other=0).to(tl.int32)
+        count = tl.sum(mask_val, axis=0)
+        tl.store(counts_ptr + pid, count)
+        if GROUP_TOTALS:
+            total += count
+    if GROUP_TOTALS:
+        tl.store(counts_ptr + n_blocks + 1 + ext.program_id(axis=0), total)
+    if ext.program_id(axis=0) == 0:
+        tl.store(counts_ptr + n_blocks, 0)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N", "numel"])
+def _expand_persistent_kernel(
+    grad16_ptr,
+    mask_ptr,
+    offsets_ptr,
+    out_ptr,
+    N,
+    numel,
+    BLOCK_SIZE: tl.constexpr,
+    WIDE_ELEM: tl.constexpr,
+    DO_TAIL: tl.constexpr,
+    RAW_COUNTS: tl.constexpr,
+    GROUP_BLOCK: tl.constexpr,
+):
+    """Process multiple tiles per program, amortizing launch and prefix work.
+
+    With raw counts, reduce the starting prefix once, then advance it by each
+    tile's count. Otherwise, retain the strided traversal over scanned offsets.
+    """
+    n_blocks = (N + BLOCK_SIZE - 1) // BLOCK_SIZE
+    if RAW_COUNTS:
+        tiles_per_program = tl.cdiv(n_blocks, tl.num_programs(axis=0))
+        start = ext.program_id(axis=0) * tiles_per_program
+        stop = tl.minimum(start + tiles_per_program, n_blocks)
+        step = 1
+        group = tl.arange(0, GROUP_BLOCK)
+        values = tl.load(
+            offsets_ptr + n_blocks + 1 + group,
+            mask=group < tl.num_programs(axis=0),
+            other=0,
+        )
+        k = tl.sum(values, axis=0).to(tl.int64)
+        out_off = tl.sum(tl.where(group < ext.program_id(axis=0), values, 0), axis=0)
+    else:
+        start = ext.program_id(axis=0)
+        stop = n_blocks
+        step = tl.num_programs(axis=0)
+    for pid in range(start, stop, step):
+        r_i = tl.arange(0, BLOCK_SIZE)
+        offsets = pid * BLOCK_SIZE + r_i
+        m = offsets < N
+        if RAW_COUNTS:
+            cnt = tl.load(offsets_ptr + pid)
+        else:
+            out_off = tl.load(offsets_ptr + pid)
+            cnt = tl.load(offsets_ptr + pid + 1) - out_off
+        if DO_TAIL:
+            if not RAW_COUNTS:
+                k = tl.load(offsets_ptr + n_blocks).to(tl.int64)
+            tail = k + pid * BLOCK_SIZE + r_i
+            tl.store(out_ptr + tail, 0.0, mask=tail < numel)
+
+        mask_val = tl.load(mask_ptr + offsets, mask=m, other=0).to(tl.int32)
+        key = tl.where(mask_val != 0, r_i.to(tl.float16), 32768.0)
+        sorted_key = al.sort(key, dim=-1)
+        lane = tl.minimum(sorted_key.to(tl.int32), BLOCK_SIZE - 1)
+        mst = (r_i < cnt) & ((out_off + r_i).to(tl.int64) < numel)
+        if WIDE_ELEM:
+            offsets16 = pid * (2 * BLOCK_SIZE) + tl.arange(0, 2 * BLOCK_SIZE)
+            g16 = tl.load(grad16_ptr + offsets16, mask=offsets16 < 2 * N, other=0)
+            glo = tl.gather(g16, lane * 2, axis=0)
+            ghi = tl.gather(g16, lane * 2 + 1, axis=0)
+            lo32 = glo.to(tl.int16, bitcast=True).to(tl.int32) & 0xFFFF
+            hi32 = (ghi.to(tl.int16, bitcast=True).to(tl.int32) & 0xFFFF) << 16
+            tl.store(out_ptr + out_off + r_i, lo32 | hi32, mask=mst)
+        else:
+            g16 = tl.load(grad16_ptr + offsets, mask=m, other=0)
+            gv = tl.gather(g16, lane, axis=0)
+            tl.store(out_ptr + out_off + r_i, gv, mask=mst)
+        if RAW_COUNTS:
+            out_off += cnt
 
 
 @libentry()
@@ -382,9 +486,10 @@ def _tail_zero_kernel(
     needs k.
     """
     k = tl.load(offsets_ptr + n_blocks).to(tl.int64)
-    pid = ext.program_id(axis=0)
-    offs = k + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    tl.store(out_ptr + offs, 0.0, mask=(offs < numel))
+    n_blocks_out = (numel + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for pid in range(ext.program_id(axis=0), n_blocks_out, tl.num_programs(axis=0)):
+        offs = k + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        tl.store(out_ptr + offs, 0.0, mask=(offs < numel))
 
 
 # ---------------------------------------------------------------------------
@@ -556,7 +661,7 @@ def masked_scatter_backward(grad_output, mask, sizes):
     else:
         ctx = _NULL_CTX
     with ctx:
-        # count -> device scan -> expand -> tail-zero-fill, all Triton, no torch
+        # count -> optional device scan -> expand -> tail-zero-fill; no torch
         # compute ops and no stream syncs: launches on the current stream are
         # ordered, so each kernel sees the previous one's stores.
         exp_block = min(BLOCK_SIZE, _MAX_EXPAND_BLOCK)
@@ -576,20 +681,48 @@ def masked_scatter_backward(grad_output, mask, sizes):
         merge_tail = use_sort and numel <= n_blocks * exp_block
         self_count = merge_tail and n_blocks * N <= _SELF_COUNT_MAX_ELEMS
         fused = merge_tail and not self_count and n_blocks <= _FUSED_MAX_BLOCKS
+        persistent = use_sort and n_blocks > _FUSED_MAX_BLOCKS
+        # Keep the small fused path; larger grids amortize the prefix reduction
+        # by processing consecutive tiles in each persistent program.
+        counted = merge_tail and not self_count and n_blocks > 128
+        if persistent or counted or (use_sort and not merge_tail):
+            props = driver.active.utils.get_device_properties(
+                torch_device_fn.current_device()
+            )
+            num_vector_cores = props["num_vectorcore"]
+            persistent_grid = min(n_blocks, num_vector_cores)
         if self_count:
             # No counts buffer exists; offsets_ptr is unused by the kernel.
             offsets = out
         elif use_sort:
-            # all n_blocks+1 slots are written, so torch.empty suffices here
-            counts = torch.empty(n_blocks + 1, dtype=torch.int32, device=device)
-            _count_kernel[(n_blocks,)](
-                mask_flat,
-                counts,
-                N,
-                BLOCK_SIZE=exp_block,
-                multibuffer=False,
+            # All counts, the sentinel, and any group totals are written.
+            counts = torch.empty(
+                n_blocks + 1 + (persistent_grid if counted else 0),
+                dtype=torch.int32,
+                device=device,
             )
-            offsets = counts if fused else _exclusive_scan(counts, n_blocks + 1, device)
+            if persistent or counted:
+                _count_persistent_kernel[(persistent_grid,)](
+                    mask_flat,
+                    counts,
+                    N,
+                    BLOCK_SIZE=exp_block,
+                    GROUP_TOTALS=counted,
+                    multibuffer=False,
+                )
+            else:
+                _count_kernel[(n_blocks,)](
+                    mask_flat,
+                    counts,
+                    N,
+                    BLOCK_SIZE=exp_block,
+                    multibuffer=False,
+                )
+            offsets = (
+                counts
+                if fused or counted
+                else _exclusive_scan(counts, n_blocks + 1, device)
+            )
         else:
             grid_c = (max(N, numel) + exp_block - 1) // exp_block
             # counts[grid_c] must stay 0: blocks beyond n_blocks never write it
@@ -611,24 +744,42 @@ def masked_scatter_backward(grad_output, mask, sizes):
         # The out arg must be an fp16 view, never bf16: a bf16 arg would make
         # the compiler CONVERT fp16->bf16 on store, corrupting the bits.
         if use_sort:
-            _expand_sort_kernel[(n_blocks,)](
-                grad_output.ravel().view(torch.float16),
-                mask_flat,
-                offsets,
-                out.view(torch.int32) if wide else out.view(torch.float16),
-                N,
-                numel,
-                BLOCK_SIZE=exp_block,
-                WIDE_ELEM=wide,
-                DO_TAIL=merge_tail,
-                FUSED=fused,
-                SELF_COUNT=self_count,
-                NB_POW2=1 << (max(n_blocks, 1) - 1).bit_length(),
-                num_warps=4,
-            )
+            if persistent or counted:
+                _expand_persistent_kernel[(persistent_grid,)](
+                    grad_output.ravel().view(torch.float16),
+                    mask_flat,
+                    offsets,
+                    out.view(torch.int32) if wide else out.view(torch.float16),
+                    N,
+                    numel,
+                    BLOCK_SIZE=exp_block,
+                    WIDE_ELEM=wide,
+                    DO_TAIL=merge_tail,
+                    RAW_COUNTS=counted,
+                    GROUP_BLOCK=triton.next_power_of_2(persistent_grid),
+                    num_warps=4,
+                )
+            else:
+                _expand_sort_kernel[(n_blocks,)](
+                    grad_output.ravel().view(torch.float16),
+                    mask_flat,
+                    offsets,
+                    out.view(torch.int32) if wide else out.view(torch.float16),
+                    N,
+                    numel,
+                    BLOCK_SIZE=exp_block,
+                    WIDE_ELEM=wide,
+                    DO_TAIL=merge_tail,
+                    FUSED=fused,
+                    SELF_COUNT=self_count,
+                    NB_POW2=1 << (max(n_blocks, 1) - 1).bit_length(),
+                    num_warps=4,
+                )
             if not merge_tail:
                 # only the tail is left: k = offsets[n_blocks]
-                _tail_zero_kernel[((numel + exp_block - 1) // exp_block,)](
+                _tail_zero_kernel[
+                    (min((numel + exp_block - 1) // exp_block, num_vector_cores),)
+                ](
                     out,
                     offsets,
                     n_blocks,

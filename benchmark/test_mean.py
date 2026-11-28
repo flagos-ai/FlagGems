@@ -20,6 +20,10 @@ import flag_gems
 from . import base, consts, utils
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.mean
 def test_mean():
     bench = base.UnaryReductionBenchmark(
@@ -67,6 +71,10 @@ def test_mean_dim_backward():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.mean_dim
 def test_mean_dim():
     bench = base.GenericBenchmarkExcluse1D(

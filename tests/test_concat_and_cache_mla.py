@@ -24,7 +24,10 @@ from . import accuracy_utils as utils
 device = flag_gems.device
 vendor_name = flag_gems.vendor_name
 
-CUDA_DEVICES = [f"cuda:{i}" for i in range(1 if torch.cuda.device_count() == 1 else 2)]
+CUDA_DEVICES = [
+    f"{flag_gems.device}:{i}"
+    for i in range(1 if flag_gems.runtime.torch_device_fn.device_count() == 1 else 2)
+]
 
 
 def _create_mla_cache(
@@ -63,7 +66,11 @@ def convert_fp8(
 @pytest.mark.parametrize("seed", [0])
 @pytest.mark.parametrize(
     "device",
-    [flag_gems.device] if vendor_name in ["mthreads", "sunrise"] else CUDA_DEVICES,
+    (
+        [flag_gems.device]
+        if vendor_name in ["mthreads", "sunrise", "enflame"]
+        else CUDA_DEVICES
+    ),
 )
 @pytest.mark.parametrize("kv_cache_dtype", ["auto"])
 @torch.inference_mode()

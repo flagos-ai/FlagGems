@@ -129,9 +129,14 @@ def _launch_upsample_nearest_exact1d_kernel(input, out, output_size=None, scale=
     sN_in, sC_in, sW_in = input.stride()
     sN_out, sC_out, sW_out = out.stride()
 
-    BLOCK_W = 256
     NC_total = N * C
-    grid_y = min(NC_total, 255)
+    # One program covers a whole output row when the row fits in 1024 lanes:
+    # with BLOCK_W=256 / grid_y=255 the [16,32,512]->[1024] core shape ran
+    # 1020 programs of 1KB each (21 waves of 48 CTAs) and lost 6x to the native
+    # op.  48 y-programs (one per SIP) with a full row per iteration keep the
+    # launch to a single wave for every core shape.
+    BLOCK_W = min(1024, max(64, triton.next_power_of_2(OW)))
+    grid_y = min(NC_total, 48)
     grid = (triton.cdiv(OW, BLOCK_W), grid_y)
 
     use_scales = scale is not None and output_size is None
