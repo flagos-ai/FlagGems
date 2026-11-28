@@ -39,47 +39,6 @@ def _cat_copy_flat_kernel(
         )
 
 
-@libentry()
-@triton.jit
-def _cat_copy_strided_kernel(
-    input_ptr,
-    output_ptr,
-    n_elements,
-    INNER_SIZE: tl.constexpr,
-    INPUT_CAT_SIZE: tl.constexpr,
-    OUTPUT_CAT_SIZE: tl.constexpr,
-    CAT_OFFSET: tl.constexpr,
-    BLOCK_SIZE: tl.constexpr,
-):
-    lanes = tl.arange(0, BLOCK_SIZE)
-    for block in range(
-        tl.program_id(0), tl.cdiv(n_elements, BLOCK_SIZE), tl.num_programs(0)
-    ):
-        offsets = block * BLOCK_SIZE + lanes
-        mask = offsets < n_elements
-
-        inner_idx = offsets % INNER_SIZE
-        tmp = offsets // INNER_SIZE
-
-        cat_idx = tmp % INPUT_CAT_SIZE
-        outer_idx = tmp // INPUT_CAT_SIZE
-
-        output_offsets = (
-            outer_idx * OUTPUT_CAT_SIZE + CAT_OFFSET + cat_idx
-        ) * INNER_SIZE + inner_idx
-
-        values = tl.load(
-            input_ptr + offsets,
-            mask=mask,
-        )
-
-        tl.store(
-            output_ptr + output_offsets,
-            values,
-            mask=mask,
-        )
-
-
 def _prepare_cat_inputs(A, dim):
     if len(A) == 0:
         raise RuntimeError("torch.cat(): expected a non-empty list of Tensors")
@@ -137,10 +96,21 @@ def _cat_fill_triton(out, A, dim):
     if len(A) == 0 or out.numel() == 0:
         return
 
-    BLOCK_SIZE = 256
+    element_size = out.element_size()
+    # Wide tiles amortise the per-block launch cost, but BiShengIR double
+    # buffers the loaded tile: keep 2 * BLOCK_SIZE * element_size inside the
+    # 192 KB unified buffer (32K fp16 works, 32K fp32 overflows).
+    if element_size <= 2:
+        flat_block = 32768
+    elif element_size <= 4:
+        flat_block = 16384
+    else:
+        flat_block = 8192
 
-    output_cat_size = out.shape[dim]
     inner_size = math.prod(out.shape[dim + 1 :])
+
+    if inner_size == 0:
+        return
 
     cat_offset = 0
 
@@ -152,15 +122,10 @@ def _cat_fill_triton(out, A, dim):
                 cat_offset += input_cat_size
                 continue
 
-            if not a.is_contiguous():
-                a = a.contiguous()
-
-            n_elements = a.numel()
-
-            # CANN limits the flattened launch grid (coreDim) to 65535.
-            grid = (min(triton.cdiv(n_elements, BLOCK_SIZE), _ASCEND_MAX_CORE_DIM),)
-
-            if dim == 0:
+            if dim == 0 and a.is_contiguous():
+                n_elements = a.numel()
+                # CANN limits the flattened launch grid (coreDim) to 65535.
+                grid = (min(triton.cdiv(n_elements, flat_block), _ASCEND_MAX_CORE_DIM),)
                 output_offset = cat_offset * inner_size
 
                 _cat_copy_flat_kernel[grid](
@@ -168,20 +133,15 @@ def _cat_fill_triton(out, A, dim):
                     out,
                     n_elements,
                     OUTPUT_OFFSET=output_offset,
-                    BLOCK_SIZE=BLOCK_SIZE,
+                    BLOCK_SIZE=flat_block,
                 )
 
             else:
-                _cat_copy_strided_kernel[grid](
-                    a,
-                    out,
-                    n_elements,
-                    INNER_SIZE=inner_size,
-                    INPUT_CAT_SIZE=input_cat_size,
-                    OUTPUT_CAT_SIZE=output_cat_size,
-                    CAT_OFFSET=cat_offset,
-                    BLOCK_SIZE=BLOCK_SIZE,
-                )
+                # dim > 0 (and non-contiguous input for dim == 0): a Triton
+                # scatter of inner_size-sized rows is integer-bound and orders
+                # of magnitude slower than the vendor layout copy, so write
+                # straight into the destination slice.
+                out.narrow(dim, cat_offset, input_cat_size).copy_(a)
 
             cat_offset += input_cat_size
 
@@ -201,9 +161,6 @@ def cat(
             device=device,
             dtype=dtype,
         )
-
-    if len(A) == 1:
-        return A[0]
 
     out = torch.empty(
         out_shape,

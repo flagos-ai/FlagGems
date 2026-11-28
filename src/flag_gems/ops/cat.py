@@ -324,7 +324,12 @@ def cat(
     if _should_use_uint8_view_path(A):
         mode, payload, original_dtype = _cat_build_working_list_uint8_view(A, dim)
         if mode == "single":
-            return payload.view(original_dtype)
+            # `torch.cat` returns a fresh tensor, so a single input must be
+            # copied instead of aliased.
+            src = payload.view(original_dtype)
+            out = torch.empty(src.shape, dtype=src.dtype, device=src.device)
+            out.copy_(src)
+            return out
         if mode == "empty":
             return payload.view(original_dtype)
 
@@ -335,7 +340,11 @@ def cat(
 
     mode, payload = _cat_build_working_list(A, dim)
     if mode == "single":
-        return payload
+        # `torch.cat` returns a fresh tensor, so a single input must be copied
+        # instead of aliased.
+        out = torch.empty(payload.shape, dtype=payload.dtype, device=payload.device)
+        out.copy_(payload)
+        return out
     if mode == "empty":
         return payload
 

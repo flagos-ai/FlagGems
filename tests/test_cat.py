@@ -130,3 +130,15 @@ def test_cat_out_matches_reference(dtype):
     flag_gems.cat_out([a, b], dim, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+@pytest.mark.cat
+def test_cat_single_input_is_a_copy():
+    """`torch.cat([x])` must return a fresh tensor, not alias the input."""
+    x = torch.randn((3, 4), device=flag_gems.device)
+    ref_x = utils.to_reference(x, False)
+
+    out = flag_gems.cat([x], dim=0)
+
+    assert out.data_ptr() != x.data_ptr()
+    utils.gems_assert_equal(out, ref_x)
