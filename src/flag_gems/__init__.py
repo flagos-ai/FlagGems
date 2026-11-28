@@ -1680,7 +1680,12 @@ _FULL_CONFIG = (
     ),
     ("i0.out", i0_out),
     ("i0_", i0_),
-    ("igamma", igamma),
+    (
+        "igamma",
+        igamma,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("igamma_", igamma_),
     ("igammac", igammac),
     ("igammac.out", igammac_out),

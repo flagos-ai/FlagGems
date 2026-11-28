@@ -1039,7 +1039,7 @@ from flag_gems.ops.hypot import hypot, hypot_out
 from flag_gems.ops.hypot_ import hypot_
 from flag_gems.ops.i0 import i0, i0_backward, i0_out
 from flag_gems.ops.i0_ import i0_
-from flag_gems.ops.igamma import igamma
+from flag_gems.ops.igamma import igamma, igamma_backward
 from flag_gems.ops.igamma_ import igamma_
 from flag_gems.ops.igammac import igammac, igammac_out
 from flag_gems.ops.igammac_ import igammac_
@@ -2794,6 +2794,7 @@ __all__ = [
     "i0_out",
     "igamma",
     "igamma_",
+    "igamma_backward",
     "igammac",
     "igammac_",
     "igammac_out",
