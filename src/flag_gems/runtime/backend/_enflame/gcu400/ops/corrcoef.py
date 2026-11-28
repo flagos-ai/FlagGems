@@ -167,7 +167,7 @@ def corrcoef(input: torch.Tensor) -> torch.Tensor:
     back to the input dtype, matching the precision behaviour expected from a
     stable Triton implementation.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CORRCOEF")
+    logger.debug("GEMS_ENFLAME CORRCOEF")
 
     # A single variable (1D/0D input, or a 2D input with one row) correlates
     # perfectly with itself, so torch.corrcoef returns the scalar 1.0.

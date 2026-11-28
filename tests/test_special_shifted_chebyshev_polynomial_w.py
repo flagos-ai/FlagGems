@@ -8,8 +8,8 @@ from . import accuracy_utils as utils
 
 # TODO: Reference GitHub issue for multi-backend support
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("nvidia", "thead"),
-    reason="Only nvidia and thead backends support this op",
+    flag_gems.vendor_name not in ("nvidia", "thead", "enflame"),
+    reason="Only nvidia, thead and enflame backends support this op",
 )
 @pytest.mark.special_shifted_chebyshev_polynomial_w
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
@@ -32,8 +32,8 @@ def test_special_shifted_chebyshev_polynomial_w(shape, dtype):
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("nvidia", "thead"),
-    reason="Only nvidia and thead backends support this op",
+    flag_gems.vendor_name not in ("nvidia", "thead", "enflame"),
+    reason="Only nvidia, thead and enflame backends support this op",
 )
 @pytest.mark.special_shifted_chebyshev_polynomial_w
 def test_special_shifted_chebyshev_polynomial_w_n_out_of_range():

@@ -21,5 +21,5 @@ logger = logging.getLogger(__name__)
 
 def divide(A, B):
     """Alias for element-wise true division."""
-    logger.debug("GEMS_ENFLAME_GCU400 DIVIDE")
+    logger.debug("GEMS_ENFLAME DIVIDE")
     return true_divide(A, B)

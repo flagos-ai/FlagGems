@@ -16,7 +16,7 @@ import pytest
 import torch
 
 import flag_gems
-from flag_gems.ops import cumprod as flag_gems_cumprod
+from flag_gems import cumprod as flag_gems_cumprod
 
 from . import base, consts
 
@@ -66,6 +66,10 @@ def torch_cumprod(inp, dim):
     return torch.cumprod(inp, dim)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cumprod
 def test_cumprod():
     bench = base.GenericBenchmark2DOnly(
@@ -78,6 +82,10 @@ def test_cumprod():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cumprod_
 def test_cumprod_():
     bench = base.GenericBenchmark2DOnly(
@@ -112,6 +120,10 @@ def cumprod_backward_input_fn(shape, dtype, device):
     yield grad, inp, 1, output
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.cumprod_backward
 def test_cumprod_backward():
     bench = base.GenericBenchmark2DOnly(

@@ -100,20 +100,39 @@ def _launch(x, out):
     return out
 
 
-def erfc(x):
-    logger.debug("GEMS_ENFLAME_GCU400 ERFC")
+def _erfc_input(x):
+    """Return the kernel input for the functional forms of erfc.
+
+    ATen promotes integral inputs to float32 (``erfc(int8) -> float32``), while
+    the kernel above always accumulates and stores fp32 values. Upcasting here
+    keeps both the launch dtype and the result dtype identical to ATen.
+    """
     inp = x if x.is_contiguous() else x.contiguous()
+    if not inp.is_floating_point():
+        inp = inp.to(torch.float32)
+    return inp
+
+
+def erfc(x):
+    logger.debug("GEMS_ENFLAME ERFC")
+    inp = _erfc_input(x)
     return _launch(inp, torch.empty_like(inp))
 
 
 def special_erfc(x):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ERFC")
-    inp = x if x.is_contiguous() else x.contiguous()
+    logger.debug("GEMS_ENFLAME SPECIAL_ERFC")
+    inp = _erfc_input(x)
     return _launch(inp, torch.empty_like(inp))
 
 
 def erfc_(x):
-    logger.debug("GEMS_ENFLAME_GCU400 ERFC_")
+    logger.debug("GEMS_ENFLAME ERFC_")
+    if not x.is_floating_point():
+        # ATen refuses the in-place form on integral input because the float
+        # result cannot be cast back into the integer buffer.
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{x.dtype}"
+        )
     if not x.is_contiguous():
         x.copy_(erfc(x))
         return x

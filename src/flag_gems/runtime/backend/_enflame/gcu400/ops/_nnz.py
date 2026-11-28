@@ -39,38 +39,6 @@ _COMPRESSED_SPARSE_CONSTRUCTORS = (
 )
 
 
-def ensure_compressed_sparse_gcu_fallback():
-    """Idempotently register the PrivateUse1 compressed-sparse constructor fallback for sparse metadata operators."""
-    global _COMPRESSED_SPARSE_LIBRARY
-    if getattr(torch, _COMPRESSED_SPARSE_FALLBACK_FLAG, False):
-        return
-
-    def make_fallback(constructor_name):
-        def build_cpu_compressed(self, *args, **kwargs):
-            cpu_self = self.detach().to("cpu")
-            return getattr(cpu_self, constructor_name)(*args, **kwargs)
-
-        return build_cpu_compressed
-
-    library = torch.library.Library("aten", "IMPL")
-    for constructor_name in _COMPRESSED_SPARSE_CONSTRUCTORS:
-        try:
-            library.impl(
-                constructor_name, make_fallback(constructor_name), "PrivateUse1"
-            )
-        except RuntimeError as error:
-            logger.warning(
-                "compressed sparse gcu400 fallback %s skipped: %s",
-                constructor_name,
-                error,
-            )
-    _COMPRESSED_SPARSE_LIBRARY = library
-    setattr(torch, _COMPRESSED_SPARSE_FALLBACK_FLAG, True)
-
-
-ensure_compressed_sparse_gcu_fallback()
-
-
 def _nnz(self: torch.Tensor) -> int:
     """Return the number of stored entries of a sparse tensor ``self``.
 
@@ -107,7 +75,7 @@ def _nnz(self: torch.Tensor) -> int:
       'CUDA' backend"). Mirror that contract here instead of guessing a
       formula.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _NNZ")
+    logger.debug("GEMS_ENFLAME _NNZ")
     if self.layout == torch.sparse_coo:
         # Native COO TensorImpl::nnz is values_.size(0); _values() (unlike
         # values()) is available on uncoalesced tensors.

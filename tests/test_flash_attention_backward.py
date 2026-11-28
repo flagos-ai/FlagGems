@@ -18,7 +18,6 @@ from __future__ import annotations
 import math
 from functools import lru_cache
 from itertools import accumulate, product
-from types import MappingProxyType
 from typing import NamedTuple
 
 import pytest
@@ -29,18 +28,6 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.random_utils import set_philox_state
 
 from . import accuracy_utils as utils
-
-
-@pytest.fixture(scope="module", autouse=flag_gems.vendor_name == "hygon")
-def _hygon_reference_threads():
-    # DTK exposes all host CPUs to PyTorch. The per-head FP64 reductions run
-    # faster with one thread inside the CI container's CPU quota.
-    previous = torch.get_num_threads()
-    torch.set_num_threads(1)
-    try:
-        yield
-    finally:
-        torch.set_num_threads(previous)
 
 
 def make_qkv(batch, num_head, q_seq_len, kv_seq_len, head_size, dtype, device):
@@ -824,7 +811,7 @@ def _case_route(case):
 
 
 def _plan_references(op):
-    """Build immutable routes from the same parametrization pytest collects."""
+    """Enumerate the parametrization pytest collects, without any device work."""
 
     def decorate(fn):
         backend_skipped = any(
@@ -842,7 +829,7 @@ def _plan_references(op):
                     values = (param,) if not hasattr(param, "values") else values
                 axis.append(dict(zip(names, values)))
             axes.append(axis)
-        plans = {}
+        cases = set()
         for row in () if backend_skipped else product(*axes):
             params = {k: v for axis in row for k, v in axis.items()}
             if (
@@ -857,30 +844,38 @@ def _plan_references(op):
                 and params["q_seq_len"] != params["kv_seq_len"]
             ):
                 continue
-            case = _case(op, params)
-            if case.dropout:
-                # Vendor dropout forward advances the generator, even on a
-                # failed probe. Restore the caller's state after collection.
-                with torch.random.fork_rng(
-                    devices=[torch_device_fn.current_device()],
-                    device_type=torch.device(flag_gems.device).type,
-                ):
-                    route = _case_route(case)
-            else:
-                route = _case_route(case)
-            plans[case] = route
-        fn.attention_plans = MappingProxyType(plans)
+            cases.add(_case(op, params))
+        fn.attention_cases = frozenset(cases)
         fn.attention_op = op
         return fn
 
     return decorate
 
 
+@lru_cache(None)
+def _planned_route(case):
+    """Probe a planned case on first use, at most once per process.
+
+    Importing this module happens for every ``pytest tests/`` invocation, even
+    one whose marker deselects every test here, because pytest imports a module
+    before it applies ``-m``. Probing while building the plans therefore charged
+    each per-operator run several hundred native attention launches, so the
+    probe is deferred to the fixture that consumes the route.
+    """
+    # Vendor dropout forward advances the generator, even on a failed probe.
+    # Restore the caller's state so a test's own inputs stay reproducible.
+    with torch.random.fork_rng(
+        devices=[torch_device_fn.current_device()],
+        device_type=torch.device(flag_gems.device).type,
+    ):
+        return _case_route(case)
+
+
 @pytest.fixture
 def attention_reference(request, record_property):
     case = _case(request.function.attention_op, request.node.callspec.params)
     # Invalid flag combinations are skipped by the test before using its route.
-    route = request.function.attention_plans.get(case)
+    route = _planned_route(case) if case in request.function.attention_cases else None
     if route is not None:
         fallback = "unavailable" if case.dropout else "cpu_fp64"
         record_property("forward_reference", "native" if route.forward else fallback)
@@ -1033,6 +1028,10 @@ _FLASH_BWD_ORACLE_CASES = [
 @pytest.mark.skipif(
     flag_gems.vendor_name == "cambricon", reason="Issue #5254: Not supported"
 )
+# enflame (torch_gcu) registers no kernel for aten::_flash_attention_backward on
+# any backend, so the route planner resolves the reference dQ/dK/dV through the
+# CPU fp64 oracle (and keeps the native forward when it is available). The
+# family is therefore exercised there instead of being skipped as a whole.
 @pytest.mark.parametrize(
     "batch, num_head, q_seq_len, kv_seq_len",
     _FLASH_BWD_ORIGINAL_SHAPES,

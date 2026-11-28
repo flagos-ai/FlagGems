@@ -307,7 +307,7 @@ def test_div_scalar_scalar(dtype):
 @pytest.mark.div_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame cannot upload complex tensors",
+    reason="torch_gcu cannot upload complex tensors",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
@@ -345,7 +345,7 @@ def test_div_complex_complex(shape, complex_dtype):
 @pytest.mark.div_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame cannot upload complex tensors",
+    reason="torch_gcu cannot upload complex tensors",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
@@ -395,7 +395,7 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 @pytest.mark.div_tensor
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame cannot upload complex tensors",
+    reason="torch_gcu cannot upload complex tensors",
 )
 @pytest.mark.skipif(
     flag_gems.vendor_name == "ascend",
@@ -409,7 +409,7 @@ def test_div_complex_float_tensor(shape, complex_dtype):
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame cannot upload complex tensors",
+    reason="torch_gcu cannot upload complex tensors",
 )
 def test_div_tensor_int(shape, complex_dtype):
     if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:
@@ -448,7 +448,7 @@ def test_div_tensor_int(shape, complex_dtype):
 @pytest.mark.parametrize("complex_dtype", utils.COMPLEX_DTYPES)
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
-    reason="enflame cannot upload complex tensors",
+    reason="torch_gcu cannot upload complex tensors",
 )
 def test_div_complex_int_scalar(shape, complex_dtype):
     if flag_gems.vendor_name == "mthreads" and complex_dtype == torch.complex32:

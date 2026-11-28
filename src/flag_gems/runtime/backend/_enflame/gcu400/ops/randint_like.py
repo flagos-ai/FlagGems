@@ -84,7 +84,7 @@ def randint_like(
     pin_memory=None,
     memory_format=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 RANDINT_LIKE")
+    logger.debug("GEMS_ENFLAME RANDINT_LIKE")
     if device is None:
         device = self.device
     if dtype is None:

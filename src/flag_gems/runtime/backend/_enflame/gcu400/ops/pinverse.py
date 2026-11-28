@@ -25,7 +25,14 @@ from flag_gems.ops.contiguous import contiguous
 from flag_gems.runtime import device, torch_device_fn
 from flag_gems.utils import libentry
 
-from .svd import svd
+from .svd import (
+    SVDResult,
+    _can_use_small_jacobi_kernel,
+    _should_use_host_svd,
+    _small_jacobi_svd,
+    _svd_shape,
+    svd,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -119,7 +126,7 @@ def _pinverse_reconstruct_kernel(
 
 def pinverse(inp, rcond=1e-15):
     """Compute the Moore-Penrose pseudoinverse of a matrix or matrix batch."""
-    logger.debug("GEMS_ENFLAME_GCU400 PINVERSE")
+    logger.debug("GEMS_ENFLAME PINVERSE")
 
     if inp.ndim < 2:
         raise RuntimeError("pinverse: expected a tensor with at least 2 dimensions")
@@ -143,7 +150,51 @@ def pinverse(inp, rcond=1e-15):
     if not inp.is_contiguous():
         inp = contiguous(inp)
 
-    result = svd(inp, some=True, compute_uv=True)
+    try:
+        return _pinverse_from_svd(inp, rcond)
+    except (RuntimeError, NotImplementedError):
+        # A NaN-containing matrix cannot be factored by the device SVD nor by
+        # the CPU LAPACK host fallback it delegates to. CUDA's cusolver instead
+        # returns NaN singular values, whose rcond cutoff rejects every singular
+        # value, so the contracted result for such a matrix is an all-zero
+        # pseudoinverse. Matrix-batch rows that are actually finite keep their
+        # real pseudoinverse; every other failure is re-raised unchanged.
+        nan_matrices = torch.isnan(inp).flatten(start_dim=-2).any(-1).reshape(-1)
+        if not bool(nan_matrices.any()):
+            raise
+        batch = inp.numel() // (m * n)
+        output = torch.zeros((batch, n, m), dtype=inp.dtype, device=inp.device)
+        finite_matrices = ~nan_matrices
+        if bool(finite_matrices.any()):
+            finite_input = inp.reshape(batch, m, n)[finite_matrices]
+            finite_output = _pinverse_from_svd(finite_input, rcond)
+            output[finite_matrices] = finite_output.reshape(-1, n, m)
+        return output.reshape((*inp.shape[:-2], n, m))
+
+
+def _svd_for_pinverse(inp):
+    """Pick the fastest SVD route for the pseudoinverse use case.
+
+    ``svd()`` sends every small matrix (batch <= 16 and max(m, n) <= 64) to a
+    CPU LAPACK round trip, which costs a device sync plus two copies. The device
+    one-sided Jacobi kernel covers the same shapes for k <= 8 with sub-1e-6
+    singular-value error, so prefer it there. k <= 2 keeps the dedicated
+    rank-1/rank-2 kernels, and larger k keeps the dispatched route.
+    """
+    batch, m, n = _svd_shape(inp)
+    k = min(m, n)
+    if (
+        2 < k <= 8
+        and _should_use_host_svd(batch, m, n)
+        and _can_use_small_jacobi_kernel(inp, True, True)
+    ):
+        return SVDResult(*_small_jacobi_svd(inp))
+    return svd(inp, some=True, compute_uv=True)
+
+
+def _pinverse_from_svd(inp, rcond):
+    m, n = inp.shape[-2:]
+    result = _svd_for_pinverse(inp)
 
     k = min(m, n)
     batch = inp.numel() // (m * n)
@@ -219,7 +270,7 @@ def _install_native_pinverse_nonfinite_shim():
                 cpu_input = input.cpu()
                 m, n = cpu_input.shape[-2:]
                 matrices = cpu_input.reshape(-1, m, n)
-                nan_rows = flag_gems.isnan(matrices).flatten(1).any(1)
+                nan_rows = torch.isnan(matrices).flatten(1).any(1)
                 result = torch.empty((matrices.shape[0], n, m), dtype=cpu_input.dtype)
                 result[nan_rows] = 0.0
                 finite_rows = ~nan_rows

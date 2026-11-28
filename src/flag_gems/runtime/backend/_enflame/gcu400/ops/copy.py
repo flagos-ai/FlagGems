@@ -29,12 +29,25 @@ _FALLBACK_KEYSET = torch._C.DispatchKeySet(
 
 _FLOAT8_E8M0FNU = getattr(torch, "float8_e8m0fnu", None)
 
-# 4096 int32 (16 KB) per program; the grid is capped so the loop is a
-# grid-stride one instead of one CTA per tile.
+# int32 words per program.  The grid is capped so the loop is a grid-stride
+# one instead of one CTA per tile.
 _FLAT_COPY_BLOCK = 8192
 _FLAT_COPY_GRID = 48
-# Offsets are int32, so the last masked tile must still fit in an int32.
-_FLAT_COPY_MAX_ELEMS = 2**31 - 1 - _FLAT_COPY_BLOCK
+# Tile ladder re-measured on this 48-SIP board (2026-11-22) with an in-process
+# A/B over the shipped _flat_copy_kernel (int32 words, min-of-rounds):
+#   268M words : 8192/48/nw4 1.174ms | 32768/96/nw8 1.046 | 32768/48/nw8 1.015
+#                65536/48/nw8 0.991 (2.17 TB/s, vendor 1.012) | 65536/48/nw4 1.316
+#    8M words : 8192/48/nw4 0.0447 | 32768/48/nw8 0.0388 | 65536/48/nw8 0.0390
+# So: one CTA per SIP (48) always beats 96, 8 warps are needed for the wide
+# tiles, and the deep tile is 2x wider than before.
+_FLAT_COPY_MID_BLOCK = 32768
+_FLAT_COPY_DEEP_BLOCK = 65536
+_FLAT_COPY_MID_ELEMS = 1 << 18
+# Offsets are int32, so the last masked tile must still fit in an int32; use the
+# widest tile for the bound so no arm can wrap.
+_FLAT_COPY_MAX_ELEMS = 2**31 - 1 - _FLAT_COPY_DEEP_BLOCK
+# 256 MB of words: past this the deep tile wins
+_FLAT_COPY_DEEP_ELEMS = 64 * 1024 * 1024
 
 
 @pointwise_dynamic(is_tensor=[True], promotion_methods=[(0, "DEFAULT")])
@@ -110,14 +123,23 @@ def _flat_copy(dst: torch.Tensor, src: torch.Tensor, plan) -> bool:
         out = dst.reshape(-1).view(word_dtype)
     except (RuntimeError, TypeError, NotImplementedError):
         return False
-    grid = (min(_FLAT_COPY_GRID, triton.cdiv(n_elements, _FLAT_COPY_BLOCK)),)
+    # Wider grid-stride tiles for anything past the launch floor: the narrow
+    # 8192/nw4 arm only survives below _FLAT_COPY_MID_ELEMS, where the launch
+    # floor hides the tile choice (see the ladder note on the block constants).
+    if n_elements >= _FLAT_COPY_DEEP_ELEMS:
+        block_size, grid_cap, num_warps = _FLAT_COPY_DEEP_BLOCK, _FLAT_COPY_GRID, 8
+    elif n_elements >= _FLAT_COPY_MID_ELEMS:
+        block_size, grid_cap, num_warps = _FLAT_COPY_MID_BLOCK, _FLAT_COPY_GRID, 8
+    else:
+        block_size, grid_cap, num_warps = _FLAT_COPY_BLOCK, _FLAT_COPY_GRID, 4
+    grid = (min(grid_cap, triton.cdiv(n_elements, block_size)),)
     _flat_copy_kernel[grid](
         view,
         out,
         n_elements,
-        BLOCK_SIZE=_FLAT_COPY_BLOCK,
-        GRID_SIZE=_FLAT_COPY_GRID,
-        num_warps=4,
+        BLOCK_SIZE=block_size,
+        GRID_SIZE=grid_cap,
+        num_warps=num_warps,
     )
     return True
 
@@ -230,7 +252,7 @@ def _expand_like(src: torch.Tensor, target_shape: torch.Size) -> torch.Tensor:
 def copy(
     template: torch.Tensor, src: torch.Tensor, *, non_blocking: Optional[bool] = False
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 COPY")
+    logger.debug("GEMS_ENFLAME COPY")
     out = torch.empty_strided(
         template.size(), template.stride(), dtype=template.dtype, device=template.device
     )
@@ -239,7 +261,7 @@ def copy(
 
 
 def copy_(dst: torch.Tensor, src: torch.Tensor, non_blocking: bool = False):
-    logger.debug("GEMS_ENFLAME_GCU400 COPY_")
+    logger.debug("GEMS_ENFLAME COPY_")
     if isinstance(src, (int, float, bool)):
         src = torch.tensor(src, device=dst.device)
     elif not isinstance(src, torch.Tensor):

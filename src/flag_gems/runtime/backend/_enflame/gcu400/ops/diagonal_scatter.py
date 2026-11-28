@@ -55,7 +55,7 @@ def diagonal_scatter(input, src, offset=0, dim1=0, dim2=1):
     Returns:
         A new tensor with src values scattered along the specified diagonal.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 DIAGONAL_SCATTER")
+    logger.debug("GEMS_ENFLAME DIAGONAL_SCATTER")
 
     ndim = input.ndim
     # Normalize negative dims

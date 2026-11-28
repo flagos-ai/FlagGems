@@ -179,7 +179,7 @@ def sparse_bsc_tensor(
     device=None,
     pin_memory=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_BSC_TENSOR")
+    logger.debug("GEMS_ENFLAME SPARSE_BSC_TENSOR")
     if layout is not None and layout != torch.sparse_bsc:
         raise RuntimeError(
             "sparse_bsc_tensor: layout must be SparseBsc but got "
@@ -320,25 +320,3 @@ def _to_sparse_bsc_gcu(self, blocksize, dense_dim=None):
     return _assemble(
         ccol_indices, row_indices, values, list(bsc_cpu.shape), None, None, None
     )
-
-
-def _register_support_kernels():
-    if getattr(torch, _BSC_KERNELS_ATTR, False):
-        return None
-    lib = torch.library.Library("aten", "IMPL")
-    try:
-        lib.impl("ccol_indices", _ccol_indices_gcu, _SPARSE_CSR_GCU_KEY)
-        lib.impl("row_indices", _row_indices_gcu, _SPARSE_CSR_GCU_KEY)
-        lib.impl("values", _values_gcu, _SPARSE_CSR_GCU_KEY)
-        lib.impl("_to_dense", _to_dense_gcu, _SPARSE_CSR_GCU_KEY)
-        lib.impl("to_sparse_bsc", _to_sparse_bsc_gcu, _DEVICE_KEY)
-    except RuntimeError as err:
-        # Another module (maybe outside this file) already owns one of these
-        # slots; surface that instead of swallowing it silently.
-        logger.warning("sparse_bsc_tensor support kernels: %s", err)
-        return lib
-    setattr(torch, _BSC_KERNELS_ATTR, True)
-    return lib
-
-
-_support_lib = _register_support_kernels()

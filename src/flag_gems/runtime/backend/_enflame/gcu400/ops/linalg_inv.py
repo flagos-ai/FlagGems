@@ -194,7 +194,7 @@ def linalg_inv(A):
     # batch reshape and produces a finite but meaningless result, where ATen
     # raises.  Low-precision dtypes are rejected for the same reason ATen
     # rejects them: the pivoted elimination cannot hold accuracy in half.
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_INV")
+    logger.debug("GEMS_ENFLAME LINALG_INV")
     if A.dim() < 2:
         raise RuntimeError(
             "linalg.inv: The input tensor A must have at least 2 dimensions."

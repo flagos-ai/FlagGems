@@ -38,7 +38,10 @@ ascending with the CUTLASS ``StaticSort`` compare-exchange network (which
 exchanges equal keys too) and scanned from the largest, keeping a value when
 its tile row and tile column each still have capacity.
 
-The main kernel handles one 32x32 input block per program (8x8 tiles) and
+The main kernel handles one 32-row x 4 * TCJ-column input block per program.
+The 16 values of a 4x4 tile are held in 16 separate register tensors instead of
+one tensor with a reduction axis, so the compare-exchange network, the greedy
+scan and the packing are pure element-wise code (no cross-lane reductions).  It
 writes packed, packed_t and the per-thread 8x8 selection bitmasks, plus the
 4-bit metadata quads; a second kernel applies the CUTLASS
 ``ColumnMajorInterleaved<2>`` reorder that produces the int16 metadata
@@ -64,7 +67,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -104,9 +107,72 @@ def _network(n):
     return tuple(seq)
 
 
+# Reference copy of the comparator order hard-coded in `_ssst_kernel` (a jit
+# function cannot loop over it); `_network(16)` documents where it comes from.
 _NET16 = tl.constexpr(tuple(_network(16)))
-_NET16_A = tl.constexpr(tuple(a for a, _ in _NET16.value))
-_NET16_B = tl.constexpr(tuple(b for _, b in _NET16.value))
+
+
+@triton.jit
+def _cx2(ka, kb):
+    """Ascending compare-exchange on the value bits.
+
+    Only the 16 value bits take part in the comparison and *equal* values are
+    swapped (the reference network does `swap = ~(a < b)`), so the lane tag in
+    the low 4 bits must not decide ties: min/max would order them by lane and
+    diverge from aten on tiles holding duplicate values.
+    """
+    sw = (ka >> 4) >= (kb >> 4)
+    return tl.where(sw, kb, ka), tl.where(sw, ka, kb)
+
+
+@triton.jit
+def _key16(v, lane: tl.constexpr, IS_ABS: tl.constexpr):
+    """Order-preserving 16-bit key of the value, lane index in the low 4 bits."""
+    if IS_ABS:
+        v = tl.abs(v)
+    xb = v.to(tl.int16, bitcast=True).to(tl.int32)
+    k = tl.where(xb < 0, (~xb) & 0xFFFF, (xb & 0xFFFF) | 0x8000)
+    return (k << 4) | lane
+
+
+@triton.jit
+def _greedy_step(k, bits16, state):
+    """LargestValuesGreedy on one rank: keep if row/col counts are below 2."""
+    p = k & 0xF
+    srow = (p >> 2) << 2  # 4 * in-tile row
+    scol = 16 + ((p & 3) << 2)  # 16 + 4 * in-tile column
+    ok = (((state >> srow) & 0xF) < 2) & (((state >> scol) & 0xF) < 2)
+    bits16 = bits16 | tl.where(ok, 1 << p, 0)
+    state = state + tl.where(ok, (1 << srow) + (1 << scol), 0)
+    return bits16, state
+
+
+@triton.jit
+def _pack_row(b0, b1, b2, b3, v0, v1, v2, v3):
+    """Build one 4-element tile row output: quad meta + two packed values.
+
+    b* are the per-column selection bits, v* the candidate values in
+    ascending column order.
+    """
+    cnt = b0 + b1 + b2 + b3
+    c0 = tl.where(b0, 0, tl.where(b1, 1, tl.where(b2, 2, 3)))
+    c1 = tl.where(
+        b0, tl.where(b1, 1, tl.where(b2, 2, 3)), tl.where(b1, tl.where(b2, 2, 3), 3)
+    )
+    two = cnt == 2
+    one = cnt == 1
+    late = one & (c0 >= 2)
+    u0 = tl.where(c0 == 0, v0, tl.where(c0 == 1, v1, tl.where(c0 == 2, v2, v3)))
+    c1e = tl.where(two, c1, c0)
+    u1 = tl.where(c1e == 0, v0, tl.where(c1e == 1, v1, tl.where(c1e == 2, v2, v3)))
+    g0 = tl.where(two | (one & (c0 < 2)), u0, 0.0)
+    g1 = tl.where(two | late, u1, 0.0)
+    qv = tl.where(
+        two,
+        c0 | (c1 << 2),
+        tl.where(one, tl.where(c0 < 2, c0 | ((c0 ^ 1) << 2), (c0 ^ 1) | (c0 << 2)), 0),
+    )
+    return qv, g0, g1
 
 
 @libentry()
@@ -129,155 +195,230 @@ def _ssst_kernel(
     sm0,
     sm1,
     IS_ABS: tl.constexpr,
+    TRI: tl.constexpr,
+    TCJ: tl.constexpr,
 ):
     pid_r = tl.program_id(0)
     pid_c = tl.program_id(1)
-    row0 = pid_r * 32
-    col0 = pid_c * 32
+    row0 = pid_r * (4 * TRI)
+    col0 = pid_c * (4 * TCJ)
 
-    lane_ = tl.arange(0, 16)[:, None, None]  # (16,1,1)
-    ti = tl.arange(0, 8)[None, :, None]  # (1,8,1)
-    tj = tl.arange(0, 8)[None, None, :]  # (1,1,8)
-    lr = lane_ // 4
-    lc = lane_ % 4
+    tr = tl.arange(0, TRI)[:, None]  # tile row inside the patch
+    tc = tl.arange(0, TCJ)[None, :]  # tile column inside the patch
+    rb = row0 + tr * 4
+    cb = col0 + tc * 4
+    mr0 = rb + 0 < rows
+    mr1 = rb + 1 < rows
+    mr2 = rb + 2 < rows
+    mr3 = rb + 3 < rows
+    mc0 = cb + 0 < cols
+    mc1 = cb + 1 < cols
+    mc2 = cb + 2 < cols
+    mc3 = cb + 3 < cols
+    ninf = float("-inf")
 
-    # Load the 16 lanes of every 4x4 tile in the 8x8 tile patch.
-    # lane = r_in * 4 + c_in
-    rr = row0 + ti * 4 + lr
-    cc = col0 + tj * 4 + lc
-    m = (rr < rows) & (cc < cols)
-    xr = tl.load(x_ptr + rr * ld + cc, mask=m, other=float("-inf"))
-    V0 = xr.to(tl.float32)
+    # 16 lanes, lane = 4 * in-tile row + in-tile column
+    s00 = tl.load(x_ptr + (rb + 0) * ld + (cb + 0), mask=mr0 & mc0, other=ninf)
+    s01 = tl.load(x_ptr + (rb + 0) * ld + (cb + 1), mask=mr0 & mc1, other=ninf)
+    s02 = tl.load(x_ptr + (rb + 0) * ld + (cb + 2), mask=mr0 & mc2, other=ninf)
+    s03 = tl.load(x_ptr + (rb + 0) * ld + (cb + 3), mask=mr0 & mc3, other=ninf)
+    s10 = tl.load(x_ptr + (rb + 1) * ld + (cb + 0), mask=mr1 & mc0, other=ninf)
+    s11 = tl.load(x_ptr + (rb + 1) * ld + (cb + 1), mask=mr1 & mc1, other=ninf)
+    s12 = tl.load(x_ptr + (rb + 1) * ld + (cb + 2), mask=mr1 & mc2, other=ninf)
+    s13 = tl.load(x_ptr + (rb + 1) * ld + (cb + 3), mask=mr1 & mc3, other=ninf)
+    s20 = tl.load(x_ptr + (rb + 2) * ld + (cb + 0), mask=mr2 & mc0, other=ninf)
+    s21 = tl.load(x_ptr + (rb + 2) * ld + (cb + 1), mask=mr2 & mc1, other=ninf)
+    s22 = tl.load(x_ptr + (rb + 2) * ld + (cb + 2), mask=mr2 & mc2, other=ninf)
+    s23 = tl.load(x_ptr + (rb + 2) * ld + (cb + 3), mask=mr2 & mc3, other=ninf)
+    s30 = tl.load(x_ptr + (rb + 3) * ld + (cb + 0), mask=mr3 & mc0, other=ninf)
+    s31 = tl.load(x_ptr + (rb + 3) * ld + (cb + 1), mask=mr3 & mc1, other=ninf)
+    s32 = tl.load(x_ptr + (rb + 3) * ld + (cb + 2), mask=mr3 & mc2, other=ninf)
+    s33 = tl.load(x_ptr + (rb + 3) * ld + (cb + 3), mask=mr3 & mc3, other=ninf)
 
-    # Order-preserving 16-bit key of the value with the original lane index
-    # packed into the low 4 bits. Comparators test only the value bits
-    # (key >> 4), so ties swap exactly like the value-only CUTLASS network,
-    # while the sort carries a single int32 tensor instead of V + P.
-    if IS_ABS:
-        xr = tl.abs(xr)
-    xb = xr.to(tl.int16, bitcast=True).to(tl.int32)
-    key16 = tl.where(xb < 0, (~xb) & 0xFFFF, (xb & 0xFFFF) | 0x8000)
-    K = (key16 << 4) | (lane_ + tl.zeros((1, 8, 8), tl.int32))
-    for e in tl.static_range(len(_NET16_A)):
-        i = _NET16_A[e]
-        j = _NET16_B[e]
-        ki = tl.sum(tl.where(lane_ == i, K, 0), 0)
-        kj = tl.sum(tl.where(lane_ == j, K, 0), 0)
-        sw = ~((ki >> 4) < (kj >> 4))
-        nki = tl.where(sw, kj, ki)
-        nkj = tl.where(sw, ki, kj)
-        K = tl.where(lane_ == i, nki[None, :, :], K)
-        K = tl.where(lane_ == j, nkj[None, :, :], K)
+    v00 = s00.to(tl.float32)
+    v01 = s01.to(tl.float32)
+    v02 = s02.to(tl.float32)
+    v03 = s03.to(tl.float32)
+    v10 = s10.to(tl.float32)
+    v11 = s11.to(tl.float32)
+    v12 = s12.to(tl.float32)
+    v13 = s13.to(tl.float32)
+    v20 = s20.to(tl.float32)
+    v21 = s21.to(tl.float32)
+    v22 = s22.to(tl.float32)
+    v23 = s23.to(tl.float32)
+    v30 = s30.to(tl.float32)
+    v31 = s31.to(tl.float32)
+    v32 = s32.to(tl.float32)
+    v33 = s33.to(tl.float32)
 
-    # Recover the original lane order from the sorted keys.
-    P = K & 0xF
+    k0 = _key16(s00, 0, IS_ABS)
+    k1 = _key16(s01, 1, IS_ABS)
+    k2 = _key16(s02, 2, IS_ABS)
+    k3 = _key16(s03, 3, IS_ABS)
+    k4 = _key16(s10, 4, IS_ABS)
+    k5 = _key16(s11, 5, IS_ABS)
+    k6 = _key16(s12, 6, IS_ABS)
+    k7 = _key16(s13, 7, IS_ABS)
+    k8 = _key16(s20, 8, IS_ABS)
+    k9 = _key16(s21, 9, IS_ABS)
+    k10 = _key16(s22, 10, IS_ABS)
+    k11 = _key16(s23, 11, IS_ABS)
+    k12 = _key16(s30, 12, IS_ABS)
+    k13 = _key16(s31, 13, IS_ABS)
+    k14 = _key16(s32, 14, IS_ABS)
+    k15 = _key16(s33, 15, IS_ABS)
 
-    # LargestValuesGreedy: visit from the largest, keep while row/col
-    # counts are below 2.
-    S = tl.zeros((16, 8, 8), tl.int32)
-    for step in tl.static_range(15, -1, -1):
-        which = tl.sum(tl.where(lane_ == step, P, 0), 0)  # (8,8)
-        r4 = which // 4
-        c4 = which % 4
-        crow = tl.sum(S * ((lr == r4[None, :, :]).to(tl.int32)), 0)
-        ccol = tl.sum(S * ((lc == c4[None, :, :]).to(tl.int32)), 0)
-        ok = (crow < 2) & (ccol < 2)
-        S += ((lane_ == which[None, :, :]) & ok[None, :, :]).to(tl.int32)
+    # odd-even mergesort(16) generated by _network(16): ascending keys, the
+    # lane index in the low bits makes the order total (no ties).
+    k0, k1 = _cx2(k0, k1)
+    k2, k3 = _cx2(k2, k3)
+    k0, k2 = _cx2(k0, k2)
+    k1, k3 = _cx2(k1, k3)
+    k1, k2 = _cx2(k1, k2)
+    k4, k5 = _cx2(k4, k5)
+    k6, k7 = _cx2(k6, k7)
+    k4, k6 = _cx2(k4, k6)
+    k5, k7 = _cx2(k5, k7)
+    k5, k6 = _cx2(k5, k6)
+    k0, k4 = _cx2(k0, k4)
+    k1, k5 = _cx2(k1, k5)
+    k1, k4 = _cx2(k1, k4)
+    k2, k6 = _cx2(k2, k6)
+    k3, k7 = _cx2(k3, k7)
+    k3, k6 = _cx2(k3, k6)
+    k2, k4 = _cx2(k2, k4)
+    k3, k5 = _cx2(k3, k5)
+    k3, k4 = _cx2(k3, k4)
+    k8, k9 = _cx2(k8, k9)
+    k10, k11 = _cx2(k10, k11)
+    k8, k10 = _cx2(k8, k10)
+    k9, k11 = _cx2(k9, k11)
+    k9, k10 = _cx2(k9, k10)
+    k12, k13 = _cx2(k12, k13)
+    k14, k15 = _cx2(k14, k15)
+    k12, k14 = _cx2(k12, k14)
+    k13, k15 = _cx2(k13, k15)
+    k13, k14 = _cx2(k13, k14)
+    k8, k12 = _cx2(k8, k12)
+    k9, k13 = _cx2(k9, k13)
+    k9, k12 = _cx2(k9, k12)
+    k10, k14 = _cx2(k10, k14)
+    k11, k15 = _cx2(k11, k15)
+    k11, k14 = _cx2(k11, k14)
+    k10, k12 = _cx2(k10, k12)
+    k11, k13 = _cx2(k11, k13)
+    k11, k12 = _cx2(k11, k12)
+    k0, k8 = _cx2(k0, k8)
+    k1, k9 = _cx2(k1, k9)
+    k1, k8 = _cx2(k1, k8)
+    k2, k10 = _cx2(k2, k10)
+    k3, k11 = _cx2(k3, k11)
+    k3, k10 = _cx2(k3, k10)
+    k2, k8 = _cx2(k2, k8)
+    k3, k9 = _cx2(k3, k9)
+    k3, k8 = _cx2(k3, k8)
+    k4, k12 = _cx2(k4, k12)
+    k5, k13 = _cx2(k5, k13)
+    k5, k12 = _cx2(k5, k12)
+    k6, k14 = _cx2(k6, k14)
+    k7, k15 = _cx2(k7, k15)
+    k7, k14 = _cx2(k7, k14)
+    k6, k12 = _cx2(k6, k12)
+    k7, k13 = _cx2(k7, k13)
+    k7, k12 = _cx2(k7, k12)
+    k4, k8 = _cx2(k4, k8)
+    k5, k9 = _cx2(k5, k9)
+    k5, k8 = _cx2(k5, k8)
+    k6, k10 = _cx2(k6, k10)
+    k7, k11 = _cx2(k7, k11)
+    k7, k10 = _cx2(k7, k10)
+    k6, k8 = _cx2(k6, k8)
+    k7, k9 = _cx2(k7, k9)
+    k7, k8 = _cx2(k7, k8)
 
-    # packed: per (tile, tile-row) two slots from the selected columns.
-    # Values are gathered from the ORIGINAL tile values V0 by the selected
-    # original lane index (ascending column order).
+    # Greedy walk from the largest key down.  `bits16` accumulates the selected
+    # lane mask, `state` the per-row / per-column counters.
+    bits16 = tl.zeros((TRI, TCJ), tl.int32)
+    state = tl.zeros((TRI, TCJ), tl.int32)
+    bits16, state = _greedy_step(k15, bits16, state)
+    bits16, state = _greedy_step(k14, bits16, state)
+    bits16, state = _greedy_step(k13, bits16, state)
+    bits16, state = _greedy_step(k12, bits16, state)
+    bits16, state = _greedy_step(k11, bits16, state)
+    bits16, state = _greedy_step(k10, bits16, state)
+    bits16, state = _greedy_step(k9, bits16, state)
+    bits16, state = _greedy_step(k8, bits16, state)
+    bits16, state = _greedy_step(k7, bits16, state)
+    bits16, state = _greedy_step(k6, bits16, state)
+    bits16, state = _greedy_step(k5, bits16, state)
+    bits16, state = _greedy_step(k4, bits16, state)
+    bits16, state = _greedy_step(k3, bits16, state)
+    bits16, state = _greedy_step(k2, bits16, state)
+    bits16, state = _greedy_step(k1, bits16, state)
+    bits16, state = _greedy_step(k0, bits16, state)
+
     ty = packed_ptr.dtype.element_ty
-    for a in tl.static_range(4):
-        sel = (S != 0) & (lr == a)
-        cnt = tl.sum(sel.to(tl.int32), 0)
-        c0 = tl.min(tl.where(sel, lc, 4), 0)
-        c1 = tl.min(tl.where(sel & (lc != c0[None, :, :]), lc, 4), 0)
-        two = cnt == 2
-        one = cnt == 1
-        late = one & (c0 >= 2)
-        c0e = tl.where(cnt > 0, c0, 0)
-        c1e = tl.where(two, c1, tl.where(late, c0, 0))
-        v0 = tl.sum(tl.where(sel & (lc == c0e[None, :, :]), V0, 0.0), 0)
-        v1 = tl.sum(tl.where(sel & (lc == c1e[None, :, :]), V0, 0.0), 0)
-        g0 = tl.where(two | (one & (c0 < 2)), v0, 0.0)
-        g1 = tl.where(two | late, v1, 0.0)
-        # canonical 4-bit quad: idx0 | idx1 << 2
-        qv = tl.where(
-            two,
-            c0 | (c1 << 2),
-            tl.where(
-                one, tl.where(c0 < 2, c0 | ((c0 ^ 1) << 2), (c0 ^ 1) | (c0 << 2)), 0
-            ),
-        )
-        pr = row0 + ti * 4 + a
-        qrow = (row0 + ti * 4 + a)[:, None]
-        qcol = (pid_c * 8 + tj)[None, :]
-        tl.store(qbuf_ptr + qrow * qb_stride + qcol, qv.to(tl.int16))
-        for s in tl.static_range(2):
-            pc = pid_c * 16 + tj * 2 + s
-            offs = packed_ptr + pr * spm + pc
-            val = g0 if s == 0 else g1
-            tl.store(offs, val.to(ty))
-
-    # packed_trans: the same selection on the transposed tile grid
-    # (grid transpose + in-tile transpose).
     tyt = packed_t_ptr.dtype.element_ty
-    for a in tl.static_range(4):
-        sel = (S != 0) & (lc == a)
-        cnt = tl.sum(sel.to(tl.int32), 0)
-        lk = lr
-        c0 = tl.min(tl.where(sel, lk, 4), 0)
-        c1 = tl.min(tl.where(sel & (lk != c0[None, :, :]), lk, 4), 0)
-        two = cnt == 2
-        one = cnt == 1
-        late = one & (c0 >= 2)
-        c0e = tl.where(cnt > 0, c0, 0)
-        c1e = tl.where(two, c1, tl.where(late, c0, 0))
-        t0 = tl.sum(tl.where(sel & (lk == c0e[None, :, :]), V0, 0.0), 0)
-        t1 = tl.sum(tl.where(sel & (lk == c1e[None, :, :]), V0, 0.0), 0)
-        u0 = tl.where(two | (one & (c0 < 2)), t0, 0.0)
-        u1 = tl.where(two | late, t1, 0.0)
-        qvt = tl.where(
-            two,
-            c0 | (c1 << 2),
-            tl.where(
-                one, tl.where(c0 < 2, c0 | ((c0 ^ 1) << 2), (c0 ^ 1) | (c0 << 2)), 0
-            ),
-        )
-        pr_t = col0 + tj * 4 + a
-        mt = pr_t < rows_t
-        qrow_t = pr_t[:, None]
-        qcol_t = (pid_r * 8 + ti)[None, :]
-        tl.store(qbuf_t_ptr + qrow_t * qbt_stride + qcol_t, qvt.to(tl.int16), mask=mt)
-        for s in tl.static_range(2):
-            pc_t = pid_r * 16 + ti * 2 + s
-            m2 = mt & (pc_t < width_t)
-            offs = packed_t_ptr + pr_t[:, None] * width_t + pc_t[None, :]
-            val = u0 if s == 0 else u1
-            tl.store(offs, val.to(tyt), mask=m2)
+    qrow = rb  # (TRI, 1)
+    qcol = pid_c * TCJ + tc  # (1, TCJ)
+    pc0 = col0 // 2 + tc * 2  # (1, TCJ), even packed slot
+    mt = col0 + tc * 4 < rows_t  # transposed row guard, (1, TCJ)
+    pct = pid_r * (TRI * 2) + tr * 2  # (TRI, 1), transposed packed slot
+    qct = pid_r * TRI + tr  # (TRI, 1), transposed quad buffer column
 
-    # threads_masks: per-tile 16-bit selection mask split into the four
-    # quadrant byte slots.
-    vals16 = tl.sum(S * (1 << lane_), 0)
-    lo = (vals16 & 0xFF).to(tl.uint8)
-    hi = ((vals16 >> 8) & 0xFF).to(tl.uint8)
-    t1 = tl.arange(0, 8)
-    q8 = (t1[:, None] % 2) * 2 + (t1[None, :] % 2)  # (8,8) quadrant id
-    ii = pid_r * 4 + t1 // 2
-    jj = pid_c * 4 + t1 // 2
-    zero_u = tl.zeros((8, 8), tl.uint8)
+    # packed / qbuf: in-tile row a -> lanes 4a..4a+3 (ascending column order)
+    for a in tl.static_range(4):
+        prow = qrow + a
+        prow_t = col0 + tc * 4 + a  # (1, TCJ) transposed row
+        qv, g0, g1 = _pack_row(
+            (bits16 >> (4 * a + 0)) & 1,
+            (bits16 >> (4 * a + 1)) & 1,
+            (bits16 >> (4 * a + 2)) & 1,
+            (bits16 >> (4 * a + 3)) & 1,
+            tl.where(a == 0, v00, tl.where(a == 1, v10, tl.where(a == 2, v20, v30))),
+            tl.where(a == 0, v01, tl.where(a == 1, v11, tl.where(a == 2, v21, v31))),
+            tl.where(a == 0, v02, tl.where(a == 1, v12, tl.where(a == 2, v22, v32))),
+            tl.where(a == 0, v03, tl.where(a == 1, v13, tl.where(a == 2, v23, v33))),
+        )
+        tl.store(qbuf_ptr + prow * qb_stride + qcol, qv.to(tl.int16))
+        tl.store(packed_ptr + prow * spm + pc0 + 0, g0.to(ty))
+        tl.store(packed_ptr + prow * spm + pc0 + 1, g1.to(ty))
+        # packed_trans: same quad on the transposed tile grid (lanes a, 4+a, ...)
+        qvt, u0, u1 = _pack_row(
+            (bits16 >> (0 + a)) & 1,
+            (bits16 >> (4 + a)) & 1,
+            (bits16 >> (8 + a)) & 1,
+            (bits16 >> (12 + a)) & 1,
+            tl.where(a == 0, v00, tl.where(a == 1, v01, tl.where(a == 2, v02, v03))),
+            tl.where(a == 0, v10, tl.where(a == 1, v11, tl.where(a == 2, v12, v13))),
+            tl.where(a == 0, v20, tl.where(a == 1, v21, tl.where(a == 2, v22, v23))),
+            tl.where(a == 0, v30, tl.where(a == 1, v31, tl.where(a == 2, v32, v33))),
+        )
+        tl.store(qbuf_t_ptr + prow_t * qbt_stride + qct, qvt.to(tl.int16), mask=mt)
+        tl.store(
+            packed_t_ptr + prow_t * width_t + pct + 0,
+            u0.to(tyt),
+            mask=mt & (pct + 0 < width_t),
+        )
+        tl.store(
+            packed_t_ptr + prow_t * width_t + pct + 1,
+            u1.to(tyt),
+            mask=mt & (pct + 1 < width_t),
+        )
+
+    # threads_masks: per-tile 16-bit selection mask into the four byte slots
+    lo = (bits16 & 0xFF).to(tl.uint8)
+    hi = ((bits16 >> 8) & 0xFF).to(tl.uint8)
+    q8 = (tr % 2) * 2 + (tc % 2)  # quadrant id of the tile
+    ii = pid_r * (TRI // 2) + tr // 2
+    jj = pid_c * (TCJ // 2) + tc // 2
+    zero_u = tl.zeros((TRI, TCJ), tl.uint8)
     for s in tl.static_range(8):
         is_lo = s == 2 * q8
         is_hi = s == 2 * q8 + 1
         val = tl.where(is_lo, lo, tl.where(is_hi, hi, zero_u))
-        # The trailing scalar shift must be folded into the scalar base
-        # pointer: an addptr(ptr_tensor, scalar) on the non-injective 2D
-        # offset tensor crashes gcu-triton-fusion (P02 store-side mirror of
-        # the deepseek_v4 load-side instance).
-        offs = masks_ptr + s + ii[:, None] * sm0 + jj[None, :] * sm1
-        # Only the element whose quadrant owns slot s may write; unmasked
-        # zero stores from the other 3 lanes sharing (ii,jj) would race.
+        offs = masks_ptr + s + ii * sm0 + jj * sm1
         tl.store(offs, val, mask=is_lo | is_hi)
 
 
@@ -352,8 +493,20 @@ def _causal1122(dense):
     return pruned.permute(0, 2, 1, 3).reshape(rows_r, cols_r)
 
 
+# 8 tile rows (32 input rows) per program patch.
+_TRI = 8
+
+
+def _pick_tcj(cols_r):
+    """Largest 4-tile-wide patch TCJ such that 4 * TCJ still divides cols_r."""
+    for cand in (64, 32, 16):
+        if cols_r % (4 * cand) == 0:
+            return cand
+    return 16
+
+
 def _sparse_semi_structured_tile(input, algorithm: str = "", use_cutlass: bool = True):
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_SEMI_STRUCTURED_TILE")
+    logger.debug("GEMS_ENFLAME SPARSE_SEMI_STRUCTURED_TILE")
 
     dense = input
     if dense.dim() != 2:
@@ -385,20 +538,25 @@ def _sparse_semi_structured_tile(input, algorithm: str = "", use_cutlass: bool =
 
     rows_r = (rows + 31) // 32 * 32
     cols_r = (cols + 63) // 64 * 64
+    tcj = _pick_tcj(cols_r)
     dev = dense.device
 
-    packed = torch.zeros(rows_r, cols_r // 2, dtype=dense.dtype, device=dev)
-    meta = torch.zeros(rows_r * cols_r // 16, dtype=torch.int16, device=dev)
+    # The kernels below write every element of these buffers, so `empty`
+    # avoids paying for seven zero-fill launches on the critical path.
+    packed = torch.empty(rows_r, cols_r // 2, dtype=dense.dtype, device=dev)
+    meta = torch.empty(rows_r * cols_r // 16, dtype=torch.int16, device=dev)
     rows_t = (cols + 31) // 32 * 32
     width_t = (rows + 63) // 64 * 64 // 2
-    packed_t = torch.zeros(rows_t, width_t, dtype=dense.dtype, device=dev)
+    packed_t = torch.empty(rows_t, width_t, dtype=dense.dtype, device=dev)
     ncols_t = (rows + 63) // 64 * 64 // 16
-    meta_t = torch.zeros(rows_t * ncols_t, dtype=torch.int16, device=dev)
-    masks = torch.zeros(rows_r // 8, cols_r // 8, 8, dtype=torch.uint8, device=dev)
-    qbuf = torch.zeros(rows_r, cols_r // 4, dtype=torch.int16, device=dev)
-    qbuf_t = torch.zeros(rows_t, rows_r // 4, dtype=torch.int16, device=dev)
+    meta_t = torch.empty(rows_t * ncols_t, dtype=torch.int16, device=dev)
+    masks = torch.empty(rows_r // 8, cols_r // 8, 8, dtype=torch.uint8, device=dev)
+    qbuf = torch.empty(rows_r, cols_r // 4, dtype=torch.int16, device=dev)
+    qbuf_t = torch.empty(rows_t, rows_r // 4, dtype=torch.int16, device=dev)
 
-    grid = (rows_r // 32, cols_r // 32)
+    # One program per 32-row x 4 * tcj-column patch.  A single warp keeps the 16
+    # elements of every tile resident in registers and measured fastest.
+    grid = (rows_r // (4 * _TRI), cols_r // (4 * tcj))
     _ssst_kernel[grid](
         dense,
         dense.stride(0),
@@ -417,6 +575,9 @@ def _sparse_semi_structured_tile(input, algorithm: str = "", use_cutlass: bool =
         masks.stride(0),
         masks.stride(1),
         algorithm == "largest_abs_values_greedy",
+        _TRI,
+        tcj,
+        num_warps=1,
     )
     _meta_reorder[(rows_r // 32, (cols_r // 16 + 15) // 16)](
         qbuf,
@@ -442,50 +603,5 @@ def _sparse_semi_structured_tile(input, algorithm: str = "", use_cutlass: bool =
     return (packed, meta, packed_t, meta_t, masks)
 
 
-def _install_aten_kernels():
-    """Route bare aten::_sparse_semi_structured_tile calls on GCU onto this kernel.
-
-    The upstream op is CUDA-only and torch_gcu ships no PrivateUse1 kernel
-    for it, so a bare ``torch.ops.aten._sparse_semi_structured_tile(...)``
-    call -- the accuracy suite's reference leg and the benchmark's
-    native-baseline leg -- is bounced to CPU by the aten_cpu_fallback and
-    dies with ``NotImplementedError``.  Registering the op on the backend
-    dispatch key here makes those calls land on this kernel, which is
-    exactly what production already sees inside ``flag_gems.use_gems()``.
-
-    The backend loader executes this file under several module names; the
-    torch-attached flag short-circuits the second and later executions, so
-    they neither re-register nor emit "This is not allowed" warnings.
-    """
-    existing = getattr(
-        torch, "_flaggems_gcu_sparse_semi_structured_tile_aten_library", None
-    )
-    if existing is not None:
-        return existing
-    try:
-        dispatch_key = runtime.device.dispatch_key
-        library = torch.library.Library("aten", "IMPL")
-        try:
-            library.impl(
-                "_sparse_semi_structured_tile",
-                _sparse_semi_structured_tile,
-                dispatch_key,
-            )
-        except RuntimeError as error:
-            logger.warning(
-                "_sparse_semi_structured_tile: aten registration skipped: %s", error
-            )
-        setattr(
-            torch, "_flaggems_gcu_sparse_semi_structured_tile_aten_library", library
-        )
-        return library
-    except Exception as error:
-        logger.warning(
-            "_sparse_semi_structured_tile: aten registration unavailable: %s", error
-        )
-        return None
-
-
 # Module-level handle keeps the Library (and its kernel) alive for the
 # process; the registration itself must never break the flag_gems import.
-_SPARSE_SEMI_STRUCTURED_TILE_ATEN_LIBRARY = _install_aten_kernels()

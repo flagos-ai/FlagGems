@@ -27,6 +27,11 @@ The dual metadata itself cannot be produced by a device kernel, so the device
 work here is the copy: a flat streaming kernel for contiguous inputs and a
 gather that walks the input's own shape/stride metadata otherwise. Both write
 every element of the returned tensor.
+
+gcu400 caps ``grid.x`` at 65535, so a one-CTA-per-tile launch faults with
+``OutOfResources`` on the 2**30-element benchmark shapes. Every kernel below
+is therefore a grid-stride loop over tiles whose grid never exceeds the caps
+configured in ``_launch_*``.
 """
 
 import logging
@@ -37,14 +42,42 @@ import triton.language as tl
 
 logger = logging.getLogger(__name__)
 
+# Base tier for the word/element streaming kernels: 8192 items per tile, at
+# most 48 resident CTAs, 4 warps (calibrated flat-copy sweet spot).
+_BASE_BLOCK = 8192
+_BASE_GRID = 48
+# Word-count tiers calibrated on gcu400 (2026-11-17 _reshape_copy interleaved
+# A/B): <= 16M int32 words -> 8192/48/w4, 16-32M -> 32768/48/w4,
+# >= 32M -> 65536/96/w8.
+_MID_WORDS = 16 * 1024 * 1024
+_MID_BLOCK = 32768
+_DEEP_WORDS = 32 * 1024 * 1024
+_DEEP_BLOCK = 65536
+_DEEP_GRID = 96
+# Strided gather tile width.
+_STRIDED_BLOCK = 512
+# Tile offsets are computed in int32 inside the kernels, so the last masked
+# tile must still fit the int32 domain.
+_MAX_OFFSET_ELEMS = 2**31 - 1 - _DEEP_BLOCK
+
 
 @triton.jit
-def _copy_kernel(src_ptr, dst_ptr, n_elements, BLOCK: tl.constexpr):
+def _copy_kernel(
+    src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr, GRID_SIZE: tl.constexpr
+):
+    """Flat grid-stride copy.
+
+    Serving both the int32-word plan (same-dtype bit copy, 4 bytes per lane)
+    and the element-wise fallback (any dtype pair, implicit conversion on
+    store), the grid is capped and each program strides over its tiles.
+    """
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n_elements
-    vals = tl.load(src_ptr + offsets, mask=mask, other=0)
-    tl.store(dst_ptr + offsets, vals, mask=mask)
+    num_tiles = tl.cdiv(n_elements, BLOCK_SIZE)
+    for tile_id in tl.range(pid, num_tiles, GRID_SIZE):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        vals = tl.load(src_ptr + offsets, mask=mask, other=0)
+        tl.store(dst_ptr + offsets, vals, mask=mask)
 
 
 @triton.jit
@@ -58,21 +91,24 @@ def _copy_strided_kernel(
     n_elements,
     NDIM: tl.constexpr,
     BLOCK: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
-    offsets = pid * BLOCK + tl.arange(0, BLOCK)
-    mask = offsets < n_elements
-    idx = offsets.to(tl.int64)
-    src_off = tl.zeros([BLOCK], dtype=tl.int64)
-    dst_off = tl.zeros([BLOCK], dtype=tl.int64)
-    for d in tl.static_range(NDIM):
-        div = tl.load(divs_ptr + d)
-        sh = tl.load(shape_ptr + d)
-        coord = (idx // div) % sh
-        src_off += coord * tl.load(src_stride_ptr + d)
-        dst_off += coord * tl.load(dst_stride_ptr + d)
-    vals = tl.load(src_ptr + src_off, mask=mask, other=0)
-    tl.store(dst_ptr + dst_off, vals, mask=mask)
+    num_tiles = tl.cdiv(n_elements, BLOCK)
+    for tile_id in tl.range(pid, num_tiles, GRID_SIZE):
+        offsets = tile_id * BLOCK + tl.arange(0, BLOCK)
+        mask = offsets < n_elements
+        idx = offsets.to(tl.int64)
+        src_off = tl.zeros([BLOCK], dtype=tl.int64)
+        dst_off = tl.zeros([BLOCK], dtype=tl.int64)
+        for d in tl.static_range(NDIM):
+            div = tl.load(divs_ptr + d)
+            sh = tl.load(shape_ptr + d)
+            coord = (idx // div) % sh
+            src_off += coord * tl.load(src_stride_ptr + d)
+            dst_off += coord * tl.load(dst_stride_ptr + d)
+        vals = tl.load(src_ptr + src_off, mask=mask, other=0)
+        tl.store(dst_ptr + dst_off, vals, mask=mask)
 
 
 def _as_copyable(t):
@@ -96,42 +132,66 @@ def _is_complex128(t):
     return t.dtype == torch.complex128
 
 
-def _strided_copy(src, dst):
-    s = _as_copyable(src)
-    d = _as_copyable(dst)
-    shape = s.shape
-    ndim = len(shape)
-    divs = [1] * ndim
-    acc = 1
-    for i in range(ndim - 1, -1, -1):
-        divs[i] = acc
-        acc *= shape[i]
-    dev = s.device
-    div_t = torch.tensor(divs, dtype=torch.int64, device=dev)
-    shp_t = torch.tensor(shape, dtype=torch.int64, device=dev)
-    ss_t = torch.tensor(s.stride(), dtype=torch.int64, device=dev)
-    ds_t = torch.tensor(d.stride(), dtype=torch.int64, device=dev)
-    n = s.numel()
-    block = 512
-    grid = (triton.cdiv(n, block),)
-    _copy_strided_kernel[grid](
-        s, d, div_t, shp_t, ss_t, ds_t, n, NDIM=ndim, BLOCK=block
-    )
+def _word_plan(src, dst):
+    """Return the int32 word count when both sides are word-viewable, else None.
 
-
-def _flat_config(numel):
-    if numel <= 131072:
-        return 2048, 4
-    return 8192, 8
+    Reinterpreting both operands as int32 keeps the kernel dtype-agnostic and
+    moves 4 bytes per lane: fp32 directly, fp16/bf16/int16 pairs, complex64/128
+    and int64 as whole words. The views are expressible when the byte footprint
+    and both storage offsets are 4-byte aligned.
+    """
+    if src.shape != dst.shape or src.dtype != dst.dtype:
+        return None
+    if not src.is_contiguous() or not dst.is_contiguous():
+        return None
+    esize = src.element_size()
+    if src.numel() * esize % 4 != 0:
+        return None
+    if src.storage_offset() * esize % 4 != 0 or dst.storage_offset() * esize % 4 != 0:
+        return None
+    n_words = src.numel() * esize // 4
+    if n_words > _MAX_OFFSET_ELEMS:
+        return None
+    return n_words
 
 
 def _flat_copy(src, dst):
+    """Contiguous copy: int32 words when expressible, element-wise otherwise."""
+    n_words = _word_plan(src, dst)
+    if n_words is not None:
+        if n_words >= _DEEP_WORDS:
+            block, grid_cap, num_warps = _DEEP_BLOCK, _DEEP_GRID, 8
+        elif n_words >= _MID_WORDS:
+            block, grid_cap, num_warps = _MID_BLOCK, _BASE_GRID, 4
+        else:
+            block, grid_cap, num_warps = _BASE_BLOCK, _BASE_GRID, 4
+        grid = (min(grid_cap, triton.cdiv(n_words, block)),)
+        _copy_kernel[grid](
+            src.reshape(-1).view(torch.int32),
+            dst.reshape(-1).view(torch.int32),
+            n_words,
+            BLOCK_SIZE=block,
+            GRID_SIZE=grid_cap,
+            num_warps=num_warps,
+        )
+        return
     s = _as_copyable(src)
     d = _as_copyable(dst)
     n = s.numel()
-    block, num_warps = _flat_config(n)
-    grid = (triton.cdiv(n, block),)
-    _copy_kernel[grid](s, d, n, BLOCK=block, num_warps=num_warps)
+    if n > _MAX_OFFSET_ELEMS:
+        # Beyond the kernels' int32 offset domain; the native strided copy
+        # handles the rare huge tensor.
+        dst.copy_(src)
+        return
+    grid = (min(_BASE_GRID, triton.cdiv(n, _BASE_BLOCK)),)
+    _copy_kernel[grid](
+        s,
+        d,
+        n,
+        BLOCK_SIZE=_BASE_BLOCK,
+        GRID_SIZE=_BASE_GRID,
+        num_warps=4,
+    )
 
 
 def _make_dual_copy(
@@ -148,7 +208,7 @@ def _make_dual_copy(
     Returns:
         torch.Tensor: A tensor with the same shape and values as ``primal``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MAKE_DUAL_COPY")
+    logger.debug("GEMS_ENFLAME MAKE_DUAL_COPY")
     out = torch.empty_like(primal)
     n = primal.numel()
     if n == 0:
@@ -178,7 +238,7 @@ def _make_dual_copy_out(
     Returns:
         torch.Tensor: ``out``, holding the values of ``primal``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MAKE_DUAL_COPY_OUT")
+    logger.debug("GEMS_ENFLAME MAKE_DUAL_COPY_OUT")
     n = primal.numel()
     if n == 0:
         return out
@@ -190,3 +250,38 @@ def _make_dual_copy_out(
         return out
     _strided_copy(primal, out)
     return out
+
+
+def _strided_copy(src, dst):
+    s = _as_copyable(src)
+    d = _as_copyable(dst)
+    n = s.numel()
+    if n > _MAX_OFFSET_ELEMS:
+        dst.copy_(src)
+        return
+    shape = s.shape
+    ndim = len(shape)
+    divs = [1] * ndim
+    acc = 1
+    for i in range(ndim - 1, -1, -1):
+        divs[i] = acc
+        acc *= shape[i]
+    dev = s.device
+    div_t = torch.tensor(divs, dtype=torch.int64, device=dev)
+    shp_t = torch.tensor(shape, dtype=torch.int64, device=dev)
+    ss_t = torch.tensor(s.stride(), dtype=torch.int64, device=dev)
+    ds_t = torch.tensor(d.stride(), dtype=torch.int64, device=dev)
+    grid = (min(_BASE_GRID, triton.cdiv(n, _STRIDED_BLOCK)),)
+    _copy_strided_kernel[grid](
+        s,
+        d,
+        div_t,
+        shp_t,
+        ss_t,
+        ds_t,
+        n,
+        NDIM=ndim,
+        BLOCK=_STRIDED_BLOCK,
+        GRID_SIZE=_BASE_GRID,
+        num_warps=4,
+    )

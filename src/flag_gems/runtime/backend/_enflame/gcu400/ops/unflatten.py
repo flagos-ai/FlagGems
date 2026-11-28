@@ -34,8 +34,33 @@ def unflatten(A: torch.Tensor, dim: int, sizes: List[int]) -> torch.Tensor:
     Returns:
         torch.Tensor: A view of the input tensor with the specified
             dimension unflattened.
+
+    This op launches no kernel, so the whole cost is host-side dispatch. A
+    fast path serves non-negative in-range dims with 2-element sizes that
+    need no ``-1`` inference and already multiply up to the split dimension:
+    logging, negative-dim normalization, ``-1`` inference and the error
+    machinery run only on the cold path below. The result is always a
+    zero-copy view built by ``A.view`` (shared storage, strides and storage
+    offset unchanged), including for expanded / non-contiguous operands.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 unflatten")
+    # Fast path: already-valid dims skip the debug log and the validation
+    # machinery below and go straight to the metadata view. Passing a plain
+    # tuple keeps ``view`` on its fastest argument-conversion path. The dim
+    # range check runs first so negative dims bail out immediately.
+    if (
+        0 <= dim < A.ndim
+        and type(sizes) is tuple
+        and len(sizes) == 2
+        and sizes[0] != -1
+        and sizes[1] != -1
+        and sizes[0] * sizes[1] == A.shape[dim]
+    ):
+        t = tuple(A.shape)
+        if dim == 0:
+            return A.view(sizes + t[1:])
+        return A.view(t[:dim] + sizes + t[dim + 1 :])
+
+    logger.debug("GEMS_ENFLAME unflatten")
 
     # Handle negative dim
     if dim < 0:

@@ -51,5 +51,5 @@ def xlog1py_func(x, y):
 
 
 def special_xlog1py(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_XLOG1PY")
+    logger.debug("GEMS_ENFLAME SPECIAL_XLOG1PY")
     return xlog1py_func(A, B)

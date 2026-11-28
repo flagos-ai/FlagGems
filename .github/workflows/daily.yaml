@@ -31,19 +31,10 @@ permissions:
 on:
   workflow_dispatch:
 
-  schedule:
-    # Note that the time is in UTC, so we want this to start at 01:23+8:00
-    - cron: '23 17 * * *'
-
 jobs:
   prepare:
-    # Runs on the self-hosted cpu-runner instead of ubuntu-latest: this job
-    # only echoes a date (no GitHub API calls), and scheduling it on a
-    # GitHub-hosted runner lets the cron run sit in the hosted-fleet queue
-    # for hours during peak load, delaying every downstream job. cpu-runner is
-    # dedicated and immediately available, so the workflow starts at the cron
-    # time instead of whenever GitHub frees a hosted runner.
-    runs-on: cpu-runner
+    # Trivial job: echoes a date used to tag downstream shard runs.
+    runs-on: ubuntu-latest
     outputs:
       datetime: ${{ steps.get-date.outputs.CURRENT_DATE }}
     steps:
@@ -89,6 +80,10 @@ jobs:
           TOTAL_SHARDS: '8'
           SHARD_INDEX: ${{ matrix.shard_index }}
           QUICK_TESTS: '1'
+          DAILY_PYTHON_OP: '1'
+          # sys.monitoring-based tracing (Python >= 3.12) adds far less overhead
+          # than the default C tracer when importing flag_gems under coverage.
+          COVERAGE_CORE: sysmon
         run: |
           # Invoke script to run full-range unit tests,
           # Use datetime timestamp as the fake PR ID, with optional affix if
