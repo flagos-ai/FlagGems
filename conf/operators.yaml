@@ -4438,6 +4438,19 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: copysign_backward
+  description: The backward computation of `copysign()`, exercised through the
+    autograd of the forward operator. The gradient w.r.t. `other` is always zero.
+  for:
+  - copysign
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: copysign_out
   description: 'A variant of `copysign` that allows the output to be saved into `out`.
 
