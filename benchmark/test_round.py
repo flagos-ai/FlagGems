@@ -31,6 +31,18 @@ def test_round():
     bench.run()
 
 
+@pytest.mark.round_backward
+def test_round_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="round_backward",
+        torch_op=torch.round,
+        gems_op=flag_gems.round,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
+
+
 @pytest.mark.round_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

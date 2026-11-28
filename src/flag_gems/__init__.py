@@ -2257,7 +2257,12 @@ _FULL_CONFIG = (
     ("rnn_tanh_cell", rnn_tanh_cell),
     ("roll", roll),
     ("rot90", rot90),
-    ("round", round),
+    (
+        "round",
+        round,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("round.out", round_out),
     ("round_", round_),
     ("row_indices_copy", row_indices_copy, None, (SPARSE_CSR_DISPATCH_KEY,)),
