@@ -953,6 +953,9 @@ from flag_gems.ops.full_like import full_like
 from flag_gems.ops.fused_moving_avg_obs_fake_quant import (
     fused_moving_avg_obs_fake_quant,
 )
+from flag_gems.ops.fused_moving_avg_obs_fq_helper_backward import (
+    fused_moving_avg_obs_fq_helper_backward,
+)
 from flag_gems.ops.fw_primal_copy import _fw_primal_copy, _fw_primal_copy_out
 from flag_gems.ops.gather import gather, gather_backward
 from flag_gems.ops.gather_block_quantized import gather_block_quantized
@@ -2697,6 +2700,7 @@ __all__ = [
     "full",
     "full_like",
     "fused_moving_avg_obs_fake_quant",
+    "fused_moving_avg_obs_fq_helper_backward",
     "gather",
     "gather_backward",
     "gather_block_quantized",
