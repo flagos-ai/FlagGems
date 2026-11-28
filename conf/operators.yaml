@@ -8577,6 +8577,25 @@ ops:
   - PointWise
   stages:
   - alpha: '5.4'
+- id: foreach_norm_backward
+  description: |
+    Backward pass of `_foreach_norm.Scalar`: the input gradient of the
+    per-tensor vector norm of order `ord`, evaluated by the branch ladder of
+    ATen's shared `norm_backward` (sgn for ord 1, self/norm with a zero-norm
+    mask for ord 2, argmax-position selection for +-inf, and the three power
+    forms for finite orders). The norm value in the formulas is the forward
+    result itself; the elementwise pass runs for the whole list in one launch
+    per (device, dtype) group. Exposed through an explicit entry point because
+    this Torch build has no standalone `aten::_foreach_norm_backward` schema.
+  for:
+  - foreach_norm_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Reduction
+  stages:
+  - beta: '5.6.0'
 - id: foreach_norm_scalar
   description: per-tensor vector norm for each tensor in a list, against a single
     scalar.
