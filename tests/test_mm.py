@@ -186,6 +186,37 @@ def test_mm_kernel_general_host_tma_vllm_column_major_weight_compile_error():
 
 
 @pytest.mark.mm
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia"
+    or not torch.cuda.is_available()
+    or torch.cuda.get_device_capability()[0] < 9,
+    reason="Hopper mm general-TMA config pruning is NVIDIA-only",
+)
+def test_mm_general_tma_prunes_unusable_tiles():
+    """Issue #7164: skip tiny-M and oversized tiles before tuning."""
+    from flag_gems.runtime.backend._nvidia.hopper.ops.mm import (
+        _prune_mm_general_tma_configs,
+        matmul_get_configs,
+    )
+
+    configs = matmul_get_configs()
+
+    pruned_64 = _prune_mm_general_tma_configs(configs, {"M": 64})
+    assert pruned_64
+    assert all(cfg.kwargs["BLOCK_M"] >= 32 for cfg in pruned_64)
+    assert len(pruned_64) < len(configs)
+
+    # Decode-sized batches keep the BLOCK_M=16 candidates.
+    pruned_16 = _prune_mm_general_tma_configs(configs, {"M": 16})
+    assert any(cfg.kwargs["BLOCK_M"] == 16 for cfg in pruned_16)
+    pruned_32 = _prune_mm_general_tma_configs(configs, {"M": 32})
+    assert any(cfg.kwargs["BLOCK_M"] == 16 for cfg in pruned_32)
+
+    # An unknown M must not drop candidates.
+    assert len(_prune_mm_general_tma_configs(configs, {})) == len(configs)
+
+
+@pytest.mark.mm
 @pytest.mark.mm_self_transpose
 @pytest.mark.parametrize("M, K", MK_SHAPES)
 @pytest.mark.parametrize("dtype", GEMM_DTYPES)
