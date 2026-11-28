@@ -76,6 +76,160 @@ def mean_kernel_2(mid, out, M, MID_SIZE, BLOCK_MID: tl.constexpr):
     tl.store(out, mean_val)
 
 
+_MEAN_BWD_I64_LIMIT = 2**31
+_MEAN_BWD_PLANS = {}
+
+
+@libentry()
+@triton.jit
+def _mean_backward_fill_kernel(
+    out_ptr,
+    grad_ptr,
+    inv_n,
+    numel,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+    I64: tl.constexpr,
+):
+    """All dims reduced: one scalar upstream gradient drives the whole output."""
+    pid = ext.program_id(0)
+    if I64:
+        offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    else:
+        offs = pid * BLOCK + tl.arange(0, BLOCK)
+    val = tl.load(grad_ptr).to(tl.float32) * inv_n
+    result = val.to(out_ptr.dtype.element_ty)
+    if EVEN:
+        tl.store(out_ptr + offs, result)
+    else:
+        tl.store(out_ptr + offs, result, mask=offs < numel)
+
+
+@libentry()
+@triton.jit
+def _mean_backward_row_kernel(
+    out_ptr,
+    grad_ptr,
+    inv_n,
+    numel,
+    N: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+    I64: tl.constexpr,
+):
+    """Reduced dimensions form one contiguous run that ends in a single row."""
+    pid = ext.program_id(0)
+    if I64:
+        offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    else:
+        offs = pid * BLOCK + tl.arange(0, BLOCK)
+    if EVEN:
+        grad = tl.load(grad_ptr + offs // N)
+    else:
+        grad = tl.load(grad_ptr + offs // N, mask=offs < numel, other=0.0)
+    result = (grad.to(tl.float32) * inv_n).to(out_ptr.dtype.element_ty)
+    if EVEN:
+        tl.store(out_ptr + offs, result)
+    else:
+        tl.store(out_ptr + offs, result, mask=offs < numel)
+
+
+@libentry()
+@triton.jit
+def _mean_backward_dim_kernel(
+    out_ptr,
+    grad_ptr,
+    inv_n,
+    N,
+    K,
+    ROWS: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    EVEN_K: tl.constexpr,
+    EVEN_N: tl.constexpr,
+    I64: tl.constexpr,
+):
+    """Contiguous reduction block with a trailing kept run of length K.
+
+    One (ROWS, BLOCK_K) tile of the broadcast gradient is stored per program,
+    so the store stays a flat contiguous vector store.
+    """
+    pid_n = ext.program_id(0)
+    pid_m = ext.program_id(1)
+    pid_k = ext.program_id(2)
+
+    k_offs = pid_k * BLOCK_K + tl.arange(0, BLOCK_K)
+    n_offs = pid_n * ROWS + tl.arange(0, ROWS)
+    if I64:
+        grad_offs = pid_m.to(tl.int64) * K + k_offs
+        out_offs = pid_m.to(tl.int64) * N * K + n_offs[:, None] * K + k_offs[None, :]
+    else:
+        grad_offs = pid_m * K + k_offs
+        out_offs = pid_m * N * K + n_offs[:, None] * K + k_offs[None, :]
+
+    if EVEN_K:
+        grad = tl.load(grad_ptr + grad_offs)
+    else:
+        grad = tl.load(grad_ptr + grad_offs, mask=k_offs < K, other=0.0)
+    value = (grad.to(tl.float32) * inv_n).to(out_ptr.dtype.element_ty)
+    tile = tl.broadcast_to(value[None, :], (ROWS, BLOCK_K))
+    if EVEN_N and EVEN_K:
+        tl.store(out_ptr + out_offs, tile)
+    elif EVEN_N:
+        tl.store(
+            out_ptr + out_offs,
+            tile,
+            mask=tl.broadcast_to((k_offs < K)[None, :], (ROWS, BLOCK_K)),
+        )
+    elif EVEN_K:
+        tl.store(
+            out_ptr + out_offs,
+            tile,
+            mask=tl.broadcast_to((n_offs < N)[:, None], (ROWS, BLOCK_K)),
+        )
+    else:
+        tl.store(
+            out_ptr + out_offs, tile, mask=(n_offs < N)[:, None] & (k_offs < K)[None, :]
+        )
+
+
+@libentry()
+@triton.jit
+def _mean_backward_bcast_kernel(
+    out_ptr,
+    grad_ptr,
+    inv_n,
+    numel,
+    SHAPE: tl.constexpr,
+    SSTRIDE: tl.constexpr,
+    BLOCK: tl.constexpr,
+    EVEN: tl.constexpr,
+    I64: tl.constexpr,
+):
+    """General case: per-element index decomposition over constexpr shape tables."""
+    pid = ext.program_id(0)
+    if I64:
+        offs = pid.to(tl.int64) * BLOCK + tl.arange(0, BLOCK)
+    else:
+        offs = pid * BLOCK + tl.arange(0, BLOCK)
+    idx = offs
+    src = tl.zeros([BLOCK], dtype=offs.dtype)
+    for d in tl.static_range(len(SHAPE) - 1, -1, -1):
+        size = SHAPE[d]
+        coord = idx % size
+        idx = idx // size
+        if SSTRIDE[d] != 0:
+            src += coord * SSTRIDE[d]
+    if EVEN:
+        grad = tl.load(grad_ptr + src)
+    else:
+        grad = tl.load(grad_ptr + src, mask=offs < numel, other=0.0)
+    result = (grad.to(tl.float32) * inv_n).to(out_ptr.dtype.element_ty)
+    if EVEN:
+        tl.store(out_ptr + offs, result)
+    else:
+        tl.store(out_ptr + offs, result, mask=offs < numel)
+
+
 def _mean_dtype(inp, dtype):
     if dtype is None:
         dtype = inp.dtype
@@ -93,6 +247,12 @@ def _mean_dtype(inp, dtype):
 
 
 def mean(inp, *, dtype=None):
+    if torch.is_grad_enabled() and inp.requires_grad:
+        if inp.is_complex() or (dtype is not None and dtype.is_complex):
+            raise NotImplementedError(
+                "FlagGems mean backward does not support complex tensors"
+            )
+        return _MeanFunction.apply(inp, dtype)
     logger.debug("GEMS MEAN")
     M = inp.numel()
     dtype = _mean_dtype(inp, dtype)
@@ -314,6 +474,7 @@ def mean_dim_kernel(
 
 
 def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
+    """Forward-only mean over ``dim`` (no autograd wiring)."""
     logger.debug("GEMS MEAN_DIM")
     dtype = _mean_dtype(inp, dtype)
 
@@ -428,7 +589,221 @@ def mean_dim_comm(inp, dim=None, keepdim=False, *, dtype=None, out=None):
         return out
 
 
+def _normalize_mean_dims(dim, ndim):
+    """Return the sorted unique reduced dimensions for a backward pass.
+
+    ``None`` and an empty sequence mean "reduce every dimension", matching the
+    forward ``mean``/``mean.dim`` contract.
+    """
+    if dim is None:
+        return list(range(ndim))
+    if isinstance(dim, int):
+        dims = [dim]
+    else:
+        try:
+            dims = list(dim)
+        except TypeError:
+            raise TypeError(
+                f"dim must be an int, iterable of ints, or [], got {type(dim)}"
+            )
+    if not dims:
+        return list(range(ndim))
+    return sorted({d % ndim for d in dims})
+
+
+def _mean_bwd_prod(values):
+    result = 1
+    for value in values:
+        result *= value
+    return result
+
+
+def _mean_bwd_pow2(value):
+    if value <= 1:
+        return 1
+    return 1 << (value - 1).bit_length()
+
+
+def _mean_bwd_flat_block(numel):
+    """Pick a flat block size that keeps the grid wide enough to saturate."""
+    block = 4096
+    while block > 128 and block > numel:
+        block //= 2
+    while block > 128 and numel // block < 4:
+        block //= 2
+    return block
+
+
+def _mean_bwd_contiguous_run(dims):
+    """Return [start, stop) when ``dims`` is one contiguous run, else None."""
+    start, stop = dims[0], dims[0] + 1
+    for dim in dims[1:]:
+        if dim == stop:
+            stop = dim + 1
+        else:
+            return None
+    return [start, stop]
+
+
+def _mean_bwd_plan(shape, grad_numel, dim):
+    """Build the launch plan for one backward signature.
+
+    The plan depends only on the input shape and the reduced dimensions: the
+    input dtype is carried by the output pointer and the upstream gradient is
+    always contiguous when a plan is built.  Host-side work is therefore done
+    once per signature, so launch-bound shapes do not pay Python setup cost.
+    """
+    shape = tuple(shape)
+    ndim = len(shape)
+    numel = _mean_bwd_prod(shape)
+    dims = _normalize_mean_dims(dim, ndim)
+    n_reduced = _mean_bwd_prod([shape[d] for d in dims])
+    inv_n = 1.0 / n_reduced
+    i64 = numel >= _MEAN_BWD_I64_LIMIT
+
+    # All dims reduced (or nothing to reduce): a single scalar source.
+    if len(dims) == ndim and grad_numel == 1:
+        block = _mean_bwd_flat_block(numel)
+        return (
+            _mean_backward_fill_kernel,
+            (triton.cdiv(numel, block),),
+            (inv_n, numel, block, numel % block == 0, i64),
+            8,
+        )
+
+    run = _mean_bwd_contiguous_run(dims) if dims else None
+    if run is not None:
+        rows = _mean_bwd_prod(shape[: run[0]])
+        inner = _mean_bwd_prod(shape[run[1] :])
+        if inner == 1:
+            block = _mean_bwd_flat_block(numel)
+            return (
+                _mean_backward_row_kernel,
+                (triton.cdiv(numel, block),),
+                (inv_n, numel, n_reduced, block, numel % block == 0, i64),
+                8,
+            )
+        block_k = min(4096, _mean_bwd_pow2(inner))
+        tile_rows = min(max(1, 8192 // block_k), _mean_bwd_pow2(n_reduced))
+        return (
+            _mean_backward_dim_kernel,
+            (triton.cdiv(n_reduced, tile_rows), rows, triton.cdiv(inner, block_k)),
+            (
+                inv_n,
+                n_reduced,
+                inner,
+                tile_rows,
+                block_k,
+                block_k == inner,
+                n_reduced % tile_rows == 0,
+                i64,
+            ),
+            8 if tile_rows * block_k >= 4096 else 4,
+        )
+
+    # Generic broadcast: the source strides come from the input shape, so this
+    # plan is one kernel over the flat output and is also cached by signature.
+    src_stride = [0] * ndim
+    acc = 1
+    for d in range(ndim - 1, -1, -1):
+        if d not in dims:
+            src_stride[d] = acc
+            acc *= shape[d]
+    block = _mean_bwd_flat_block(numel)
+    return (
+        _mean_backward_bcast_kernel,
+        (triton.cdiv(numel, block),),
+        (inv_n, numel, shape, tuple(src_stride), block, numel % block == 0, i64),
+        8,
+    )
+
+
+def _mean_backward(grad_output, input_shape, input_dtype, dim):
+    """Broadcast ``grad_output / N`` over the reduced dimensions of the input.
+
+    ``grad_output`` is the upstream gradient of the mean output; ``N`` is the
+    number of reduced elements.  The input values and strides are never read,
+    so an arbitrary layout of the forward input is supported.
+    """
+    grad = grad_output
+    if not grad.is_contiguous():
+        grad = grad.contiguous()
+    grad_input = torch.empty(input_shape, dtype=input_dtype, device=grad.device)
+    numel = _mean_bwd_prod(tuple(input_shape))
+    if numel == 0:
+        # Empty input or empty reduction: ATen also returns an empty gradient,
+        # so there is no value to write and no NaN/inf can be observed.
+        return grad_input
+
+    key = (tuple(input_shape), input_dtype, grad.shape, grad.dtype, tuple(dim))
+    plan = _MEAN_BWD_PLANS.get(key)
+    if plan is None:
+        plan = _mean_bwd_plan(input_shape, grad.numel(), dim)
+        _MEAN_BWD_PLANS[key] = plan
+    kernel, grid, args, num_warps = plan
+    with torch_device_fn.device(grad_input.device):
+        kernel[grid](grad_input, grad, *args, num_warps=num_warps)
+    return grad_input
+
+
+class _MeanFunction(torch.autograd.Function):
+    """autograd bridge for ``torch.mean`` (all-reduce overload)."""
+
+    @staticmethod
+    def forward(ctx, inp, dtype):
+        ctx.input_shape = tuple(inp.shape)
+        ctx.input_dtype = inp.dtype
+        with torch.no_grad():
+            return mean(inp, dtype=dtype)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if not ctx.needs_input_grad[0]:
+            return None, None
+        dims = list(range(len(ctx.input_shape)))
+        grad_input = _mean_backward(grad_output, ctx.input_shape, ctx.input_dtype, dims)
+        return grad_input, None
+
+
+class _MeanDimFunction(torch.autograd.Function):
+    """autograd bridge for ``torch.mean(input, dim, keepdim)``."""
+
+    @staticmethod
+    def forward(ctx, inp, dim, keepdim, dtype):
+        ctx.input_shape = tuple(inp.shape)
+        ctx.input_dtype = inp.dtype
+        ctx.dims = _normalize_mean_dims(dim, inp.ndim)
+        with torch.no_grad():
+            return mean_dim_comm(inp, dim, keepdim, dtype=dtype)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        if not ctx.needs_input_grad[0]:
+            return None, None, None, None
+        grad_input = _mean_backward(
+            grad_output, ctx.input_shape, ctx.input_dtype, ctx.dims
+        )
+        return grad_input, None, None, None
+
+
 def mean_dim(inp, dim=None, keepdim=False, *, dtype=None):
     logger.debug("GEMS MEAN_DIM (wrapper)")
 
+    if torch.is_grad_enabled() and inp.requires_grad:
+        if inp.is_complex() or (dtype is not None and dtype.is_complex):
+            raise NotImplementedError(
+                "FlagGems mean backward does not support complex tensors"
+            )
+        return _MeanDimFunction.apply(inp, dim, keepdim, dtype)
     return mean_dim_comm(inp, dim, keepdim, dtype=dtype)
+
+
+def mean_backward(grad_output, input_shape, input_dtype, dim=None):
+    """Return the input gradient of mean, using the input shape and reduced axes."""
+    if grad_output.is_complex() or (input_dtype is not None and input_dtype.is_complex):
+        raise NotImplementedError(
+            "FlagGems mean backward does not support complex tensors"
+        )
+    input_shape = tuple(input_shape)
+    dims = _normalize_mean_dims(dim, len(input_shape))
+    return _mean_backward(grad_output, input_shape, input_dtype, dims)

@@ -37,6 +37,40 @@ def _mean_dim_input_fn(shape, dtype, device):
     yield inp, [1]
 
 
+def _gems_mean(inp, dim=None, keepdim=False):
+    if dim is None:
+        return flag_gems.mean(inp)
+    return flag_gems.mean_dim(inp, dim, keepdim)
+
+
+@pytest.mark.mean_backward
+def test_mean_backward():
+    # UnaryReductionBenchmark emits one case per default shape: the 1-D shape
+    # exercises the all-reduce ``mean`` overload, every other shape uses
+    # ``mean.dim`` with dim=1.  Both overloads are covered by this one mark.
+    bench = base.UnaryReductionBenchmark(
+        op_name="mean",
+        torch_op=torch.mean,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(_gems_mean)
+    bench.run()
+
+
+@pytest.mark.mean_dim_backward
+def test_mean_dim_backward():
+    bench = base.GenericBenchmarkExcluse1D(
+        input_fn=_mean_dim_input_fn,
+        op_name="mean_dim",
+        torch_op=torch.mean,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(_gems_mean)
+    bench.run()
+
+
 @pytest.mark.skipif(
     flag_gems.vendor_name == "enflame",
     reason="aten and cpu dosenot support",
