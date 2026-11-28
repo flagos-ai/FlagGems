@@ -115,3 +115,27 @@ def test_index_add_():
         get_gbps=index_add_gbps,
     )
     bench.run()
+
+
+class IndexAddBackwardBenchmark(base.GenericBenchmark):
+    def set_shapes(self, shape_file_path=None):
+        self.shapes = [
+            ((1024, 64), 0),
+            ((1, 2048, 8), 1),
+            ((2, 8, 2048, 16), 2),
+        ]
+
+
+@pytest.mark.index_add_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_index_add_backward():
+    bench = IndexAddBackwardBenchmark(
+        op_name="index_add",
+        torch_op=torch.index_add,
+        input_fn=index_add_input_fn,
+        dtypes=[torch.float32],
+        is_backward=True,
+    )
+    bench.run()

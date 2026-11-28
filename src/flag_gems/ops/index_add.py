@@ -19,6 +19,7 @@ from typing import Any, Callable, List, Mapping, Tuple
 
 import torch
 
+from flag_gems.ops.index_select import index_select
 from flag_gems.utils.code_cache import code_cache_dir
 from flag_gems.utils.code_utils import IndentedBuffer
 
@@ -231,8 +232,7 @@ class IndexAddFunction:
 _index_add_func = IndexAddFunction()
 
 
-def index_add(inp, dim, index, src, alpha=1):
-    logger.debug("GEMS INDEX_ADD")
+def _index_add_forward(inp, dim, index, src, alpha=1):
     assert ((0 <= index) * (index < inp.size(dim))).equal(
         torch.ones(tuple(index.shape), dtype=torch.bool, device=inp.device)
     ), "0 <= index < self.size(dim)"
@@ -280,6 +280,38 @@ def index_add(inp, dim, index, src, alpha=1):
     if needs_cast:
         return out.to(orig_dtype)
     return out
+
+
+def index_add_backward(grad_output, dim, index, alpha=1):
+    """Backward of ``index_add`` with respect to ``src``.
+
+    ``grad_input`` is ``grad_output`` unchanged; the source gradient gathers the
+    output gradient at the scattered indices and scales it by ``alpha``.
+    """
+    logger.debug("GEMS INDEX_ADD_BACKWARD")
+    grad_src = index_select(grad_output, dim, index)
+    if alpha == 1:
+        return grad_src
+    return grad_src * alpha
+
+
+class IndexAddOpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, index, src, alpha):
+        ctx.dim = dim
+        ctx.index = index
+        ctx.alpha = alpha
+        return _index_add_forward(inp, dim, index, src, alpha)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        grad_src = index_add_backward(grad_output, ctx.dim, ctx.index, ctx.alpha)
+        return grad_output, None, None, grad_src, None
+
+
+def index_add(inp, dim, index, src, alpha=1):
+    logger.debug("GEMS INDEX_ADD")
+    return IndexAddOpFunction.apply(inp, dim, index, src, alpha)
 
 
 def index_add_(inp, dim, index, src, alpha=1):

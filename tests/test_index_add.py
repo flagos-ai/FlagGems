@@ -175,6 +175,42 @@ def test_index_add_empty_index(inplace, dtype):
         utils.gems_assert_equal(inp, expected)
 
 
+INDEX_ADD_BACKWARD_CASES = [
+    ((1024, 64), 0),
+    ((1, 2048, 8), 1),
+    ((2, 8, 2048, 16), 2),
+]
+
+
+@pytest.mark.index_add_backward
+@pytest.mark.parametrize("shape, dim", INDEX_ADD_BACKWARD_CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_index_add_backward(shape, dim, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    src = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    index = torch.randperm(shape[dim], device=flag_gems.device)
+    alpha = 2
+
+    ref_inp = utils.to_reference(inp, True).detach().requires_grad_(True)
+    ref_src = utils.to_reference(src, True).detach().requires_grad_(True)
+    ref_index = utils.to_reference(index)
+
+    res_out = flag_gems.index_add(inp, dim, index, src, alpha=alpha)
+    ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=alpha)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    res_dinp, res_dsrc = torch.autograd.grad(res_out, (inp, src), out_grad)
+    ref_dinp, ref_dsrc = torch.autograd.grad(ref_out, (ref_inp, ref_src), ref_out_grad)
+    utils.gems_assert_close(res_dinp, ref_dinp, dtype)
+    utils.gems_assert_close(res_dsrc, ref_dsrc, dtype)
+
+    # The public backward primitive computes the source gradient directly.
+    res_direct = flag_gems.index_add_backward(out_grad, dim, index, alpha)
+    utils.gems_assert_close(res_direct, ref_dsrc, dtype)
+
+
 @pytest.mark.index_add
 @pytest.mark.index_add_
 @pytest.mark.parametrize("inplace", [False, True])

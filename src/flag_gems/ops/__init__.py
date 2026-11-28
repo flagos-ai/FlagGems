@@ -1045,7 +1045,7 @@ from flag_gems.ops.igammac import igammac, igammac_out
 from flag_gems.ops.igammac_ import igammac_
 from flag_gems.ops.im2col import im2col
 from flag_gems.ops.index import index
-from flag_gems.ops.index_add import index_add, index_add_
+from flag_gems.ops.index_add import index_add, index_add_, index_add_backward
 from flag_gems.ops.index_copy_ import index_copy, index_copy_
 from flag_gems.ops.index_fill import index_fill, index_fill_, index_fill_backward
 from flag_gems.ops.index_put import _index_put_impl_, index_put, index_put_
@@ -2801,6 +2801,7 @@ __all__ = [
     "index",
     "index_add",
     "index_add_",
+    "index_add_backward",
     "index_copy",
     "index_copy_",
     "index_fill",
