@@ -695,26 +695,31 @@ def sort(inp, dim=-1, descending=False):
 def sort_stable(inp, *, stable=True, dim=-1, descending=False):
     logger.debug("GEMS HYGON SORT")
     rank = inp.ndim
-    dim %= rank
-    n = inp.shape[dim]
+    if dim < -max(rank, 1) or dim >= max(rank, 1):
+        raise IndexError("Dimension out of range")
+    dim %= max(rank, 1)
+    n = inp.shape[dim] if rank else 1
+    numel = inp.numel()
+    if numel == 0:
+        values = torch.empty(inp.shape, dtype=inp.dtype, device=inp.device)
+        indices = torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
+        return values, indices
     if n == 1:
         values = torch.empty(inp.shape, dtype=inp.dtype, device=inp.device)
         indices = torch.empty(inp.shape, dtype=torch.int64, device=inp.device)
-        numel = inp.numel()
-        if numel:
-            shape = tuple(s for i, s in enumerate(inp.shape) if i != dim)
-            strides = tuple(s for i, s in enumerate(inp.stride()) if i != dim)
-            with torch_device_fn.device(inp.device):
-                sort_singleton_kernel[triton.cdiv(numel, 256),](
-                    inp,
-                    values,
-                    indices,
-                    numel,
-                    shape,
-                    strides,
-                    256,
-                    num_warps=4,
-                )
+        shape = tuple(s for i, s in enumerate(inp.shape) if i != dim)
+        strides = tuple(s for i, s in enumerate(inp.stride()) if i != dim)
+        with torch_device_fn.device(inp.device):
+            sort_singleton_kernel[triton.cdiv(numel, 256),](
+                inp,
+                values,
+                indices,
+                numel,
+                shape,
+                strides,
+                256,
+                num_warps=4,
+            )
         return values, indices
     rows = inp.numel() // n
     value_bits = inp.element_size() * 8
