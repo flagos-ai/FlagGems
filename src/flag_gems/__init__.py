@@ -163,6 +163,11 @@ _FULL_CONFIG = (
         lambda: torch_has_aten_overload("_cast_Half", "default"),
     ),
     (
+        "_cast_Int",
+        cast_Int,
+        lambda: torch_has_aten_overload("_cast_Int", "default"),
+    ),
+    (
         "_cast_Long",
         cast_Long,
         lambda: torch_has_aten_overload("_cast_Long", "default"),
