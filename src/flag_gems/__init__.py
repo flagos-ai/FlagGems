@@ -2658,6 +2658,11 @@ _FULL_CONFIG = (
 if vendor_name == "amd":
     _FULL_CONFIG = _FULL_CONFIG + (("empty.memory_format", empty),)
 
+# The aten::round.decimals overload is a composite that scales in the input
+# dtype, which is broken on XPU (Issue #8305); register the direct kernel.
+if vendor_name == "kunlunxin":
+    _FULL_CONFIG = _FULL_CONFIG + (("round.decimals", round_decimals),)
+
 # Cache mapping from function name -> list of _FULL_CONFIG entries for quick lookup
 FULL_CONFIG_BY_FUNC = {}
 for _item in _FULL_CONFIG:

@@ -119,3 +119,24 @@ def test_round_half_to_even(shape, dtype):
     res_out = flag_gems.round(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.round
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("decimals", [5, 8, 20])
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin",
+    reason="Kunlunxin-specific aten::round.decimals override (Issue #8305)",
+)
+def test_round_decimals_aten_overload(dtype, decimals):
+    # Regression test for #8305. ATen's round.decimals composite scales the
+    # input by 10**decimals in the input dtype; that overflows for fp16 and
+    # saturates the underlying round for large magnitudes on XPU.
+    inp = torch.tensor(
+        [1.23456789, -12345.6789, 0.1, 123.456], dtype=dtype, device=flag_gems.device
+    )
+    ref = torch.round(inp.cpu(), decimals=decimals)
+
+    res = flag_gems.round_decimals(inp, decimals=decimals)
+
+    utils.gems_assert_close(res.float(), ref.float(), torch.float32, atol=1e-4)

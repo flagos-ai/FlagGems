@@ -20,6 +20,8 @@ import triton.language as tl
 from _kunlunxin.utils.codegen_config_utils import CodeGenConfig
 from triton.language.extra.xpu.libdevice import rint as _rint
 
+from flag_gems.runtime import torch_device_fn
+
 from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
@@ -126,3 +128,60 @@ def round_(input, *, decimals=0):
     else:
         round_func(input, _scale(decimals), out0=input)
     return input
+
+
+# torch.round(decimals=...) is not a FlagGems op, so ATen's composite
+# implementation scales the input by 10**decimals in the input dtype. On XPU
+# that overflows for fp16 (10**5 is already inf) and the aten::round underneath
+# saturates large magnitudes, corrupting the result (Issue #8305). Implement
+# the aten::round.decimals overload directly, scaling in fp32.
+_ROUND_BLOCK = 1024
+
+
+@triton.jit
+def _round_decimals_kernel(
+    x_ptr,
+    out_ptr,
+    n_elements,
+    DECIMALS: tl.constexpr,
+    BLOCK: tl.constexpr,
+):
+    pid = tl.program_id(0)
+    offsets = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offsets < n_elements
+    x = tl.load(x_ptr + offsets, mask=mask).to(tl.float32)
+    scale = 10.0**DECIMALS
+    s = x * scale
+    # Round half to even in fp32. For |s| >= 2**23 every representable fp32
+    # value is already integral; keeping floor() away from that range also
+    # avoids the XPU lowering saturating it at int32/int64.
+    r = tl.floor(s)
+    frac = s - r
+    is_odd = tl.abs(r - 2.0 * tl.floor(r * 0.5)) > 0.5
+    rounded = tl.where((frac > 0.5) | ((frac == 0.5) & is_odd), r + 1.0, r)
+    y = tl.where(tl.abs(s) >= 8388608.0, s, rounded) / scale
+    tl.store(out_ptr + offsets, y.to(out_ptr.type.element_ty), mask=mask)
+
+
+def round_decimals(input, decimals=0):
+    logger.debug("GEMS_KUNLUNXIN ROUND_DECIMALS")
+    if not isinstance(input, torch.Tensor):
+        raise TypeError("round expects a torch.Tensor.")
+    if input.is_complex():
+        raise TypeError("round is not supported for complex tensors.")
+    if input.dtype in [torch.int32, torch.int64, torch.int16, torch.int8]:
+        return input.clone()
+    if input.numel() == 0:
+        return torch.empty_like(input)
+    if not input.is_contiguous():
+        input = input.contiguous()
+    if decimals >= 39:
+        # 10**decimals overflows fp32, so ATen's scaled round returns NaN.
+        return torch.full_like(input, float("nan"))
+    out = torch.empty_like(input)
+    n = input.numel()
+    with torch_device_fn.device(input.device):
+        _round_decimals_kernel[(triton.cdiv(n, _ROUND_BLOCK),)](
+            input, out, n, decimals, _ROUND_BLOCK
+        )
+    return out

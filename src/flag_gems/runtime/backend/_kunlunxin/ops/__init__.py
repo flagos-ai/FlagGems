@@ -853,7 +853,7 @@ from .rnn_relu_cell import rnn_relu_cell  # noqa: F401
 from .rnn_tanh_cell import rnn_tanh_cell  # noqa: F401
 from .roll import roll
 from .rot90 import rot90
-from .round import round, round_, round_out
+from .round import round, round_, round_decimals, round_out
 from .row_indices_copy import row_indices_copy, row_indices_copy_out
 from .row_stack import row_stack  # noqa: F401
 from .rrelu_ import rrelu_  # noqa: F401
@@ -1971,6 +1971,7 @@ __all__ = [
     "rot90",
     "round",
     "round_",
+    "round_decimals",
     "round_out",
     "row_indices_copy",
     "row_indices_copy_out",
