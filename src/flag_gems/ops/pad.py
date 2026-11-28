@@ -505,5 +505,25 @@ def pad(self, pad, mode="constant", value=None):
     return out
 
 
+class _ConstantPadNdFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, self, pad_list, value):
+        ctx.pad_list = list(pad_list)
+        ctx.save_for_backward(self)
+        return pad(self, pad_list, mode="constant", value=value)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # ``aten::constant_pad_nd`` has no standalone backward operator, so the
+        # gradient runs a Triton kernel from
+        # ``flag_gems.ops.constant_pad_nd_backward``.
+        (self,) = ctx.saved_tensors
+        from flag_gems.ops.constant_pad_nd_backward import constant_pad_nd_backward
+
+        return constant_pad_nd_backward(grad_output, self, ctx.pad_list), None, None
+
+
 def constant_pad_nd(self, pad_list, value=0):
+    if torch.is_grad_enabled() and self.requires_grad:
+        return _ConstantPadNdFunction.apply(self, pad_list, value)
     return pad(self, pad_list, mode="constant", value=value)

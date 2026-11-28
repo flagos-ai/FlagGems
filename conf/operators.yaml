@@ -3936,6 +3936,19 @@ ops:
   - NeuralNetwork
   stages:
   - stable: '2.2'
+- id: constant_pad_nd_backward
+  description: The backward computation of `constant_pad_nd()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - constant_pad_nd
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: contiguous
   description: 'Returns a contiguous in memory tensor containing the same data as
     `self` tensor.
