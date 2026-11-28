@@ -2861,6 +2861,7 @@ __all__ = [
     "native_batch_norm_legit_no_training_backward",
     "only_enable",
     "slow_conv2d_forward_backward",
+    "softmax_backward",
     "sparse_addmm_backward",
     "use_gems",
 ]
