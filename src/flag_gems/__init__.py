@@ -1142,7 +1142,12 @@ _FULL_CONFIG = (
     ("argwhere", argwhere),
     ("as_strided_copy", as_strided_copy),
     ("as_strided_copy.out", as_strided_copy_out),
-    ("as_strided_scatter", as_strided_scatter),
+    (
+        "as_strided_scatter",
+        as_strided_scatter,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("asin", asin),
     ("asin_", asin_),
     ("asinh", asinh),

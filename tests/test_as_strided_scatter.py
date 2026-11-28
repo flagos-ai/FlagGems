@@ -85,3 +85,149 @@ def test_as_strided_scatter_noncontiguous_self():
         actual = actual.to("cpu")
         expected = expected.to("cpu")
     utils.gems_assert_close(actual, expected, torch.float32)
+
+
+AS_STRIDED_SCATTER_BACKWARD_CASES = [
+    ((3,), (2,), 0, 8),
+    ((4, 4), (10, 2), 3, 40),
+    ((2, 3), (7, 2), 1, 24),
+    ((), (), 4, 8),
+    ((0,), (1,), 0, 8),
+]
+
+
+@pytest.mark.as_strided_scatter_backward
+@pytest.mark.parametrize(
+    "size,stride,storage_offset,self_len", AS_STRIDED_SCATTER_BACKWARD_CASES
+)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_as_strided_scatter_backward(dtype, size, stride, storage_offset, self_len):
+    inp = torch.randn(
+        self_len, device=flag_gems.device, dtype=dtype, requires_grad=True
+    )
+    src = torch.randn(size, device=flag_gems.device, dtype=dtype, requires_grad=True)
+    grad = torch.randn_like(inp)
+
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_src = utils.to_reference(src.detach(), False).requires_grad_()
+    ref_out = torch.ops.aten.as_strided_scatter(
+        ref_inp, ref_src, size, stride, storage_offset
+    )
+    expected_self, expected_src = torch.autograd.grad(
+        ref_out, (ref_inp, ref_src), utils.to_reference(grad, False)
+    )
+
+    result_self, result_src = flag_gems.as_strided_scatter_backward(
+        grad, inp, src, size, stride, storage_offset
+    )
+    utils.gems_assert_close(result_self, expected_self, dtype)
+    utils.gems_assert_close(result_src, expected_src, dtype)
+
+
+@pytest.mark.as_strided_scatter_backward
+def test_as_strided_scatter_backward_registered_dispatch():
+    size, stride, storage_offset, self_len = AS_STRIDED_SCATTER_BACKWARD_CASES[1]
+    inp = torch.randn(
+        self_len, device=flag_gems.device, dtype=torch.float32, requires_grad=True
+    )
+    src = torch.randn(
+        size, device=flag_gems.device, dtype=torch.float32, requires_grad=True
+    )
+    grad = torch.randn_like(inp)
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_src = utils.to_reference(src.detach(), False).requires_grad_()
+    ref_out = torch.ops.aten.as_strided_scatter(
+        ref_inp, ref_src, size, stride, storage_offset
+    )
+    expected = torch.autograd.grad(
+        ref_out, (ref_inp, ref_src), utils.to_reference(grad, False)
+    )
+
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["as_strided_scatter"])
+        output = torch.ops.aten.as_strided_scatter(
+            inp, src, size, stride, storage_offset
+        )
+        assert "AsStridedScatterFunction" in type(output.grad_fn).__name__
+        result = torch.autograd.grad(output, (inp, src), grad)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    utils.gems_assert_close(result[0], expected[0], torch.float32)
+    utils.gems_assert_close(result[1], expected[1], torch.float32)
+
+
+@pytest.mark.as_strided_scatter_backward
+def test_as_strided_scatter_backward_selective_gradients():
+    size, stride, storage_offset, self_len = AS_STRIDED_SCATTER_BACKWARD_CASES[2]
+    grad = torch.randn(self_len, device=flag_gems.device)
+    for grad_self, grad_source in ((True, False), (False, True)):
+        inp = torch.randn(self_len, device=flag_gems.device, requires_grad=grad_self)
+        src = torch.randn(size, device=flag_gems.device, requires_grad=grad_source)
+        differentiable = inp if grad_self else src
+        output = flag_gems.as_strided_scatter(inp, src, size, stride, storage_offset)
+        result = torch.autograd.grad(output, differentiable, grad)[0]
+
+        ref_inp = utils.to_reference(inp.detach(), False).requires_grad_(grad_self)
+        ref_src = utils.to_reference(src.detach(), False).requires_grad_(grad_source)
+        ref_output = torch.ops.aten.as_strided_scatter(
+            ref_inp, ref_src, size, stride, storage_offset
+        )
+        ref_differentiable = ref_inp if grad_self else ref_src
+        expected = torch.autograd.grad(
+            ref_output,
+            ref_differentiable,
+            utils.to_reference(grad, False),
+        )[0]
+        utils.gems_assert_close(result, expected, torch.float32)
+
+
+@pytest.mark.as_strided_scatter_backward
+def test_as_strided_scatter_backward_noncontiguous_grad():
+    base = torch.randn((13, 17), device=flag_gems.device)
+    grad = base.mT
+    inp = torch.randn(grad.shape, device=flag_gems.device)
+    src = torch.randn((4, 5), device=flag_gems.device)
+    size, stride, storage_offset = (4, 5), (20, 2), 3
+    ref_inp = utils.to_reference(inp.detach(), False).requires_grad_()
+    ref_src = utils.to_reference(src.detach(), False).requires_grad_()
+    expected = torch.autograd.grad(
+        torch.ops.aten.as_strided_scatter(
+            ref_inp, ref_src, size, stride, storage_offset
+        ),
+        (ref_inp, ref_src),
+        utils.to_reference(grad, False),
+    )
+    result = flag_gems.as_strided_scatter_backward(
+        grad, inp, src, size, stride, storage_offset
+    )
+    utils.gems_assert_close(result[0], expected[0], torch.float32)
+    utils.gems_assert_close(result[1], expected[1], torch.float32)
+
+
+@pytest.mark.as_strided_scatter_backward
+def test_as_strided_scatter_backward_single_kernel():
+    from torch.profiler import ProfilerActivity, profile
+
+    inp = torch.randn((64, 512), device=flag_gems.device)
+    src = torch.randn((64, 128), device=flag_gems.device)
+    grad = torch.randn_like(inp)
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        flag_gems.as_strided_scatter_backward(grad, inp, src, (64, 128), (512, 2), 1)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    backward = [
+        (name, count)
+        for name, count in launches
+        if "as_strided_scatter_backward" in name
+    ]
+    assert len(backward) == 1 and backward[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches

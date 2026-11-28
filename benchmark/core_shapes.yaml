@@ -1660,6 +1660,15 @@ atanh_backward_:
     - 4096
   shape_desc: backward input shape
 
+as_strided_scatter_backward:
+  shapes:
+  - [8192, 32, 64, 256, 2, 3]
+  - [32768, 64, 128, 512, 2, 1]
+  - [65536, 128, 128, 384, 2, 5]
+  - [262144, 256, 256, 768, 2, 7]
+  - [1048576, 512, 512, 1536, 2, 11]
+  shape_desc: STORAGE_SIZE, ROWS, COLS, ROW_STRIDE, COL_STRIDE, OFFSET
+
 narrow_copy_backward:
   shapes:
   - - 5

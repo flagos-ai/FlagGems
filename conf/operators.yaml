@@ -2009,6 +2009,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.4'
+- id: as_strided_scatter_backward
+  description: Computes the gradients of `as_strided_scatter()` for both the input
+    and source tensors with one fused Triton kernel.
+  for:
+  - as_strided_scatter
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.4'
 - id: asin
   description: Returns a new tensor with the arcsine of the elements of input.
   for:
