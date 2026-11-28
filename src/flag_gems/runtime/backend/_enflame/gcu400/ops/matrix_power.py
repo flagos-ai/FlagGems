@@ -18,24 +18,117 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems import runtime
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# ---------------------------------------------------------------------------
+# Native-kernel delegation (capture + call_boxed), same pattern as the local
+# bmm / mm / linalg_matrix_power / linalg_multi_dot vendor ops. The kernels
+# are captured at import time - before any use_gems() registration replaces
+# the PrivateUse1 entry - so call_boxed runs the original device kernel
+# bit-identically with ~zero dispatch overhead.
+#
+# Chain-mode anchors (matrix_power n=5 = 3 GEMMs, batch=1, do_bench median
+# w1000/r100), native mm chain vs the vendored Triton chain below:
+#   bf16:  native device chain wins at every probed size - m=64: 12.5 vs
+#          34.3us, m=384: 17.6 vs 37.6us, m=2048: 198 vs 270us.
+#   fp16:  Triton keeps the small end (m=384: 35.7 vs 38.1us), native wins
+#          from ~645^3 up (m=2048: 197 vs 271us = 1.38x).
+#   fp32:  Triton keeps the small end (m=384: 55.3 vs 36.3us = 1.52x),
+#          native wins from ~645^3 up (m=1024: 117.5 vs 148.7us = 1.27x).
+#
+# CHANNEL CAVEAT (decisive for the dispatch lines below): when this op is
+# entered through the aten dispatcher (the production / bench channel, i.e.
+# a Python kernel invoked from C++), every in-host call_boxed pays ~12us of
+# dispatch re-entry overhead that a plain-Python caller does not (direct
+# call: 17.5us for the whole bf16-384 chain; dispatcher channel: 53.9us;
+# Triton launches are exempt - libentry does not re-enter the dispatcher).
+# The overhead hides once per-GEMM device time exceeds it, so delegation is
+# restricted to saturated sizes: half dtypes m >= 1024 (18.9us/GEMM, 57%
+# headroom), fp32 m >= 768 (26us/GEMM). Below the line the Triton arm wins
+# the dispatcher channel (bf16-384: Triton 44.3 vs delegated 53.9us).
+# ---------------------------------------------------------------------------
+_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
+_NATIVE_MM = None
+_NATIVE_MM_OUT = None
+_NATIVE_BMM = None
+_NATIVE_BMM_OUT = None
+if _CAN_CAPTURE_NATIVE_KERNEL:
+    try:
+        _NATIVE_MM = torch.library.get_kernel(
+            torch.ops.aten.mm.default, runtime.device.dispatch_key
+        )
+        _NATIVE_MM_OUT = torch.library.get_kernel(
+            torch.ops.aten.mm.out, runtime.device.dispatch_key
+        )
+        _NATIVE_BMM = torch.library.get_kernel(
+            torch.ops.aten.bmm.default, runtime.device.dispatch_key
+        )
+        _NATIVE_BMM_OUT = torch.library.get_kernel(
+            torch.ops.aten.bmm.out, runtime.device.dispatch_key
+        )
+    except Exception:  # noqa: B902
+        _NATIVE_MM = None
+        _NATIVE_MM_OUT = None
+        _NATIVE_BMM = None
+        _NATIVE_BMM_OUT = None
+
+_DEVICE_KEYSET = torch._C.DispatchKeySet(
+    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+)
+
+# Saturation lines for the square chain (m x m products, batch=1): the
+# per-GEMM device time must exceed the ~12us dispatcher-channel re-entry
+# cost of call_boxed. Measured anchors on both sides of each line:
+#   half dtypes: m=768 native 44.8 vs Triton 46.0us (wash), m=1024 56.5 vs
+#                59.0us (native), m=2048 198 vs 270us (native).
+#   fp32:        m=512 Triton 49.3 vs native 64.1us, m=768 native 78.3 vs
+#                Triton 87.1us, m=1024 native 117.5 vs 148.7us.
+_NATIVE_SAT_M_HALF = 1024
+_NATIVE_SAT_M_FP32 = 768
+
+
+def _should_delegate_to_native(A, B):
+    """True when this chain product should run on the captured native GEMM."""
+    if _NATIVE_MM is None or _NATIVE_BMM is None:
+        return False
+    if A.device.type != runtime.device.name:
+        return False
+    if A.dtype == torch.float64:
+        # gcu400 has no fp64 datapath; keep the vendored fp64 tile config.
+        return False
+    Batch, M, K = A.shape
+    N = B.shape[2]
+    if Batch == 1:
+        # 2D products go through native mm - full precision across the whole
+        # domain. (Native bmm picks a TF32-approximate path below 512, see the
+        # linalg_matrix_power vendor op; well-conditioned inputs show it.)
+        if A.dtype == torch.float32:
+            return M >= _NATIVE_SAT_M_FP32
+        return M >= _NATIVE_SAT_M_HALF
+    # Batched chains mirror the backend bmm() hybrid line (work >= 2^29) and
+    # additionally require every matrix dim >= 512 so the native bmm TF32
+    # path is never selected; per-GEMM device time at that size hides the
+    # dispatcher-channel call_boxed overhead.
+    return Batch * M * N * K >= (1 << 29) and M >= 512 and N >= 512 and K >= 512
+
 
 def _select_bmm_config(Batch, M, N, K, dtype):
-    # gcu400: matrix_power_bmm has no entry in gcu400 tune_configs.yaml, so libtuner
-    # autotune falls back to nvidia's default small tile (TILE<=128x128x32, num_stages=2,
-    # mask on every iteration), measured 3.5~11.7x slower than native for square GEMM. Switch to deterministic
-    # tile dispatch, calibrated tier by tier with libra L600 do_bench(200ms/100ms median):
-    #   fp16/bf16 large square (128,256,512,w2): best across m=1024/2048/4096;
-    #   fp32 large square (256,128,128,w2): ~10% faster than (128,256,128,w2);
-    #   m<=512 small square (64,64,256,w4): 48 SP occupancy priority (m=384 gives 36 vs 6
-    #   programs, fp32 0.60x native); fp64 operands are 8 bytes, keep small tiles.
+    # gcu400: matrix_power_bmm has no entry in gcu400 tune_configs.yaml, so libtuner's
+    # autotune falls back to the nvidia default small tile (TILE<=128x128x32, num_stages=2,
+    # with a mask on every iteration); square GEMMs measured 3.5~11.7x slower than native. Switched here to
+    # deterministic
+    # tile dispatch, calibrated by scanning each level with libra L600 do_bench(200ms/100ms median):
+    #   fp16/bf16 large square matrices (128,256,512,w2): optimal across m=1024/2048/4096;
+    #   fp32 large square matrices (256,128,128,w2): ~10% faster than (128,256,128,w2);
+    #   m<=512 small square matrices (64,64,256,w4): prioritize 48 SP occupancy (at m=384, 36 vs 6
+    #   programs, fp32 reaches 0.60x native); fp64 operands are 8 bytes, so keep a small tile.
     if dtype == torch.float64:
         block_m, block_n, block_k, num_warps, num_stages = 64, 64, 32, 4, 3
     elif K < 128:
-        # num_stages must be 3: ns=2 with bf16 triggers a gcu compiler llvm-link
+        # num_stages must be 3: ns=2 combined with bf16 triggers a gcu compiler llvm-link
         # segfault (tops_matrix_store_bf16_fp32_m32 serialization crash, rc=139).
         block_m, block_n, block_k, num_warps, num_stages = 64, 64, 32, 4, 3
     elif M <= 512 and N <= 512 and K <= 512:
@@ -180,8 +273,29 @@ def _launch_bmm(A, B, out, Batch, M, N, K):
     )
 
 
-def _bmm(A, B, out=None):
-    """Batched matrix multiply for contiguous 3D tensors of shape (batch, M, K) x (batch, K, N)."""
+def _bmm(A, B, out=None, delegate=False):
+    """Batched matrix multiply for contiguous 3D tensors of shape (batch, M, K) x (batch, K, N).
+
+    ``delegate`` is decided once per power chain in _matrix_power (every chain
+    product shares the same shape/dtype, and the per-call predicate costs a
+    measurable slice of the launch-bound small shapes). Saturated products run
+    on the import-time captured native GEMM kernels (call_boxed, bit-identical
+    to the torch production path, ~zero dispatch overhead); everything else
+    launches the vendored Triton kernel below with the deterministic tile
+    dispatch.
+    """
+    if delegate:
+        if A.shape[0] == 1:
+            if out is None:
+                return _NATIVE_MM.call_boxed(_DEVICE_KEYSET, A[0], B[0]).unsqueeze(0)
+            if _NATIVE_MM_OUT is not None:
+                _NATIVE_MM_OUT.call_boxed(_DEVICE_KEYSET, A[0], B[0], out=out[0])
+                return out
+        else:
+            if out is None:
+                return _NATIVE_BMM.call_boxed(_DEVICE_KEYSET, A, B)
+            if _NATIVE_BMM_OUT is not None:
+                return _NATIVE_BMM_OUT.call_boxed(_DEVICE_KEYSET, A, B, out=out)
     batch, M, K = A.shape
     N = B.shape[2]
     if out is None:
@@ -229,6 +343,9 @@ def _matrix_power(A, n, dest=None):
 
     # Binary exponentiation (repeated squaring) via batched matmuls. Count the
     # launches up front so the final bmm can write straight into ``dest``.
+    # The chain's GEMM backend is decided once: every product shares A's
+    # shape/dtype, so A itself is representative.
+    delegate = _should_delegate_to_native(A, A)
     total_bmm = (n.bit_length() - 1) + (bin(n).count("1") - 1)
     launched = 0
     result = None
@@ -239,11 +356,21 @@ def _matrix_power(A, n, dest=None):
                 result = base
             else:
                 launched += 1
-                result = _bmm(result, base, out=dest if launched == total_bmm else None)
+                result = _bmm(
+                    result,
+                    base,
+                    out=dest if launched == total_bmm else None,
+                    delegate=delegate,
+                )
         n >>= 1
         if n > 0:
             launched += 1
-            base = _bmm(base, base, out=dest if launched == total_bmm else None)
+            base = _bmm(
+                base,
+                base,
+                out=dest if launched == total_bmm else None,
+                delegate=delegate,
+            )
     return result
 
 
@@ -274,7 +401,7 @@ def _dest_writable(out, A):
 
 
 def matrix_power(A, n):
-    logger.debug("GEMS_ENFLAME_GCU400 MATRIX_POWER")
+    logger.debug("GEMS_ENFLAME MATRIX_POWER")
     _validate_matrix_power_args(A)
 
     M = A.shape[-1]
@@ -286,7 +413,7 @@ def matrix_power(A, n):
 
 
 def matrix_power_out(A, n, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 MATRIX_POWER_OUT")
+    logger.debug("GEMS_ENFLAME MATRIX_POWER_OUT")
     _validate_matrix_power_args(A)
 
     if _dest_writable(out, A):

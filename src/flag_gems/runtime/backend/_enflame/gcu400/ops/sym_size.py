@@ -38,9 +38,9 @@ def sym_size(A: torch.Tensor):
         list of integers representing the tensor shape
 
     Note:
-        A pure metadata operator with no device-side compute, whose end-to-end cost is almost entirely Python dispatch,
-        so ``logger.debug`` is deliberately omitted here: measured ~190ns/call (446ns -> 257ns,
-        -42%), visible on the CPU side but below benchmark do_bench's noise floor (~2.1us).
+        Pure metadata operator with no device-side compute, so the end-to-end cost is almost
+        entirely Python dispatch; ``logger.debug`` is therefore deliberately omitted (measured
+        ~190ns/call: 446ns -> 257ns, -42%, below the ~2.1us do_bench noise floor).
     """
     return list(A.shape)
 
@@ -52,8 +52,8 @@ def sym_size_int(A: torch.Tensor, dim: int):
     (``Tensor self, int dim`` -> ``SymInt``).
 
     Note:
-        Same as ``sym_size``: no device compute, drop ``logger.debug`` to reduce pure dispatch overhead.
-        ``A.shape[dim]`` naturally supports negative dim, no extra normalization needed.
+    logger.debug("GEMS_ENFLAME SYM_SIZE_INT")
+        Same as ``sym_size``: no device compute, so ``logger.debug`` is dropped to cut dispatch
+        overhead. ``A.shape[dim]`` natively accepts a negative dim, no normalization needed.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SYM_SIZE_INT")
     return A.shape[dim]

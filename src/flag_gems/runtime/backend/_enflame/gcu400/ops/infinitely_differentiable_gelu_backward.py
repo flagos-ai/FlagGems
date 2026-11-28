@@ -62,5 +62,5 @@ def infinitely_differentiable_gelu_backward(grad, self_input):
     Returns:
         Gradient with respect to self_input
     """
-    logger.debug("GEMS_ENFLAME_GCU400 INFINITELY_DIFFERENTIABLE_GELU_BACKWARD")
+    logger.debug("GEMS_ENFLAME INFINITELY_DIFFERENTIABLE_GELU_BACKWARD")
     return infinitely_differentiable_gelu_backward_kernel(grad, self_input)

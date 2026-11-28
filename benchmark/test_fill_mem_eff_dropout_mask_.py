@@ -63,9 +63,9 @@ class FillMemEffDropoutMaskBenchmark(base.GenericBenchmark4DOnly):
 
 @pytest.mark.fill_mem_eff_dropout_mask_
 @pytest.mark.skip_native(
-    vendors="kunlunxin",
+    vendors=["kunlunxin", "enflame"],
     reason=(
-        "aten::_fill_mem_eff_dropout_mask_ (curand) has no eager XPU kernel; "
+        "aten::_fill_mem_eff_dropout_mask_ (curand) has no eager XPU/GCU kernel; "
         "only the FlagGems candidate is benchmarked"
     ),
 )

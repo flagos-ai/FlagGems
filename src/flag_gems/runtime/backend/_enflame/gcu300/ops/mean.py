@@ -250,6 +250,8 @@ def mean_dim(x, dim, keepdim=False, *, dtype=None):
     # print("print_x", print_x)
     # print("inp.shape:", x.shape)
     # print("dim:", dim)
+    if isinstance(dim, int):
+        dim = [dim]
     if len(dim) == 1:
         inp = x
         mean_dim = dim[0] % inp.ndim

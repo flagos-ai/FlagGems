@@ -25,6 +25,7 @@ to preserve ATen's dtype promotion policy.
 import logging
 from contextlib import nullcontext
 
+import numpy as np
 import torch
 import triton
 import triton.language as tl
@@ -38,7 +39,7 @@ logger = logging.getLogger(__name__)
 # --- TUNING PARAMS START ---
 # Compile-time config, adjusted per optimization round; semantics unchanged.
 FUSED_LAUNCH = 1
-BLOCK_SIZE = 8192
+BLOCK_SIZE = 16384
 FIXED_GRID = 24
 NUM_WARPS = 4
 MAX_CHUNKS_CAP = 0
@@ -53,6 +54,26 @@ _TL_DTYPES = {
     torch.float32: tl.float32,
     torch.bfloat16: tl.bfloat16,
 }
+
+
+def _allocate_outputs(tensors):
+    """Allocate the whole output list from one flat buffer.
+
+    The fused path only runs for homogeneous, contiguous inputs, so the outputs
+    can share one allocation and still be the same contiguous tensors that a
+    per-tensor ``torch.empty_like`` would return. Deriving the list in one
+    ``unbind``/``split`` call matters on GCU: every individual slice or view
+    costs several microseconds, while the whole flat path costs about one
+    ``empty_like``.
+    """
+    total_numel = 0
+    for tensor in tensors:
+        total_numel += tensor.numel()
+    flat = torch.empty(total_numel, dtype=tensors[0].dtype, device=tensors[0].device)
+    first_shape = tensors[0].shape
+    if all(tensor.shape == first_shape for tensor in tensors) and len(tensors) > 1:
+        return list(flat.view(len(tensors), *first_shape).unbind(0))
+    return list(flat.split([tensor.numel() for tensor in tensors]))
 
 
 @libentry()
@@ -128,7 +149,7 @@ def _foreach_tan(self):
         return apply_unary("tan", self, inplace=False)
 
     # the output list order must match self.
-    outputs = [torch.empty_like(tensor) for tensor in self]
+    outputs = _allocate_outputs(self)
     device = self[0].device
     device_context = (
         torch_device_fn.device(device) if USE_DEVICE_CONTEXT else nullcontext()
@@ -136,13 +157,17 @@ def _foreach_tan(self):
 
     if FUSED_LAUNCH:
         tensor_count = len(self)
+        # One host-side tensor built from a single Python list: writing 3*NT scalars into a staging
+        # tensor one by one costs ~4x more than this bulk construction plus the H2D copy.
+        metadata_values = [tensor.data_ptr() for tensor in self]
+        metadata_values += [tensor.data_ptr() for tensor in outputs]
+        metadata_values += [tensor.numel() for tensor in self]
         # Device pointers are stored as int64, so GCU 64-bit support must be enabled or pointers are truncated.
-        metadata = torch.empty(3 * tensor_count, dtype=torch.int64)
-        for index, (src_tensor, dst_tensor) in enumerate(zip(self, outputs)):
-            metadata[index] = src_tensor.data_ptr()
-            metadata[tensor_count + index] = dst_tensor.data_ptr()
-            metadata[2 * tensor_count + index] = src_tensor.numel()
-        metadata = metadata.to(device)
+        # numpy hands Triton a ready-made CPU buffer, which is ~25% cheaper than torch.tensor(list) here;
+        # the transfer stays synchronous so no caller-visible buffer is shared between calls.
+        metadata = torch.from_numpy(np.asarray(metadata_values, dtype=np.int64)).to(
+            device
+        )
         max_numel = max(tensor.numel() for tensor in self)
         chunks = triton.cdiv(max_numel, BLOCK_SIZE)
         if MAX_CHUNKS_CAP:

@@ -23,6 +23,15 @@ from flag_gems.utils.limits import get_dtype_min
 
 logger = logging.getLogger(__name__)
 
+# One program handles a flat tile of output elements and strides over the whole
+# output, so the grid never grows with the tensor. Measured on gcu400: a CTA
+# costs ~120ns to launch, and the previous (n*c, depth*height*width-block) grid
+# reached 8192 CTAs on the benchmark core shapes, which dominated the runtime of
+# the small output volumes (32x256x2x7x7 -> 9.5ms with 8192 CTAs vs 0.25ms for
+# 4x3x16x56x56 with 384 CTAs).
+_MAX_GRID_X = 65535
+_MAX_PROGRAMS = 96
+
 
 def pool3d_output_size(
     in_size: int,
@@ -48,20 +57,14 @@ def pool3d_output_size(
 @libentry()
 @triton.autotune(
     configs=[
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 16}, num_stages=4, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 16}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 32}, num_stages=3, num_warps=4),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 32}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 8}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 8, "BLOCK_W": 16}, num_stages=5, num_warps=2),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 16}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 16, "BLOCK_W": 64}, num_stages=2, num_warps=8),
-        triton.Config({"BLOCK_H": 32, "BLOCK_W": 64}, num_stages=3, num_warps=8),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 32}, num_stages=3, num_warps=8),
-        triton.Config({"BLOCK_H": 64, "BLOCK_W": 64}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK": 1024}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK": 2048}, num_stages=2, num_warps=8),
+        triton.Config({"BLOCK": 512}, num_stages=2, num_warps=4),
     ],
     key=[
+        "in_d",
+        "in_h",
+        "in_w",
         "out_d",
         "out_h",
         "out_w",
@@ -92,6 +95,8 @@ def max_pool3d_forward_kernel(
     out_d,
     out_h,
     out_w,
+    # Total number of output elements (N * C * out_d * out_h * out_w)
+    total,
     # Pooling parameters
     kernel_d: tl.constexpr,
     kernel_h: tl.constexpr,
@@ -105,83 +110,70 @@ def max_pool3d_forward_kernel(
     dilation_d: tl.constexpr,
     dilation_h: tl.constexpr,
     dilation_w: tl.constexpr,
-    # Meta-parameters for tiling
-    BLOCK_H: tl.constexpr,
-    BLOCK_W: tl.constexpr,
+    # Tiling of the flat output index space
+    BLOCK: tl.constexpr,
 ):
-    """Forward kernel for 3-D max pooling.
+    """Flat max-pooling kernel.
 
-    Grid: (N * C, num_d_blocks * num_h_blocks * num_w_blocks)
-    where num_h_blocks = cdiv(out_h, BLOCK_H),
-          num_w_blocks = cdiv(out_w, BLOCK_W).
-    The depth dimension is iterated inside the kernel via a loop
-    over num_d_blocks output depth positions.
+    A tile is a contiguous range of the flat output index, so the output and the
+    index tensor are written with plain contiguous stores and the tile shape
+    does not have to match out_h x out_w (the previous 2-D tile wasted most lanes
+    on shapes like 4x4 or 7x7). The flat index decomposes into
+    (plane, od, oh, ow) with (out_d * out_h * out_w) as the spatial extent of one
+    (n, c) plane.
     """
-    pid_nc = tl.program_id(0)
-    pid_dhw = tl.program_id(1)
-
-    num_h_blocks = tl.cdiv(out_h, BLOCK_H)
-    num_w_blocks = tl.cdiv(out_w, BLOCK_W)
-
-    d_block_idx = pid_dhw // (num_h_blocks * num_w_blocks)
-    hw_remainder = pid_dhw % (num_h_blocks * num_w_blocks)
-    h_block_idx = hw_remainder // num_w_blocks
-    w_block_idx = hw_remainder % num_w_blocks
-
-    n_idx = pid_nc // in_c
-    c_idx = pid_nc % in_c
-
-    d_out = d_block_idx
-
-    h_out_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    w_out_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-
     dtype = input_ptr.type.element_ty
     min_val = get_dtype_min(dtype)
-    max_val_acc = tl.full((BLOCK_H, BLOCK_W), min_val, dtype=dtype)
-    max_idx_acc = tl.full((BLOCK_H, BLOCK_W), -1, dtype=tl.int64)
 
-    input_base_ptr = input_ptr + n_idx * in_stride_n + c_idx * in_stride_c
+    n_tiles = tl.cdiv(total, BLOCK)
+    n_prog = tl.num_programs(0)
+    out_spatial = out_d * out_h * out_w
+    for tile in tl.range(tl.program_id(0), n_tiles, n_prog):
+        offset = tile * BLOCK + tl.arange(0, BLOCK)
+        tile_mask = offset < total
 
-    for kd in tl.static_range(0, kernel_d):
-        d_in = d_out * stride_d - padding_d + kd * dilation_d
-        d_valid = (d_in >= 0) & (d_in < in_d)
-        for kh in tl.static_range(0, kernel_h):
-            for kw in tl.static_range(0, kernel_w):
-                h_in = h_out_offsets[:, None] * stride_h - padding_h + kh * dilation_h
-                w_in = w_out_offsets[None, :] * stride_w - padding_w + kw * dilation_w
-                in_mask = (
-                    d_valid & (h_in >= 0) & (h_in < in_h) & (w_in >= 0) & (w_in < in_w)
-                )
-                input_offset = (
-                    d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
-                )
-                current_val = tl.load(
-                    input_base_ptr + input_offset, mask=in_mask, other=min_val
-                )
-                # Flat index in (D, H, W) space
-                current_idx = d_in * in_h * in_w + h_in * in_w + w_in
+        # Decompose the flat output index; every component stays in range for a
+        # masked lane because the modulo of the quotient is taken first.
+        spatial = offset % out_spatial
+        plane = offset // out_spatial
+        ow = spatial % out_w
+        spatial_h = spatial // out_w
+        oh = spatial_h % out_h
+        od = spatial_h // out_h
 
-                is_new_max = current_val > max_val_acc
-                max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
-                max_idx_acc = tl.where(is_new_max & in_mask, current_idx, max_idx_acc)
+        plane_ptr = (
+            input_ptr + (plane // in_c) * in_stride_n + (plane % in_c) * in_stride_c
+        )
 
-    out_spatial = out_h * out_w
-    out_base_offset = pid_nc * out_d * out_spatial + d_out * out_spatial
-    out_base_ptr = output_ptr + out_base_offset
-    indices_base_ptr = indices_ptr + out_base_offset
-    out_h_offsets = h_block_idx * BLOCK_H + tl.arange(0, BLOCK_H)
-    out_w_offsets = w_block_idx * BLOCK_W + tl.arange(0, BLOCK_W)
-    output_block_ptr = (
-        out_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
-    indices_block_ptr = (
-        indices_base_ptr + out_h_offsets[:, None] * out_w + out_w_offsets[None, :]
-    )
+        max_val_acc = tl.full((BLOCK,), min_val, dtype=dtype)
+        # The flat spatial index always fits in int32 for a poolable volume, and
+        # int32 keeps the 27 compare/select updates off the slow 64-bit path.
+        max_idx_acc = tl.full((BLOCK,), -1, dtype=tl.int32)
 
-    out_mask = (out_h_offsets[:, None] < out_h) & (out_w_offsets[None, :] < out_w)
-    tl.store(output_block_ptr, max_val_acc, mask=out_mask)
-    tl.store(indices_block_ptr, max_idx_acc, mask=out_mask)
+        for kd in tl.static_range(0, kernel_d):
+            d_in = od * stride_d - padding_d + kd * dilation_d
+            d_valid = (d_in >= 0) & (d_in < in_d)
+            for kh in tl.static_range(0, kernel_h):
+                h_in = oh * stride_h - padding_h + kh * dilation_h
+                dh_valid = d_valid & (h_in >= 0) & (h_in < in_h)
+                for kw in tl.static_range(0, kernel_w):
+                    w_in = ow * stride_w - padding_w + kw * dilation_w
+                    in_mask = tile_mask & dh_valid & (w_in >= 0) & (w_in < in_w)
+                    input_offset = (
+                        d_in * in_stride_d + h_in * in_stride_h + w_in * in_stride_w
+                    )
+                    current_val = tl.load(
+                        plane_ptr + input_offset, mask=in_mask, other=min_val
+                    )
+                    current_idx = d_in * in_h * in_w + h_in * in_w + w_in
+                    # A masked lane loads `min_val`, so a strict `>` can never
+                    # select it and the index update needs no extra mask term.
+                    is_new_max = current_val > max_val_acc
+                    max_val_acc = tl.where(is_new_max, current_val, max_val_acc)
+                    max_idx_acc = tl.where(is_new_max, current_idx, max_idx_acc)
+
+        tl.store(output_ptr + offset, max_val_acc, mask=tile_mask)
+        tl.store(indices_ptr + offset, max_idx_acc.to(tl.int64), mask=tile_mask)
 
 
 def _parse_pool3d_params(kernel_size, stride, padding, dilation):
@@ -231,7 +223,7 @@ def max_pool3d_with_indices(
 
     Indices are flat offsets into the (D, H, W) spatial volume of the input.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MAX_POOL3D_WITH_INDICES")
+    logger.debug("GEMS_ENFLAME MAX_POOL3D_WITH_INDICES")
     input = input.contiguous()
 
     params = _parse_pool3d_params(kernel_size, stride, padding, dilation)
@@ -252,11 +244,12 @@ def max_pool3d_with_indices(
     if output.numel() == 0:
         return output, indices
 
+    total = output.numel()
+
+    # Fixed grid: a CTA costs ~120ns to launch on this backend, so the number of
+    # programs is capped and each one strides over the flat output space.
     grid = lambda meta: (
-        in_n * in_c,
-        out_d
-        * triton.cdiv(out_h, meta["BLOCK_H"])
-        * triton.cdiv(out_w, meta["BLOCK_W"]),
+        min(triton.cdiv(total, meta["BLOCK"]), _MAX_PROGRAMS, _MAX_GRID_X),
     )
 
     max_pool3d_forward_kernel[grid](
@@ -275,6 +268,7 @@ def max_pool3d_with_indices(
         out_d,
         out_h,
         out_w,
+        total,
         kd,
         kh,
         kw,

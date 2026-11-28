@@ -18,15 +18,24 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-
 logger = logging.getLogger(__name__)
 
-# The AMD backend rejects tf32/tf32x3 (it only accepts ieee/bf16x3/bf16x6), so
-# fall back to full-precision ieee there; every other backend keeps tf32/tf32x3.
-_IS_AMD = runtime.device.vendor_name == "amd"
-_DOT_PRECISION_HIGH = tl.constexpr("ieee" if _IS_AMD else "tf32x3")
-_DOT_PRECISION = tl.constexpr("ieee" if _IS_AMD else "tf32")
+# On the enflame backend every fp32 dot precision request (ieee/tf32/tf32x3)
+# lowers to the same matmul_fp32_fp32 intrinsic, so requesting tf32 buys
+# nothing. The fast paths therefore keep the dot operands in the input dtype
+# (exact fp16/bf16 products with an fp32 accumulator, which is accuracy-neutral
+# or better than rounding through tf32) and only the short-reduction arm
+# retains the 3-pass request for upstream parity.
+_DOT_PRECISION_HIGH = tl.constexpr("tf32x3")
+
+# Whole-row mean loads are capped so one program still fits the DSM budget;
+# wider observation axes fall back to the chunked loop.
+_MEAN_ROW_CAP = 8192
+# Single-program "tiny" arm budget (next_pow2 rows x next_pow2 cols elements):
+# the in-register fp32 centering intermediates dominate, so fp32 gets a much
+# tighter cap than fp16/bf16 (measured: fp32 64x1024 requires 1056768 bytes).
+_TINY_ELEMS_FP32 = 16384
+_TINY_ELEMS_FP16 = 65536
 
 
 @triton.jit
@@ -41,23 +50,40 @@ def _cov_mean_kernel(
     stride_xm,
     HAS_W: tl.constexpr,
     BLOCK_M: tl.constexpr,
+    WHOLE: tl.constexpr,
 ):
     # Each program reduces one row (variable) to its weighted mean over the
     # observation axis: avg[i] = sum_k w[k] * x[i, k] / w_sum. With no weights
-    # this is the plain mean and w_sum == n_cols.
+    # this is the plain mean and w_sum == n_cols. WHOLE covers the whole row
+    # in one masked load (the original 128-wide chunk loop needed 32 tiny
+    # transactions per 4096-column row and dominated small matrices); wider
+    # rows than the cap keep the chunked form.
     row = tl.program_id(0)
-    acc = tl.zeros([BLOCK_M], dtype=tl.float32)
-    for m_start in range(0, n_cols, BLOCK_M):
-        offs = m_start + tl.arange(0, BLOCK_M)
+    if WHOLE:
+        offs = tl.arange(0, BLOCK_M)
         mask = offs < n_cols
         x = tl.load(x_ptr + row * stride_xn + offs * stride_xm, mask=mask, other=0.0)
         x = x.to(tl.float32)
         if HAS_W:
             w = tl.load(w_ptr + offs, mask=mask, other=0.0).to(tl.float32)
             x = x * w
-        acc += x
-    mean = tl.sum(acc) / w_sum
-    tl.store(mean_ptr + row, mean)
+        mean = tl.sum(x) / w_sum
+        tl.store(mean_ptr + row, mean)
+    else:
+        acc = tl.zeros([BLOCK_M], dtype=tl.float32)
+        for m_start in range(0, n_cols, BLOCK_M):
+            offs = m_start + tl.arange(0, BLOCK_M)
+            mask = offs < n_cols
+            x = tl.load(
+                x_ptr + row * stride_xn + offs * stride_xm, mask=mask, other=0.0
+            )
+            x = x.to(tl.float32)
+            if HAS_W:
+                w = tl.load(w_ptr + offs, mask=mask, other=0.0).to(tl.float32)
+                x = x * w
+            acc += x
+        mean = tl.sum(acc) / w_sum
+        tl.store(mean_ptr + row, mean)
 
 
 @triton.jit
@@ -90,6 +116,55 @@ def _cov_weight_kernel(
 
 
 @triton.jit
+def _cov_tiny_kernel(
+    x_ptr,
+    c_ptr,
+    n_rows,
+    n_cols,
+    fact,
+    w_sum,
+    stride_xn,
+    stride_xm,
+    stride_cn,
+    stride_cm,
+    NATIVE: tl.constexpr,
+    HIGH_PRECISION: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+):
+    # Single-program whole-matrix covariance for small inputs: one masked load
+    # of the entire (rows x observations) matrix, means and centering stay in
+    # registers, one dot, one store. This halves the fixed cost (one launch
+    # instead of two) for the shapes where both kernels are launch-bound.
+    offs_n = tl.arange(0, BLOCK_N)
+    offs_k = tl.arange(0, BLOCK_K)
+    mask_n = offs_n < n_rows
+    mask_k = offs_k < n_cols
+    x = tl.load(
+        x_ptr + offs_n[:, None] * stride_xn + offs_k[None, :] * stride_xm,
+        mask=mask_n[:, None] & mask_k[None, :],
+        other=0.0,
+    )
+    xf = x.to(tl.float32)
+    s = tl.sum(xf, axis=1)
+    mean = s / w_sum
+    xc = xf - mean[:, None]
+    xc = tl.where(mask_k[None, :], xc, 0.0)
+    if NATIVE:
+        acc = tl.dot(xc.to(x.dtype), tl.trans(xc.to(x.dtype)))
+    elif HIGH_PRECISION:
+        acc = tl.dot(xc, tl.trans(xc), input_precision=_DOT_PRECISION_HIGH)
+    else:
+        acc = tl.dot(xc, tl.trans(xc), input_precision="tf32")
+    c = acc / fact
+    tl.store(
+        c_ptr + offs_n[:, None] * stride_cn + offs_n[None, :] * stride_cm,
+        c,
+        mask=mask_n[:, None] & mask_n[None, :],
+    )
+
+
+@triton.jit
 def _cov_kernel(
     x_ptr,
     w_ptr,
@@ -104,6 +179,9 @@ def _cov_kernel(
     stride_cm,
     HAS_W: tl.constexpr,
     HIGH_PRECISION: tl.constexpr,
+    NATIVE: tl.constexpr,
+    SYMMETRIC: tl.constexpr,
+    EVEN: tl.constexpr,
     BLOCK_N: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
@@ -111,72 +189,156 @@ def _cov_kernel(
     #   c[i, j] = sum_k w[k] * (x[i, k] - mean[i]) * (x[j, k] - mean[j]) / fact.
     # Centering (and the optional weighting) is fused into the GEMM to avoid an
     # extra global-memory round trip over a materialized centered matrix. The
-    # accumulator stays in float32. The dot product uses tf32 (the default
-    # tensor-core precision across FlagGems' matmul ops) for the common case,
-    # falling back to the 3-pass tf32x3 emulation for short reductions where
-    # tf32's relative error would otherwise exceed the accuracy tolerance (see
-    # the HIGH_PRECISION selection in the wrapper). tf32x3 is essentially free
-    # there because those reductions produce tiny GEMMs.
-    pid_i = tl.program_id(0)
-    pid_j = tl.program_id(1)
+    # accumulator stays in float32.
+    #
+    # Vendor tuning knobs (gcu400):
+    #   NATIVE     dot operands keep the input dtype (fp16/bf16 MMA with an
+    #              fp32 accumulator); the fp32-cast + tf32 request of the
+    #              generic path is kept for the weighted / short-reduction arms.
+    #   SYMMETRIC  one program per upper-triangle tile, storing both c and c^T;
+    #              halves the dot work and the x tile traffic once the full
+    #              grid would need more than one wave on the 48 SPs.
+    #   EVEN       n_rows % BLOCK_N == 0 and n_cols % BLOCK_M == 0: drops every
+    #              mask (masked loads/`other` predication measurably tax the
+    #              GCU load path).
+    if SYMMETRIC:
+        # Decode the linear tile id into the upper-triangle (pid_i, pid_j).
+        pid = tl.program_id(0)
+        pid_i = 0
+        t = pid
+        while t > pid_i:
+            t -= pid_i + 1
+            pid_i += 1
+        pid_j = t
+    else:
+        pid_i = tl.program_id(0)
+        pid_j = tl.program_id(1)
 
     offs_i = pid_i * BLOCK_N + tl.arange(0, BLOCK_N)
     offs_j = pid_j * BLOCK_N + tl.arange(0, BLOCK_N)
 
-    mask_i = offs_i < n_rows
-    mask_j = offs_j < n_rows
-
-    mi = tl.load(mean_ptr + offs_i, mask=mask_i, other=0.0)
-    mj = tl.load(mean_ptr + offs_j, mask=mask_j, other=0.0)
+    if EVEN:
+        mi = tl.load(mean_ptr + offs_i)
+        mj = tl.load(mean_ptr + offs_j)
+    else:
+        mask_i = offs_i < n_rows
+        mask_j = offs_j < n_rows
+        mi = tl.load(mean_ptr + offs_i, mask=mask_i, other=0.0)
+        mj = tl.load(mean_ptr + offs_j, mask=mask_j, other=0.0)
 
     acc = tl.zeros([BLOCK_N, BLOCK_N], dtype=tl.float32)
 
     for m_start in range(0, n_cols, BLOCK_M):
         offs_m = m_start + tl.arange(0, BLOCK_M)
-        mask_m = offs_m < n_cols
+        if EVEN:
+            xi = tl.load(
+                x_ptr + offs_i[:, None] * stride_xn + offs_m[None, :] * stride_xm
+            )
+            xj = tl.load(
+                x_ptr + offs_j[:, None] * stride_xn + offs_m[None, :] * stride_xm
+            )
+            if NATIVE:
+                xi_centered = xi - mi[:, None].to(xi.dtype)
+                xj_centered = xj - mj[:, None].to(xj.dtype)
+                if HAS_W:
+                    w = tl.load(w_ptr + offs_m).to(tl.float32)
+                    xi_centered = (xi_centered.to(tl.float32) * w[None, :]).to(xi.dtype)
+            else:
+                xi_centered = xi.to(tl.float32) - mi[:, None]
+                xj_centered = xj.to(tl.float32) - mj[:, None]
+                if HAS_W:
+                    w = tl.load(w_ptr + offs_m).to(tl.float32)
+                    xi_centered = xi_centered * w[None, :]
+        else:
+            mask_m = offs_m < n_cols
+            mask_i2 = offs_i < n_rows
+            mask_j2 = offs_j < n_rows
+            xi = tl.load(
+                x_ptr + offs_i[:, None] * stride_xn + offs_m[None, :] * stride_xm,
+                mask=mask_i2[:, None] & mask_m[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            xj = tl.load(
+                x_ptr + offs_j[:, None] * stride_xn + offs_m[None, :] * stride_xm,
+                mask=mask_j2[:, None] & mask_m[None, :],
+                other=0.0,
+            ).to(tl.float32)
+            xi_centered = xi - mi[:, None]
+            xj_centered = xj - mj[:, None]
+            # The weight is folded into one operand so the dot product yields
+            # the weighted cross-products sum_k w[k] * xi_c[k] * xj_c[k].
+            if HAS_W:
+                w = tl.load(w_ptr + offs_m, mask=mask_m, other=0.0).to(tl.float32)
+                xi_centered = xi_centered * w[None, :]
+            # Re-mask padding lanes to 0 (not -mean) so the dot product stays
+            # exact for observation counts that are not a multiple of BLOCK_M.
+            xi_centered = tl.where(mask_m[None, :], xi_centered, 0.0)
+            xj_centered = tl.where(mask_m[None, :], xj_centered, 0.0)
 
-        xi = tl.load(
-            x_ptr + offs_i[:, None] * stride_xn + offs_m[None, :] * stride_xm,
-            mask=mask_i[:, None] & mask_m[None, :],
-            other=0.0,
-        ).to(tl.float32)
-        xj = tl.load(
-            x_ptr + offs_j[:, None] * stride_xn + offs_m[None, :] * stride_xm,
-            mask=mask_j[:, None] & mask_m[None, :],
-            other=0.0,
-        ).to(tl.float32)
-
-        xi_centered = xi - mi[:, None]
-        xj_centered = xj - mj[:, None]
-
-        # The weight is folded into one operand so the dot product yields the
-        # weighted cross-products sum_k w[k] * xi_c[k] * xj_c[k].
-        if HAS_W:
-            w = tl.load(w_ptr + offs_m, mask=mask_m, other=0.0).to(tl.float32)
-            xi_centered = xi_centered * w[None, :]
-
-        # Re-mask padding lanes to 0 (not -mean) so the dot product stays exact
-        # for observation counts that are not a multiple of BLOCK_M.
-        xi_centered = tl.where(mask_m[None, :], xi_centered, 0.0)
-        xj_centered = tl.where(mask_m[None, :], xj_centered, 0.0)
-
-        if HIGH_PRECISION:
+        if NATIVE:
+            acc += tl.dot(xi_centered, tl.trans(xj_centered))
+        elif HIGH_PRECISION:
             acc += tl.dot(
                 xi_centered, tl.trans(xj_centered), input_precision=_DOT_PRECISION_HIGH
             )
         else:
-            acc += tl.dot(
-                xi_centered, tl.trans(xj_centered), input_precision=_DOT_PRECISION
-            )
+            acc += tl.dot(xi_centered, tl.trans(xj_centered), input_precision="tf32")
 
     c = acc / fact
+    if EVEN:
+        tl.store(c_ptr + offs_i[:, None] * stride_cn + offs_j[None, :] * stride_cm, c)
+        if SYMMETRIC:
+            if pid_i != pid_j:
+                tl.store(
+                    c_ptr + offs_j[:, None] * stride_cn + offs_i[None, :] * stride_cm,
+                    tl.trans(c),
+                )
+    else:
+        mask_ij = (offs_i[:, None] < n_rows) & (offs_j[None, :] < n_rows)
+        tl.store(
+            c_ptr + offs_i[:, None] * stride_cn + offs_j[None, :] * stride_cm,
+            c,
+            mask=mask_ij,
+        )
+        if SYMMETRIC:
+            if pid_i != pid_j:
+                tl.store(
+                    c_ptr + offs_j[:, None] * stride_cn + offs_i[None, :] * stride_cm,
+                    tl.trans(c),
+                    mask=tl.trans(mask_ij),
+                )
 
-    mask_ij = mask_i[:, None] & mask_j[None, :]
-    tl.store(
-        c_ptr + offs_i[:, None] * stride_cn + offs_j[None, :] * stride_cm,
-        c,
-        mask=mask_ij,
-    )
+
+def _cov_pick_blocks(n_rows, n_cols, out_dtype):
+    # Tile geometry for the unweighted fast path, distilled from the variant
+    # sweep on GCU400 (48 SPs, DSM <= 448KB/program):
+    #   * BLOCK_N=64 halves the x tile traffic per output element versus the
+    #     generic 32 and keeps MMA utilization high; 32 stays for row counts
+    #     that do not divide 64 (masked tail would waste half a tile).
+    #   * BLOCK_K=512 amortizes the dot pipeline for fp32 everywhere and for
+    #     fp16/bf16 up to 256 rows; at 512 rows the fp16 MMA is fast enough
+    #     that the smaller 256-chunk pipelines better (measured crossover).
+    #   * The symmetric triangle wins once the full square grid needs more
+    #     than one wave (grid_n >= 2 halves dot work without losing waves).
+    if n_rows >= 64 and n_rows % 64 == 0:
+        block_n = 64
+    else:
+        block_n = 32
+    if out_dtype == torch.float32:
+        if n_cols % 512 == 0:
+            block_k = 512
+        elif n_cols % 256 == 0:
+            block_k = 256
+        else:
+            block_k = 128
+    else:
+        if n_cols % 512 == 0 and n_rows <= 256:
+            block_k = 512
+        elif n_cols % 256 == 0:
+            block_k = 256
+        else:
+            block_k = 128
+    return block_n, block_k
 
 
 def cov(
@@ -197,7 +359,7 @@ def cov(
     internally and the result is cast back to the input dtype, matching the
     precision behaviour expected from a stable Triton implementation.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 COV")
+    logger.debug("GEMS_ENFLAME COV")
 
     if input.dim() > 2:
         raise ValueError(
@@ -261,58 +423,124 @@ def cov(
         fact = 0.0
 
     # Per-variable (weighted) means, kept in float32 for numerical stability.
-    mean = torch.empty(n_rows, device=device, dtype=torch.float32)
-    # Column reduction tile: 128 balances vector width against loop trips for
-    # the observation counts exercised in tests/benchmarks.
-    BLOCK_M = 128
-    _cov_mean_kernel[(n_rows,)](
-        x,
-        w,
-        mean,
-        n_rows,
-        n_cols,
-        w_sum,
-        x.stride(0),
-        x.stride(1),
-        HAS_W=has_w,
-        BLOCK_M=BLOCK_M,
-    )
-
+    # One program per row; a whole-row load avoids the generic 128-wide chunk
+    # loop whose many tiny transactions dominate the mean kernel otherwise.
     # Covariance accumulates in float32 inside the kernel for stability; the
     # output buffer is allocated in the target dtype so the final tl.store casts
     # directly, avoiding a separate .to() round trip (which also matches how
     # corrcoef writes its result).
     cov_mat = torch.empty(n_rows, n_rows, device=device, dtype=out_dtype)
     # Precision policy keyed on the reduction length n_cols, which is what
-    # governs the relative error of the centered cross-products sum. tf32's
-    # ~1e-3 relative error stays inside the accuracy tolerance once the sum runs
-    # over enough observations, but for short reductions it would exceed the
-    # tolerance, so those use the exact-fp32 tf32x3 emulation. Short reductions
-    # produce tiny GEMMs, so the 3-pass cost there is negligible. The threshold
-    # is independent of the row count, so it never trades accuracy for speed on
-    # the larger matrices that dominate timing.
-    HIGH_PRECISION = n_cols < 32
-    # Row tile for the 2D covariance grid: 32 keeps the GEMM K-dim valid and
-    # gives good SM occupancy for the row counts exercised here.
-    BLOCK_N = 32
-    grid_n = triton.cdiv(n_rows, BLOCK_N)
-    _cov_kernel[(grid_n, grid_n)](
-        x,
-        w,
-        mean,
-        cov_mat,
-        n_rows,
-        n_cols,
-        fact,
-        x.stride(0),
-        x.stride(1),
-        cov_mat.stride(0),
-        cov_mat.stride(1),
-        HAS_W=has_w,
-        HIGH_PRECISION=HIGH_PRECISION,
-        BLOCK_N=BLOCK_N,
-        BLOCK_M=BLOCK_M,
+    # governs the relative error of the centered cross-products sum. The fast
+    # paths keep dot operands in the input dtype (exact fp16/bf16 products);
+    # short reductions retain the exact 3-pass fp32 request of the generic
+    # implementation.
+    high_precision = n_cols < 32
+
+    tiny_cap = _TINY_ELEMS_FP32 if out_dtype == torch.float32 else _TINY_ELEMS_FP16
+    tiny_elems = triton.next_power_of_2(max(n_rows, 1)) * triton.next_power_of_2(
+        max(n_cols, 1)
     )
+    use_tiny = not has_w and n_rows <= 64 and n_cols <= 1024 and tiny_elems <= tiny_cap
+
+    if not use_tiny:
+        mean = torch.empty(n_rows, device=device, dtype=torch.float32)
+        if n_cols <= _MEAN_ROW_CAP:
+            mean_block = triton.next_power_of_2(max(n_cols, 1))
+            mean_whole = True
+        else:
+            mean_block = _MEAN_ROW_CAP
+            mean_whole = False
+        _cov_mean_kernel[(n_rows,)](
+            x,
+            w,
+            mean,
+            n_rows,
+            n_cols,
+            w_sum,
+            x.stride(0),
+            x.stride(1),
+            HAS_W=has_w,
+            BLOCK_M=mean_block,
+            WHOLE=mean_whole,
+            num_warps=4,
+        )
+
+    if use_tiny:
+        # Small matrix: one launch, one load pass, register-resident means.
+        _cov_tiny_kernel[(1,)](
+            x,
+            cov_mat,
+            n_rows,
+            n_cols,
+            fact,
+            w_sum,
+            x.stride(0),
+            x.stride(1),
+            cov_mat.stride(0),
+            cov_mat.stride(1),
+            NATIVE=True,
+            HIGH_PRECISION=high_precision,
+            BLOCK_N=max(16, triton.next_power_of_2(max(n_rows, 1))),
+            BLOCK_K=max(16, triton.next_power_of_2(max(n_cols, 1))),
+            num_warps=4,
+        )
+    elif not has_w:
+        block_n, block_k = _cov_pick_blocks(n_rows, n_cols, out_dtype)
+        grid_n = triton.cdiv(n_rows, block_n)
+        symmetric = grid_n >= 2
+        even = (n_rows % block_n == 0) and (n_cols % block_k == 0)
+        native = even and not high_precision
+        if symmetric:
+            grid = (grid_n * (grid_n + 1) // 2,)
+        else:
+            grid = (grid_n, grid_n)
+        _cov_kernel[grid](
+            x,
+            w,
+            mean,
+            cov_mat,
+            n_rows,
+            n_cols,
+            fact,
+            x.stride(0),
+            x.stride(1),
+            cov_mat.stride(0),
+            cov_mat.stride(1),
+            HAS_W=False,
+            HIGH_PRECISION=high_precision,
+            NATIVE=native,
+            SYMMETRIC=symmetric,
+            EVEN=even,
+            BLOCK_N=block_n,
+            BLOCK_M=block_k,
+            num_warps=4,
+        )
+    else:
+        # Weighted covariance keeps the generic masked fp32 structure: the
+        # weight tensor multiplies one centered operand inside the dot loop.
+        grid_n = triton.cdiv(n_rows, 32)
+        _cov_kernel[(grid_n, grid_n)](
+            x,
+            w,
+            mean,
+            cov_mat,
+            n_rows,
+            n_cols,
+            fact,
+            x.stride(0),
+            x.stride(1),
+            cov_mat.stride(0),
+            cov_mat.stride(1),
+            HAS_W=True,
+            HIGH_PRECISION=high_precision,
+            NATIVE=False,
+            SYMMETRIC=False,
+            EVEN=False,
+            BLOCK_N=32,
+            BLOCK_M=128,
+            num_warps=4,
+        )
 
     # A single variable (1D input, or a 2D input with one row) yields a 0D
     # scalar variance, matching torch.cov.

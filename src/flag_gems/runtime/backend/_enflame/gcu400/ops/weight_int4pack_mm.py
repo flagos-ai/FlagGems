@@ -17,7 +17,7 @@
 """
 weight_int4pack_mm: Int4 packed weight matrix multiplication.
 
-Conventions (self-consistent across kernel, tests, and reference):
+Conventions (FlagGems op, self-consistent across kernel, tests, and reference):
   - A (self):     activation tensor of shape (M, K), dtype fp16/bf16/fp32.
   - mat2:         int4 packed weights of shape (N, K//2), dtype uint8.
                   Each byte packs two adjacent int4 values:
@@ -30,17 +30,60 @@ Conventions (self-consistent across kernel, tests, and reference):
                     Last dim: index 0 = scale, index 1 = zero_point.
   - Output:       tensor of shape (M, N), dtype same as A.
                   Computes C = A @ dequant(W).T, where dequant(W) has
-                  shape (N, K) after unpacking and dequantizing mat2.
+                  shape (N, K) after unpacking and dequantizing mat2,
+                  dequantizing each nibble q as (q - zero) * scale.
 
-Implementation:
-  The Triton kernel fuses int4 unpacking and dequantization directly into
-  the GEMM main loop, so the (N, K) float weight matrix is never
-  materialized in global memory. The K contraction is split into two
-  interleaved streams -- even columns come from the low nibble of each
-  packed byte, odd columns from the high nibble -- which lets the kernel
-  work on the packed (N, K//2) layout with no interleaving. Because
-  qGroupSize is even, the even/odd pair sharing a packed byte always falls
-  in the same quantization group, so a single scale/zero load serves both.
+GCU400 structure notes (triton_gcu 4.1.6):
+
+  The optimized FlagGems kernel below follows the design validated for the
+  sibling op `_weight_int4pack_mm_with_scales_and_zeros` (case log
+  2026-11-18), adapted to this op's interleaved (G, N, 2) scale/zero layout
+  (scale and zero are fetched as two 2D affine tiles, the same load pattern
+  the generic kernel uses for this layout):
+
+  - SPLIT_DOTS (K > 32): the contraction is split into
+    dot(a_even, w_lo) + dot(a_odd, w_hi) over the two nibble fragments;
+    WIDE_A loads A as one full-width (BLOCK_M, BLOCK_K) tile and
+    de-interleaves with tl.reshape + tl.split (measured 1.15-1.35x over two
+    stride-2 half-width loads on K >= 2048). The even/odd pair sharing a
+    byte always falls in one quantization group (qGroupSize is even), so a
+    single scale/zero load serves both nibbles.
+  - Byte-repeat arm (K <= 32): each mat2 byte is loaded onto its two
+    consecutive K rows; the parity of k selects the nibble via a variable
+    shift; a single full-K dot follows.
+  - SINGLE_GROUP (qGroupSize >= BLOCK_K and qGroupSize % BLOCK_K == 0):
+    the whole K-block shares one quantization group, so scale/zero load as
+    single (BLOCK_N,) rows and broadcast.
+  - EVEN_M / EVEN_N / EVEN_K: compile-time drop of bounds masks when the
+    corresponding dimension divides its block exactly.
+  - The kernel reads its program id with plain tl.program_id(0) (int32):
+    tle.program_id widens the id to int64 and poisons every tile offset
+    with i64 address arithmetic (~6x on this GEMM family, P17).
+  - num_warps=1 / num_stages<=2: the dot-dense small-tile family rule
+    (num_warps=2 on (128,128,256) tiles doubles per-program DSM past the
+    448KB 48-way threshold and costs 2.7x).
+  - BLOCK sizes bucket by (M, N, K) on host metadata only, small-tile
+    first: BLOCK_M=16 for every M <= 128 (measured -45..-53% vs the fat-tile
+    buckets that left 46+ of the 48 SPs idle), 32 for M <= 256, else 128;
+    BLOCK_N in {32, 64, 128} by the same bias; see _pick_config.
+  - fp16/bf16 activations run tensor-core dots with fp32 accumulation
+    (products of two fp16/bf16 values are exact in fp32, so numerics match
+    the generic fp32-dot path); fp32 activations keep fp32 dots.
+
+ATen-path baseline (semantic reference only; ATen-key registration is owned
+by the generic `_FULL_CONFIG` entry, with no backend-specific extra
+registration here):
+
+  `weight_int4pack_mm_aten_kernel` below is a verbatim copy of the generic
+  public kernel structure (BLOCK 64/64/32, fp32 dots, default warps) with
+  the TRUE ATen dequant semantics (w = scale * (q - 8) + zero_add, with
+  qScaleAndZeros[..., 1] being zero_add, not this op's zero). The uint8
+  byte-pair input it accepts is exactly what
+  `aten::_convert_weight_to_int4pack` produces on GCU after the nibble-swap
+  fix in _convert_weight_to_int4pack.py (ATen CUDA nibble order -> ATen
+  CPU byte-pair order), so the on-device ATen chain
+  _convert_weight_to_int4pack -> _weight_int4pack_mm is value-correct and
+  matches `aten::_weight_int4pack_mm_for_cpu` up to dot rounding.
 """
 
 import logging
@@ -55,9 +98,442 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Optimized FlagGems op (this is what flag_gems.weight_int4pack_mm resolves
+# to on enflame/GCU400, and what the benchmark's gems leg measures).
+# ---------------------------------------------------------------------------
+
+
 @libentry()
 @triton.jit
 def weight_int4pack_mm_kernel(
+    A_ptr,  # (M, K) activation, fp16/bf16/fp32
+    B_ptr,  # (N, K2) packed int4 weights, uint8; low nibble = even column
+    SZ_ptr,  # (G, N, 2) [scale, zero], same dtype as A
+    C_ptr,  # (M, N) output
+    M,
+    N,
+    K,
+    K2,
+    qGroupSize,
+    stride_am,
+    stride_ak,
+    stride_bn,
+    stride_bk,
+    stride_sz_g,
+    stride_sz_n,
+    stride_sz_c,
+    stride_cm,
+    stride_cn,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    SPLIT_DOTS: tl.constexpr,
+    EVEN_K: tl.constexpr,
+    WIDE_A: tl.constexpr,
+    SINGLE_GROUP: tl.constexpr,
+    EVEN_M: tl.constexpr,
+    EVEN_N: tl.constexpr,
+    GROUP_M: tl.constexpr,
+):
+    """Fused int4 dequantize + GEMM, C = A @ dequant(W).T.
+
+    dequant: w = (q - zero) * scale with (scale, zero) = qScaleAndZeros[g, n].
+    See the module notes for the two nibble-decoding arms and flags.
+    """
+    pid = tl.program_id(0)
+    grid_n = tl.cdiv(N, BLOCK_N)
+    if GROUP_M > 1:
+        num_pid_m = tl.cdiv(M, BLOCK_M)
+        num_pid_in_group = GROUP_M * grid_n
+        group_id = pid // num_pid_in_group
+        first_pid_m = group_id * GROUP_M
+        group_size_m = tl.minimum(num_pid_m - first_pid_m, GROUP_M)
+        pid_m = first_pid_m + ((pid % num_pid_in_group) % group_size_m)
+        pid_n = (pid % num_pid_in_group) // group_size_m
+    else:
+        pid_m = pid // grid_n
+        pid_n = pid % grid_n
+
+    offs_m = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    offs_n = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+
+    acc = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+    m_mask = offs_m[:, None] < M
+    n_mask = offs_n[None, :] < N
+
+    out_ty = C_ptr.dtype.element_ty
+
+    if SPLIT_DOTS:
+        # Two half-K dots on the nibble fragments; no layout conversion.
+        offs_kp = tl.arange(0, BLOCK_K // 2)
+        for k0 in range(0, K, BLOCK_K):
+            byte_idx = k0 // 2 + offs_kp
+            k_even = 2 * byte_idx
+            k_odd = k_even + 1
+            if WIDE_A:
+                # One full-width A load (stride-1 columns), de-interleaved
+                # via reshape+split -- avoids the stride-2 half-width gather.
+                offs_k = k0 + tl.arange(0, BLOCK_K)
+                if EVEN_K:
+                    if EVEN_M:
+                        a_full = tl.load(
+                            A_ptr
+                            + offs_m[:, None] * stride_am
+                            + offs_k[None, :] * stride_ak
+                        )
+                    else:
+                        a_full = tl.load(
+                            A_ptr
+                            + offs_m[:, None] * stride_am
+                            + offs_k[None, :] * stride_ak,
+                            mask=m_mask,
+                            other=0.0,
+                        )
+                else:
+                    a_full = tl.load(
+                        A_ptr
+                        + offs_m[:, None] * stride_am
+                        + offs_k[None, :] * stride_ak,
+                        mask=m_mask & (offs_k[None, :] < K),
+                        other=0.0,
+                    )
+                a_even, a_odd = tl.split(tl.reshape(a_full, (BLOCK_M, BLOCK_K // 2, 2)))
+            else:
+                if EVEN_K:
+                    a_even = tl.load(
+                        A_ptr
+                        + offs_m[:, None] * stride_am
+                        + k_even[None, :] * stride_ak,
+                        mask=m_mask,
+                        other=0.0,
+                    )
+                    a_odd = tl.load(
+                        A_ptr
+                        + offs_m[:, None] * stride_am
+                        + k_odd[None, :] * stride_ak,
+                        mask=m_mask,
+                        other=0.0,
+                    )
+                else:
+                    a_even = tl.load(
+                        A_ptr
+                        + offs_m[:, None] * stride_am
+                        + k_even[None, :] * stride_ak,
+                        mask=m_mask & (k_even[None, :] < K),
+                        other=0.0,
+                    )
+                    a_odd = tl.load(
+                        A_ptr
+                        + offs_m[:, None] * stride_am
+                        + k_odd[None, :] * stride_ak,
+                        mask=m_mask & (k_odd[None, :] < K),
+                        other=0.0,
+                    )
+            if EVEN_K:
+                if EVEN_N:
+                    packed = tl.load(
+                        B_ptr
+                        + offs_n[None, :] * stride_bn
+                        + byte_idx[:, None] * stride_bk
+                    )
+                else:
+                    packed = tl.load(
+                        B_ptr
+                        + offs_n[None, :] * stride_bn
+                        + byte_idx[:, None] * stride_bk,
+                        mask=n_mask,
+                        other=0,
+                    )
+            else:
+                packed = tl.load(
+                    B_ptr + offs_n[None, :] * stride_bn + byte_idx[:, None] * stride_bk,
+                    mask=n_mask & (byte_idx[:, None] < K2),
+                    other=0,
+                )
+            # qGroupSize is even (host-asserted), so both nibbles of a byte
+            # share one quantization group: one scale/zero load serves both.
+            if SINGLE_GROUP:
+                group_row = k0 // qGroupSize
+                sz_scale_ptrs = SZ_ptr + group_row * stride_sz_g + offs_n * stride_sz_n
+            else:
+                group = k_even[:, None] // qGroupSize
+                sz_scale_ptrs = (
+                    SZ_ptr + group * stride_sz_g + offs_n[None, :] * stride_sz_n
+                )
+            sz_zero_ptrs = sz_scale_ptrs + stride_sz_c
+            if SINGLE_GROUP:
+                if EVEN_N:
+                    scale = tl.load(sz_scale_ptrs).to(tl.float32)
+                    zero = tl.load(sz_zero_ptrs).to(tl.float32)
+                else:
+                    scale = tl.load(sz_scale_ptrs, mask=offs_n < N, other=0.0).to(
+                        tl.float32
+                    )
+                    zero = tl.load(sz_zero_ptrs, mask=offs_n < N, other=0.0).to(
+                        tl.float32
+                    )
+                scale = scale[None, :]
+                zero = zero[None, :]
+            else:
+                if EVEN_K:
+                    if EVEN_N:
+                        scale = tl.load(sz_scale_ptrs).to(tl.float32)
+                        zero = tl.load(sz_zero_ptrs).to(tl.float32)
+                    else:
+                        scale = tl.load(sz_scale_ptrs, mask=n_mask, other=0.0).to(
+                            tl.float32
+                        )
+                        zero = tl.load(sz_zero_ptrs, mask=n_mask, other=0.0).to(
+                            tl.float32
+                        )
+                else:
+                    sz_mask = n_mask & (k_even[:, None] < K)
+                    scale = tl.load(sz_scale_ptrs, mask=sz_mask, other=0.0).to(
+                        tl.float32
+                    )
+                    zero = tl.load(sz_zero_ptrs, mask=sz_mask, other=0.0).to(tl.float32)
+            lo_f = (packed & 0xF).to(tl.float32)
+            hi_f = ((packed >> 4) & 0xF).to(tl.float32)
+            w_lo = (lo_f - zero) * scale
+            w_hi = (hi_f - zero) * scale
+            if out_ty == tl.float32:
+                acc = tl.dot(
+                    a_even.to(tl.float32),
+                    w_lo,
+                    acc=acc,
+                    out_dtype=tl.float32,
+                    allow_tf32=True,
+                )
+                acc = tl.dot(
+                    a_odd.to(tl.float32),
+                    w_hi,
+                    acc=acc,
+                    out_dtype=tl.float32,
+                    allow_tf32=True,
+                )
+            else:
+                acc = tl.dot(a_even, w_lo.to(out_ty), acc=acc)
+                acc = tl.dot(a_odd, w_hi.to(out_ty), acc=acc)
+    else:
+        # Byte-repeat arm: each byte covers two consecutive K rows and the
+        # parity of k selects its nibble via a shift; one full-K dot.
+        offs_k = tl.arange(0, BLOCK_K)
+        nib_shift = (offs_k % 2) * 4
+        for k0 in range(0, K, BLOCK_K):
+            ks = k0 + offs_k
+            byte_row = ks // 2
+            if EVEN_K:
+                a = tl.load(
+                    A_ptr + offs_m[:, None] * stride_am + ks[None, :] * stride_ak,
+                    mask=m_mask,
+                    other=0.0,
+                )
+                packed = tl.load(
+                    B_ptr + offs_n[None, :] * stride_bn + byte_row[:, None] * stride_bk,
+                    mask=n_mask,
+                    other=0,
+                )
+            else:
+                a = tl.load(
+                    A_ptr + offs_m[:, None] * stride_am + ks[None, :] * stride_ak,
+                    mask=m_mask & (ks[None, :] < K),
+                    other=0.0,
+                )
+                packed = tl.load(
+                    B_ptr + offs_n[None, :] * stride_bn + byte_row[:, None] * stride_bk,
+                    mask=n_mask & (byte_row[:, None] < K2),
+                    other=0,
+                )
+            group = ks[:, None] // qGroupSize
+            sz_scale_ptrs = SZ_ptr + group * stride_sz_g + offs_n[None, :] * stride_sz_n
+            sz_zero_ptrs = sz_scale_ptrs + stride_sz_c
+            if EVEN_K:
+                scale = tl.load(sz_scale_ptrs, mask=n_mask, other=0.0).to(tl.float32)
+                zero = tl.load(sz_zero_ptrs, mask=n_mask, other=0.0).to(tl.float32)
+            else:
+                sz_mask = n_mask & (ks[:, None] < K)
+                scale = tl.load(sz_scale_ptrs, mask=sz_mask, other=0.0).to(tl.float32)
+                zero = tl.load(sz_zero_ptrs, mask=sz_mask, other=0.0).to(tl.float32)
+            w = (((packed >> nib_shift[:, None]) & 0xF).to(tl.float32) - zero) * scale
+            if out_ty == tl.float32:
+                acc = tl.dot(
+                    a.to(tl.float32),
+                    w,
+                    acc=acc,
+                    out_dtype=tl.float32,
+                    allow_tf32=True,
+                )
+            else:
+                acc = tl.dot(a, w.to(out_ty), acc=acc)
+
+    c_ptrs = C_ptr + offs_m[:, None] * stride_cm + offs_n[None, :] * stride_cn
+    if EVEN_M and EVEN_N:
+        tl.store(c_ptrs, acc.to(C_ptr.dtype.element_ty))
+    else:
+        c_mask = m_mask & n_mask
+        tl.store(c_ptrs, acc.to(C_ptr.dtype.element_ty), mask=c_mask)
+
+
+def _pick_config(M, N, K, qGroupSize):
+    """Metadata-only launch dispatch (no device work; see module notes).
+
+    Tile tables measured on GCU400 (triton_gcu 4.1.6, fp16, do_bench median
+    w1000ms/r100ms, 2026-11-19): BLOCK_M=16 wins for every M <= 128 -- the
+    big-tile bucketing left 46+ of the 48 SPs idle on the small GEMM shapes
+    (e.g. (64,128,512,128): BM64/BN128 36.6us vs BM16/BN64 17.1us, -53%;
+    (256,512,1024,256): BM64/BN64 128.5us vs BM32/BN128 70.4us, -45%) --
+    M=256 wants 32, and M >= 512 keeps 128 (fat tiles win once the grid
+    fills: (512,1024,2048) BM128/BN128 466us vs BM64/BN128 504us).
+    BLOCK_N follows N with the same small-first bias. GROUP_M measured
+    neutral at these grid sizes (kept for L2 reuse on wide launches).
+    """
+    BLOCK_M = 16 if M <= 128 else (32 if M <= 256 else 128)
+    BLOCK_N = 32 if N <= 64 else (64 if N <= 128 else 128)
+    if K <= 32:
+        # Byte-repeat arm, single full-K dot; BLOCK_K tracks K (min 16 for dot).
+        BLOCK_K = 16 if K <= 16 else 32
+        SPLIT_DOTS = False
+        num_warps = 1
+        num_stages = 1
+        WIDE_A = False
+        GROUP_M = 1
+    else:
+        # Split arm: two half-K dots; stride-1 full-width A load (WIDE_A).
+        BLOCK_K = 64 if K <= 64 else (128 if K <= 128 else 256)
+        SPLIT_DOTS = True
+        num_warps = 1
+        num_stages = 2
+        WIDE_A = True
+        GROUP_M = 8 if (BLOCK_K >= 128 and triton.cdiv(M, BLOCK_M) >= 2) else 1
+    # One quantization group covers the whole K-block only when the block
+    # grid aligns with the group grid (qGroupSize multiple of BLOCK_K).
+    SINGLE_GROUP = SPLIT_DOTS and qGroupSize >= BLOCK_K and qGroupSize % BLOCK_K == 0
+    return (
+        BLOCK_M,
+        BLOCK_N,
+        BLOCK_K,
+        SPLIT_DOTS,
+        WIDE_A,
+        SINGLE_GROUP,
+        GROUP_M,
+        num_warps,
+        num_stages,
+    )
+
+
+def weight_int4pack_mm(
+    A: torch.Tensor,
+    mat2: torch.Tensor,
+    qGroupSize: int,
+    qScaleAndZeros: torch.Tensor,
+) -> torch.Tensor:
+    """Int4 packed weight matrix multiplication.
+
+    Args:
+        A:              Activation tensor of shape (M, K), floating point dtype.
+        mat2:           Int4 packed weight tensor of shape (N, K//2), dtype uint8.
+                        Byte-pair packing: low nibble = even column, high nibble = odd.
+        qGroupSize:     Group size along K dimension. Must evenly divide K.
+        qScaleAndZeros: Scale and zero points of shape (K//qGroupSize, N, 2),
+                        dtype same as A. Last dim: [scale, zero].
+
+    Returns:
+        Output tensor of shape (M, N), dtype same as A.
+    """
+    logger.debug("GEMS_ENFLAME_GCU400 _WEIGHT_INT4PACK_MM")
+
+    M, K = A.shape
+    N = mat2.shape[0]
+    K_half = mat2.shape[1]
+    assert K == K_half * 2, (
+        f"mat2 shape[1] ({K_half}) must equal K//2 where K={K} (from A), "
+        f"got K_half * 2 = {K_half * 2} != K={K}"
+    )
+    assert (
+        K % qGroupSize == 0
+    ), f"K ({K}) must be divisible by qGroupSize ({qGroupSize})"
+    assert qGroupSize % 2 == 0, f"qGroupSize ({qGroupSize}) must be even"
+    assert mat2.dtype == torch.uint8, f"mat2 must be uint8, got {mat2.dtype}"
+    assert A.dtype.is_floating_point, f"A must be a floating point type, got {A.dtype}"
+    G = K // qGroupSize
+    assert qScaleAndZeros.shape == (
+        G,
+        N,
+        2,
+    ), f"qScaleAndZeros shape {qScaleAndZeros.shape} != expected ({G}, {N}, 2)"
+
+    A = A.contiguous()
+    mat2 = mat2.contiguous()
+    qScaleAndZeros = qScaleAndZeros.contiguous()
+
+    out = torch.empty((M, N), dtype=A.dtype, device=A.device)
+
+    (
+        BLOCK_M,
+        BLOCK_N,
+        BLOCK_K,
+        SPLIT_DOTS,
+        WIDE_A,
+        SINGLE_GROUP,
+        GROUP_M,
+        num_warps,
+        num_stages,
+    ) = _pick_config(M, N, K, qGroupSize)
+    EVEN_K = K % BLOCK_K == 0
+    EVEN_M = M % BLOCK_M == 0
+    EVEN_N = N % BLOCK_N == 0
+    grid = lambda META: (triton.cdiv(M, BLOCK_M) * triton.cdiv(N, BLOCK_N),)
+
+    with torch_device_fn.device(A.device):
+        weight_int4pack_mm_kernel[grid](
+            A,
+            mat2,
+            qScaleAndZeros,
+            out,
+            M,
+            N,
+            K,
+            K_half,
+            qGroupSize,
+            A.stride(0),
+            A.stride(1),
+            mat2.stride(0),
+            mat2.stride(1),
+            qScaleAndZeros.stride(0),
+            qScaleAndZeros.stride(1),
+            qScaleAndZeros.stride(2),
+            out.stride(0),
+            out.stride(1),
+            BLOCK_M=BLOCK_M,
+            BLOCK_N=BLOCK_N,
+            BLOCK_K=BLOCK_K,
+            SPLIT_DOTS=SPLIT_DOTS,
+            EVEN_K=EVEN_K,
+            WIDE_A=WIDE_A,
+            SINGLE_GROUP=SINGLE_GROUP,
+            EVEN_M=EVEN_M,
+            EVEN_N=EVEN_N,
+            GROUP_M=GROUP_M,
+            num_warps=num_warps,
+            num_stages=num_stages,
+        )
+
+    return out
+
+
+# ---------------------------------------------------------------------------
+# ATen-path baseline (semantic reference, kept verbatim). The kernel below is
+# the verbatim generic public kernel structure with the true ATen dequant
+# (w = scale * (q - 8) + zero_add), matching aten::_weight_int4pack_mm_for_cpu
+# up to dot rounding. Do NOT fold the optimizations of the FlagGems kernel
+# above into this copy: it is the semantic reference for the ATen contract.
+# ---------------------------------------------------------------------------
+
+
+@libentry()
+@triton.jit
+def weight_int4pack_mm_aten_kernel(
     A_ptr,
     B_ptr,
     SZ_ptr,
@@ -80,13 +556,11 @@ def weight_int4pack_mm_kernel(
     BLOCK_K2: tl.constexpr,
     GROUP_M: tl.constexpr,
 ):
-    """Fused int4 dequantize + GEMM.
+    """ATen-contract fused int4 dequantize + GEMM.
 
-    Computes C = A @ dequant(W).T where W (N, K) is unpacked and dequantized
-    on the fly from the packed uint8 tensor B (N, K//2). The contraction over
-    K is performed in packed steps of BLOCK_K2 columns; each step handles the
-    even columns (low nibble) and odd columns (high nibble) as two tl.dot
-    accumulations, avoiding any explicit interleaving.
+    C = A @ dequant(W).T with W unpacked from the byte-pair uint8 tensor B
+    (N, K//2), dequantizing each nibble q as scale * (q - 8) + zero_add,
+    where (scale, zero_add) = qScaleAndZeros[g, n].
     """
     pid = tl.program_id(0)
     num_pid_m = tl.cdiv(M, BLOCK_M)
@@ -133,8 +607,8 @@ def weight_int4pack_mm_kernel(
         low = (b_packed & 0xF).to(tl.float32)  # even columns
         high = ((b_packed >> 4) & 0xF).to(tl.float32)  # odd columns
 
-        # Group index for scale/zero. qGroupSize is even, so the even/odd pair
-        # shares a group -> a single load serves both nibbles.
+        # Group index for scale/zero_add. qGroupSize is even, so the
+        # even/odd pair shares a group -> a single load serves both nibbles.
         g = even_k // qGroupSize  # (BLOCK_K2,)
         sz_scale_ptrs = (
             SZ_ptr + g[:, None] * stride_sz_g + offs_n[None, :] * stride_sz_n
@@ -142,11 +616,11 @@ def weight_int4pack_mm_kernel(
         sz_zero_ptrs = sz_scale_ptrs + stride_sz_c
         sz_mask = k2_mask[:, None] & n_mask[None, :]
         scale = tl.load(sz_scale_ptrs, mask=sz_mask, other=0.0).to(tl.float32)
-        zero = tl.load(sz_zero_ptrs, mask=sz_mask, other=0.0).to(tl.float32)
+        zero_add = tl.load(sz_zero_ptrs, mask=sz_mask, other=0.0).to(tl.float32)
 
-        # Dequantize: (BLOCK_K2, BLOCK_N).
-        w_even = (low - zero) * scale
-        w_odd = (high - zero) * scale
+        # ATen dequantize: w = scale * (q - 8) + zero_add. (BLOCK_K2, BLOCK_N).
+        w_even = scale * (low - 8.0) + zero_add
+        w_odd = scale * (high - 8.0) + zero_add
 
         acc += tl.dot(
             a_even.to(tl.float32), w_even, out_dtype=tl.float32, allow_tf32=True
@@ -161,49 +635,59 @@ def weight_int4pack_mm_kernel(
     tl.store(c_ptrs, acc, mask=c_mask)
 
 
-def weight_int4pack_mm(
-    A: torch.Tensor,
+def _weight_int4pack_mm_aten(
+    mat: torch.Tensor,
     mat2: torch.Tensor,
     qGroupSize: int,
     qScaleAndZeros: torch.Tensor,
 ) -> torch.Tensor:
-    """Int4 packed weight matrix multiplication.
+    """ATen `aten::_weight_int4pack_mm` contract on GCU.
 
     Args:
-        A:              Activation tensor of shape (M, K), floating point dtype.
-        mat2:           Int4 packed weight tensor of shape (N, K//2), dtype uint8.
-                        Byte-pair packing: low nibble = even column, high nibble = odd column.
+        mat:            Activation tensor of shape (M, K), floating point.
+        mat2:           Byte-pair packed int4 weights of shape (N, K//2),
+                        dtype uint8 (the ATen CPU byte-pair order produced by
+                        `aten::_convert_weight_to_int4pack` on GCU):
+                        low nibble = even column, high nibble = odd column.
         qGroupSize:     Group size along K dimension. Must evenly divide K.
-        qScaleAndZeros: Scale and zero points of shape (K//qGroupSize, N, 2),
-                        dtype same as A. Last dim: [scale, zero].
+        qScaleAndZeros: (K//qGroupSize, N, 2), dtype same as mat.
+                        Last dim: [scale, zero_add]; ATen dequantizes each
+                        nibble q as scale * (q - 8) + zero_add.
 
     Returns:
-        Output tensor of shape (M, N), dtype same as A.
+        Output tensor of shape (M, N), dtype same as mat.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _WEIGHT_INT4PACK_MM")
+    logger.debug("GEMS_ENFLAME_GCU400 ATEN _WEIGHT_INT4PACK_MM")
 
-    M, K = A.shape
+    M, K = mat.shape
     N = mat2.shape[0]
     K_half = mat2.shape[1]
     assert K == K_half * 2, (
-        f"mat2 shape[1] ({K_half}) must equal K//2 where K={K} (from A), "
+        f"mat2 shape[1] ({K_half}) must equal K//2 where K={K} (from mat), "
         f"got K_half * 2 = {K_half * 2} != K={K}"
     )
     assert (
         K % qGroupSize == 0
     ), f"K ({K}) must be divisible by qGroupSize ({qGroupSize})"
-    assert qGroupSize % 2 == 0, f"qGroupSize ({qGroupSize}) must be even"
     assert mat2.dtype == torch.uint8, f"mat2 must be uint8, got {mat2.dtype}"
-    assert A.dtype.is_floating_point, f"A must be a floating point type, got {A.dtype}"
+    assert (
+        mat.dtype.is_floating_point
+    ), f"mat must be a floating point type, got {mat.dtype}"
+    G = K // qGroupSize
+    assert qScaleAndZeros.shape == (
+        G,
+        N,
+        2,
+    ), f"qScaleAndZeros shape {qScaleAndZeros.shape} != expected ({G}, {N}, 2)"
 
-    A = A.contiguous()
+    mat = mat.contiguous()
     mat2 = mat2.contiguous()
     qScaleAndZeros = qScaleAndZeros.contiguous()
 
-    out = torch.empty((M, N), dtype=A.dtype, device=A.device)
+    out = torch.empty((M, N), dtype=mat.dtype, device=mat.device)
 
-    # BLOCK sizes chosen for the small-to-medium GEMM shapes this op targets
-    # (M<=512, N<=1024, K<=2048); BLOCK_K2 steps over packed (K//2) columns.
+    # Verbatim generic launch configuration (BLOCK 64/64/32, GROUP_M 8,
+    # default num_warps): this copy is the baseline-quality reference.
     BLOCK_M = 64
     BLOCK_N = 64
     BLOCK_K2 = 32
@@ -213,9 +697,9 @@ def weight_int4pack_mm(
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
     )
 
-    with torch_device_fn.device(A.device):
-        weight_int4pack_mm_kernel[grid](
-            A,
+    with torch_device_fn.device(mat.device):
+        weight_int4pack_mm_aten_kernel[grid](
+            mat,
             mat2,
             qScaleAndZeros,
             out,
@@ -223,8 +707,8 @@ def weight_int4pack_mm(
             N,
             K,
             qGroupSize,
-            A.stride(0),
-            A.stride(1),
+            mat.stride(0),
+            mat.stride(1),
             mat2.stride(0),
             mat2.stride(1),
             qScaleAndZeros.stride(0),

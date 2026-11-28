@@ -24,13 +24,18 @@ kernels instead (probe-validated tiers, do_bench w1000/r100 median):
   codepoint scan (NaN payload family, sNaN/qNaN, +/-inf, +/-0, subnormals,
   ULP-below-powers-of-two) for all three dtypes;
 * tiers (fp16/bf16): n<8192 single CTA BLOCK=next_pow2(n) nw2;  n<2^19
-  flat B16384 nw4;  n<2^23 flat B32768 nw2;  else flat B131072 nw2
-  (2^24 94.6-100us vs torch 159.6; 2^29 2672-2675us vs torch 4770 = 1.78x,
-  and 4.43x vs the 12-CTA baseline);
+  flat B16384 nw4;  n<2^23 flat B32768 nw2;  n<2^27 flat B65536 nw2;  else
+  strided B131072 nw2 grid=48
+  (2^24 98.9us vs torch 159.6; 2^29 2636us vs torch 4770 = 1.81x;
+  Triton GCU 4.1.6 retest 2026-11-18: strided B131072 nw2 overtakes the
+  flat launch at >=2^27 (2636 vs 2676us) while 2^26 still prefers flat
+  (351 vs 354us), and mid 2^24 prefers flat B65536 (98.9 vs 99.8us));
 * tiers (fp32): n<8192 single CTA BLOCK=next_pow2(n) nw2;  n<2^19 flat
-  B16384 nw2;  n<2^22 flat B32768 nw2;  else strided B65536 grid=48 nw4
-  (2^24 86.3-92.9us vs torch 145.8; 2^29 2454-2609us vs torch 4306 =
-  1.65-1.75x, 2.6-2.9TB/s at the streaming floor);
+  B16384 nw2;  n<2^22 flat B32768 nw2;  else strided B32768 nw2 grid=48
+  (2^24 85.4us vs torch 145.4; 2^29 2436us vs torch 4306 = 1.77x,
+  2.64TB/s at the 3-stream roof - the 4.1.6 toolchain shifted the
+  strided optimum from B65536/nw4 (92.5/2651us) to B32768/nw2,
+  -7.8/-8.1%, 3x resampled stable);
 * n % BLOCK == 0 takes an unmasked EVEN fast path; non-eligible forms
   (non-contiguous / other device / n >= 2^31 / non-fp16-bf16-fp32) fall
   back to the generic pointwise_dynamic wrapper, zero behaviour change;
@@ -57,6 +62,7 @@ _FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _SMALL_N = 8192
 _F16_TIER1 = 1 << 19
 _F16_TIER2 = 1 << 23
+_F16_TIER3 = 1 << 27
 _F32_TIER1 = 1 << 19
 _F32_TIER2 = 1 << 22
 _NPROGS = 48
@@ -160,7 +166,7 @@ def frexp(A):
             elif n < _F32_TIER2:
                 block, nw, strided = 32768, 2, False
             else:
-                block, nw, strided = 65536, 4, True
+                block, nw, strided = 32768, 2, True
         else:
             if n < _SMALL_N:
                 block, nw, strided = max(16, triton.next_power_of_2(n)), 2, False
@@ -168,8 +174,10 @@ def frexp(A):
                 block, nw, strided = 16384, 4, False
             elif n < _F16_TIER2:
                 block, nw, strided = 32768, 2, False
+            elif n < _F16_TIER3:
+                block, nw, strided = 65536, 2, False
             else:
-                block, nw, strided = 131072, 2, False
+                block, nw, strided = 131072, 2, True
         if strided:
             _launch_with_retry(
                 lambda: _frexp_strided_kernel[(_NPROGS,)](

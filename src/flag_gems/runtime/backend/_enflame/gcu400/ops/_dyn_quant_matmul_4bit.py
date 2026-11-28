@@ -40,6 +40,17 @@ def _quantize_rows(
     SK: tl.constexpr,  # Input feature stride, in elements.
     B: tl.constexpr,  # Features processed per quantization tile.
 ):
+    # GCU400: a scalar (1,)-shaped tl.fma lowers to the non-PIC extern
+    # tops_fma_fp32, whose ICALL relocation is rejected by ld.lld (P03). The
+    # per-row correction chain therefore runs on a lane-carrying (R,) vessel:
+    # staged min/max reductions keep lanes provably equal only at runtime, so
+    # the chain stays vectorized (tops_fma_v2_fp32 links fine) while every lane
+    # computes the identical corrected quotient. Staging is exact because
+    # min/max are associative, and lane extraction via a second exact
+    # reduction preserves the scalar results bit-for-bit.
+    C: tl.constexpr = 32
+    R: tl.constexpr = 256
+    S: tl.constexpr = B // C
     cols = tl.arange(0, B)
     for row in range(tl.program_id(0), M, tl.num_programs(0)):
         row64 = row.to(tl.int64)
@@ -50,12 +61,25 @@ def _quantize_rows(
             x = tl.load(X + row64 * SM + k.to(tl.int64) * SK, k < K, 0).to(tl.float32)
             lo = tl.minimum(lo, x)
             hi = tl.maximum(hi, x)
-        rmin = tl.min(lo, 0)[None]
-        rmax = tl.max(hi, 0)[None]
-        multiplier = tl.where(
-            rmin == rmax, 1.0, _quantization_divide(255.0, rmax - rmin)
+        part_lo = tl.min(tl.reshape(lo, (S, C)), 0)
+        part_hi = tl.max(tl.reshape(hi, (S, C)), 0)
+        rmin_v = tl.min(tl.broadcast_to(part_lo[None], (R, C)), 1)
+        rmax_v = tl.max(tl.broadcast_to(part_hi[None], (R, C)), 1)
+        mult_v = tl.where(
+            rmin_v == rmax_v,
+            1.0,
+            _quantization_divide(tl.full((R,), 255.0, tl.float32), rmax_v - rmin_v),
         )
-        scale = tl.where(multiplier != 0.0, _quantization_divide(1.0, multiplier), 0.0)
+        multiplier = tl.min(mult_v, 0)[None]
+        scale_v = tl.where(
+            mult_v != 0.0,
+            _quantization_divide(tl.full((R,), 1.0, tl.float32), mult_v),
+            0.0,
+        )
+        scale = tl.min(scale_v, 0)[None]
+        rmin = tl.min(part_lo, 0)[None]
+        rmax = tl.max(part_hi, 0)[None]
+
         scaled_min = rmin * multiplier
         scaled_max = rmax * multiplier
         zp = tl.where(
@@ -97,46 +121,80 @@ def _w4a8_matmul(
     BM: tl.constexpr,  # Output rows per matrix tile.
     BN: tl.constexpr,  # Output columns per matrix tile.
     BK: tl.constexpr,  # Reduction features per dot tile.
+    JOIN: tl.constexpr,  # Unpack each packed byte once via join+permute.
 ):
+    # GCU400 adaptations (P03/P09 family):
+    # 1. The generic nested group/chunk loops miscompile once BOTH loops run at
+    #    least twice (2D loop-carried accumulators silently corrupt; P09), and a
+    #    dedicated single-group branch PassManager-crashes for BM=32 tiles. The
+    #    flattened (group, chunk) loop with exact where-based end-of-group
+    #    apply/reset compiles and stays bit-exact for every configuration.
+    # 2. GCU contracts fp32 mul+add into fma even under enable_fp_fusion=False,
+    #    which skips the CPU-reference's product rounding. Every product that
+    #    the reference rounds before adding is materialized with tl.fma(x, y,
+    #    0.0) (a single-rounding multiply LLVM cannot re-contract), restoring
+    #    the reference's double rounding bit-for-bit.
+    # 3. JOIN loads each packed byte once (halving weight-segment traffic for
+    #    wide tiles) and rewrites the nibble pair as adjacent k rows via
+    #    join+permute+reshape; values are identical to the k-indexed unpack.
     tiles_n = tl.cdiv(N, BN)
     groups: tl.constexpr = K // GROUP
     weight_count: tl.constexpr = N * (K // 2)
+    ks = tl.arange(0, BK)
+    hks = tl.arange(0, BK // 2)
+    CHUNKS: tl.constexpr = (GROUP + BK - 1) // BK
     for tile in range(tl.program_id(0), tl.cdiv(M, BM) * tiles_n, tl.num_programs(0)):
         rows = (tile // tiles_n * BM + tl.arange(0, BM)).to(tl.int64)
         ns = (tile % tiles_n * BN + tl.arange(0, BN)).to(tl.int64)
-        ks = tl.arange(0, BK)
         offset = tl.load(Offset + rows, rows < M, 0)
         total = tl.zeros((BM, BN), tl.float32)
-        for group in range(groups):
-            acc = tl.zeros((BM, BN), tl.int32)
-            for chunk in range(tl.cdiv(GROUP, BK)):
-                local_k = chunk * BK + ks
-                k = group * GROUP + local_k
-                valid_k = local_k < GROUP
-                q = tl.load(
-                    Q + rows[:, None] * K + k[None, :],
-                    (rows[:, None] < M) & valid_k[None, :],
+        acc = tl.zeros((BM, BN), tl.int32)
+        for t in range(groups * CHUNKS):
+            group = t // CHUNKS
+            chunk = t % CHUNKS
+            local_k = chunk * BK + ks
+            k = group * GROUP + local_k
+            valid_k = local_k < GROUP
+            q = tl.load(
+                Q + rows[:, None] * K + k[None, :],
+                (rows[:, None] < M) & valid_k[None, :],
+                0,
+            ).to(tl.int32)
+            centered = tl.where(valid_k[None, :], q + offset[:, None], 0)
+            if JOIN:
+                local_hk = chunk * (BK // 2) + hks
+                hk = group * ((GROUP + 1) // 2) + local_hk
+                valid_hk = local_hk < ((GROUP + 1) // 2)
+                packed = tl.load(
+                    Packed + ns[None, :] * (K // 2) + hk[:, None],
+                    (ns[None, :] < N) & valid_hk[:, None],
                     0,
                 ).to(tl.int32)
-                centered = tl.where(valid_k[None, :], q + offset[:, None], 0)
+                w = tl.permute(
+                    tl.join((packed & 15) - 8, (packed >> 4) - 8), (0, 2, 1)
+                ).reshape(BK, BN)
+            else:
                 packed = tl.load(
                     Packed + ns[None, :] * (K // 2) + (k[:, None] // 2),
                     (ns[None, :] < N) & valid_k[:, None],
                     0,
                 ).to(tl.int32)
                 w = ((packed >> ((k[:, None] % 2) * 4)) & 15) - 8
-                w = tl.where(valid_k[:, None], w, 0)
-                # These integers are exactly representable in BF16. Each short dot
-                # is exact in FP32; accumulate chunks in INT32, including long K.
-                partial = tl.dot(centered.to(tl.bfloat16), w.to(tl.bfloat16))
-                acc += partial.to(tl.int32)
+            w = tl.where(valid_k[:, None], w, 0)
+            # These integers are exactly representable in BF16. Each short dot
+            # is exact in FP32; accumulate chunks in INT32, including long K.
+            partial = tl.dot(centered.to(tl.bfloat16), w.to(tl.bfloat16))
+            acc += partial.to(tl.int32)
+            last = chunk == CHUNKS - 1
             ws = tl.load(Packed + weight_count + ns * groups + group, ns < N, 0)
-            total += acc.to(tl.float32) * ws[None, :]
+            sel = tl.where(last, acc.to(tl.float32), 0.0)
+            total = total + tl.fma(sel, ws[None, :], 0.0)
+            acc = tl.where(last, 0, acc)
         scale = tl.load(Scale + rows, rows < M, 0)
-        total = total * scale[:, None]
+        total = tl.fma(total, scale[:, None], 0.0)
         if HAS_BIAS:
             bias = tl.load(Packed + weight_count + N * groups + ns, ns < N, 0)
-            total += bias[None, :]
+            total = total + bias[None, :]
         tl.store(
             Y + rows[:, None] * N + ns[None, :],
             total,
@@ -153,7 +211,7 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
     buffers are incompatible and must be repacked on the target device.
     """
     if not torch.compiler.is_compiling():
-        logger.debug("GEMS_ENFLAME_GCU400 _DYN_QUANT_MATMUL_4BIT")
+        logger.debug("GEMS_ENFLAME _DYN_QUANT_MATMUL_4BIT")
     if inp.ndim != 2:
         raise RuntimeError("inp must be two-dimensional")
     if inp.dtype not in (torch.float32, torch.bfloat16):
@@ -197,7 +255,24 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
     offset = torch.empty((m,), dtype=torch.int32, device=inp.device)
     # Bounded vector tiles also support rows larger than a single program's limits.
     quant_block = max(32, min(triton.next_power_of_2(in_features), 1024))
-    bm, bn, bk = 16, 32, 32
+    # GCU400 tile ladder, measured on the core shapes (bit-exact in each mode):
+    # channelwise wants tall-narrow tiles at small N and a wide joined unpack
+    # at large N; groupwise (GROUP always a multiple of 32) fits BK exactly.
+    bm = 32
+    if block_size == in_features:
+        if out_features > 2048:
+            bn, bk, join = 128, 128, True
+        else:
+            bn, bk, join = 32, 64, False
+    else:
+        if out_features > 2048:
+            bn = 128
+            bk = 32 if block_size == 32 else 64
+            join = True
+        else:
+            bn = 32
+            bk = 32 if block_size == 32 else 64
+            join = False
     device_context = (
         nullcontext()
         if torch.compiler.is_compiling()
@@ -230,6 +305,7 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
             bm,
             bn,
             bk,
+            join,
             enable_fp_fusion=False,
         )
     return output

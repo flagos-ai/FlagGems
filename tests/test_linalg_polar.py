@@ -166,6 +166,8 @@ def test_linalg_polar_rank_deficient():
     ],
 )
 def test_linalg_polar_invalid_input(shape, dtype):
+    if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     if IS_KUNLUNXIN and dtype == torch.float64:
         # XPU silently downgrades float64 to float32 before the override runs,
         # so the dtype guard in _validate_input can never fire for fp64 inputs;

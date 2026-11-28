@@ -17,8 +17,35 @@ else:
     if flag_gems.runtime.device.support_fp64:
         DTYPES.append(torch.float64)
 
-torch.backends.cudnn.allow_tf32 = False
-torch.backends.cuda.matmul.allow_tf32 = False
+IS_ENFLAME = flag_gems.vendor_name == "enflame"
+
+if IS_ENFLAME:
+
+    @pytest.fixture(autouse=True)
+    def _disable_tf32():
+        """Run this module with TF32 off, without leaking the switch globally.
+
+        Setting these at import time also affected every other test module of
+        the session; combined with the fp32_precision /
+        set_float32_matmul_precision pins used by sibling modules, torch then
+        reports that the legacy and new matmul-precision APIs were mixed and
+        refuses the precision query that aten references need. Scoped to this
+        module and restored afterwards. Only used on enflame; other vendors
+        keep the original import-time switch.
+        """
+        saved_cudnn = torch.backends.cudnn.allow_tf32
+        saved_matmul = torch.backends.cuda.matmul.allow_tf32
+        torch.backends.cudnn.allow_tf32 = False
+        torch.backends.cuda.matmul.allow_tf32 = False
+        try:
+            yield
+        finally:
+            torch.backends.cudnn.allow_tf32 = saved_cudnn
+            torch.backends.cuda.matmul.allow_tf32 = saved_matmul
+
+else:
+    torch.backends.cudnn.allow_tf32 = False
+    torch.backends.cuda.matmul.allow_tf32 = False
 
 _GRU_INPUT_SHAPES = [
     (6, 7, 10, 6, 2),
