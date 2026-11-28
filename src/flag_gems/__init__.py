@@ -2217,7 +2217,12 @@ _FULL_CONFIG = (
     ("remainder_.Tensor", remainder_),
     ("renorm", renorm),
     ("renorm_", renorm_),
-    ("repeat", repeat),
+    (
+        "repeat",
+        repeat,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("repeat_interleave.self_int", repeat_interleave_self_int),
     ("repeat_interleave.self_Tensor", repeat_interleave_self_tensor),
     ("repeat_interleave.Tensor", repeat_interleave_tensor),

@@ -1443,7 +1443,7 @@ from flag_gems.ops.relu6_ import relu6_
 from flag_gems.ops.remainder import remainder, remainder_
 from flag_gems.ops.renorm import renorm
 from flag_gems.ops.renorm_ import renorm_
-from flag_gems.ops.repeat import repeat
+from flag_gems.ops.repeat import repeat, repeat_backward
 from flag_gems.ops.repeat_interleave import (
     repeat_interleave_self_int,
     repeat_interleave_self_tensor,
@@ -3224,6 +3224,7 @@ __all__ = [
     "renorm",
     "renorm_",
     "repeat",
+    "repeat_backward",
     "repeat_interleave_self_int",
     "repeat_interleave_self_tensor",
     "repeat_interleave_tensor",
