@@ -2855,6 +2855,7 @@ __all__ = [
     "all_registered_ops",
     "enable",
     "flagtune",
+    "linalg_det_backward",
     "linalg_eigh_backward",
     "linalg_svd_backward",
     "maximum_backward",
