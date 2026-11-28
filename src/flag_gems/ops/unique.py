@@ -56,7 +56,8 @@ def simple_unique_flat_kernel(
     tl.store(unique_size_ptr + tl.zeros_like(i0), cumsum, mask=unique_size_mask)
 
     # data_out: scatter_(to=cumsum, sorted_data)
-    tl.store(data_out_ptr + cumsum, a, mask=mask)
+    first_mask = ((i0 == 0) | ne_result.to(tl.int1)) & mask
+    tl.store(data_out_ptr + cumsum, a, mask=first_mask)
 
     # inverse_indices: scatter_(to=sorted_indices, cumsum)
     if return_inverse:
@@ -65,8 +66,7 @@ def simple_unique_flat_kernel(
 
     # idx
     if return_counts:
-        idx_mask = ((i0 == 0) | ne_result.to(tl.int1)) & mask
-        tl.store(idx_ptr + cumsum, i0, mask=idx_mask)
+        tl.store(idx_ptr + cumsum, i0, mask=first_mask)
 
 
 @triton.jit
@@ -576,15 +576,15 @@ def global_cumsum_flat_impl(
     cumsum += total
 
     # data_out: scatter_(to=cumsum, sorted_data)
-    tl.store(data_out_ptr + cumsum, sorted_data, mask=mask)
+    first_mask = ((i0 == 0) | ne_result_i1) & mask
+    tl.store(data_out_ptr + cumsum, sorted_data, mask=first_mask)
 
     # inverse_indices: scatter_(to=sorted_indices, cumsum)
     tl.store(inverse_indices_ptr + sorted_indices, cumsum, mask=mask)
 
     # idx
     if return_counts:
-        idx_mask = ((i0 == 0) | ne_result_i1) & mask
-        tl.store(idx_ptr + cumsum, i0, mask=idx_mask)
+        tl.store(idx_ptr + cumsum, i0, mask=first_mask)
 
     return total
 
