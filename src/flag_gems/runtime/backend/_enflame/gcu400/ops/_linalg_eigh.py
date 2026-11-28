@@ -23,7 +23,7 @@ def _linalg_eigh(inp, UPLO="L", compute_v=True):
     Thin dispatch to ``linalg_eigh`` that honours ``compute_v``: when False,
     only eigenvalues are computed and the eigenvectors tensor is empty.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _LINALG_EIGH")
+    logger.debug("GEMS_ENFLAME _LINALG_EIGH")
 
     # Lazy relative import: resolves to THIS backend's specialised
     # linalg_eigh (gcu400.ops.linalg_eigh). The generic

@@ -38,5 +38,5 @@ def special_entr_func(x):
 
 
 def special_entr(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_ENTR")
+    logger.debug("GEMS_ENFLAME SPECIAL_ENTR")
     return special_entr_func(A)

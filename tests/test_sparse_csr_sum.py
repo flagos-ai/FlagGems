@@ -57,6 +57,15 @@ def _assert_csr_close(res_out, ref_out, dtype):
 
 DIMS = [[0], [1], [0, 1], []]
 
+# A fully reduced descriptor built from a CSR tensor with no stored entries has
+# a 0-d value buffer that ATen allocates but never writes, so the reference
+# holds allocator garbage (observed 1.4e+29 and 8.7e-13 for the same input) and
+# there is nothing meaningful to compare against.
+_SKIP_EMPTY_FULL_REDUCE = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten leaves the 0-d value buffer of an empty full reduction unwritten",
+)
+
 
 @pytest.mark.sparse_csr_sum
 @pytest.mark.parametrize("dim", DIMS)
@@ -105,7 +114,15 @@ def test_sparse_csr_sum_explicit_zeros(dim):
 
 
 @pytest.mark.sparse_csr_sum
-@pytest.mark.parametrize("dim", DIMS)
+@pytest.mark.parametrize(
+    "dim",
+    [
+        [0],
+        [1],
+        pytest.param([0, 1], marks=_SKIP_EMPTY_FULL_REDUCE),
+        pytest.param([], marks=_SKIP_EMPTY_FULL_REDUCE),
+    ],
+)
 def test_sparse_csr_sum_empty_input(dim):
     """A CSR tensor with no stored entries reduces to an empty descriptor."""
     crow = torch.tensor([0, 0, 0], device=flag_gems.device)
@@ -150,6 +167,14 @@ def test_sparse_csr_sum_unsorted_columns():
 
 @pytest.mark.sparse_csr_sum
 @pytest.mark.parametrize("dim", [[0], [1]])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend has no kernel for "
+        "aten::_sparse_csr_sum.dim_dtype, which is required to pre-allocate "
+        "the out descriptor"
+    ),
+)
 def test_sparse_csr_sum_out(dim):
     """The out form rewrites the caller's tensor and returns that same object."""
     ref_sp = _make_csr((16, 16), torch.float32, device="cpu")

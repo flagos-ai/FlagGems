@@ -60,6 +60,37 @@ def _round(value, ROUND_DTYPE: tl.constexpr, ACC_DTYPE: tl.constexpr):
         return value.to(ROUND_DTYPE).to(ACC_DTYPE)
 
 
+@triton.jit
+def _gate_dots(acc_i, acc_f, acc_g, acc_o, a, wi, wf, wg, wo, ACC_DTYPE: tl.constexpr):
+    """Add the four gate contractions of one k tile onto the accumulators."""
+    acc_i = tl.dot(a, wi, acc_i, input_precision="ieee", out_dtype=ACC_DTYPE)
+    acc_f = tl.dot(a, wf, acc_f, input_precision="ieee", out_dtype=ACC_DTYPE)
+    acc_g = tl.dot(a, wg, acc_g, input_precision="ieee", out_dtype=ACC_DTYPE)
+    acc_o = tl.dot(a, wo, acc_o, input_precision="ieee", out_dtype=ACC_DTYPE)
+    return acc_i, acc_f, acc_g, acc_o
+
+
+@triton.jit
+def _zero_k_columns(tile, k_mask):
+    """Zero the rejected k columns of an activation tile.
+
+    ``tl.load(..., mask=..., other=0.0)`` does not reliably zero the lanes its
+    mask rejects on this backend: a rejected lane keeps whatever the address
+    arithmetic touched (past the end of the tensor, or memory left behind by an
+    earlier allocation). On the k axis such junk is multiplied by a weight and
+    summed into the *valid* output elements of the tile, which is how a f16
+    ``(3, 129, 65)`` cell intermittently produced NaN in its last hidden column.
+    An explicit select in registers removes the dependency on ``other``.
+    """
+    return tl.where(k_mask[None, :], tile, tl.zeros_like(tile))
+
+
+@triton.jit
+def _zero_k_rows(tile, k_mask):
+    """Zero the rejected k rows of a weight tile, see ``_zero_k_columns``."""
+    return tl.where(k_mask[:, None], tile, tl.zeros_like(tile))
+
+
 @libentry()
 @triton.jit
 def _lstm_cell_kernel(
@@ -113,24 +144,63 @@ def _lstm_cell_kernel(
     acc_o = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
 
     # ---- linear(input, w_ih, b_ih) ---------------------------------------
-    for k0 in range(0, I, BLOCK_K):
+    # A whole k tile has every k lane valid, so its junk can only land on the
+    # output rows or columns that the store masks off and the fast masked load
+    # is kept; only the remainder is forced to an exact zero on the k axis.
+    k_full_end = (I // BLOCK_K) * BLOCK_K
+    for k0 in range(0, k_full_end, BLOCK_K):
         offs_k = k0 + tl.arange(0, BLOCK_K)
+        w_off = offs_k[:, None] * s_wi_k
+        x = tl.load(
+            x_ptr + offs_b[:, None] * s_xb + offs_k[None, :] * s_xk,
+            mask=b_mask[:, None],
+            other=0.0,
+        )
+        wi = tl.load(
+            w_ih_ptr + row_i[None, :] * s_wi_n + w_off, mask=n_mask[None, :], other=0.0
+        )
+        wf = tl.load(
+            w_ih_ptr + row_f[None, :] * s_wi_n + w_off, mask=n_mask[None, :], other=0.0
+        )
+        wg = tl.load(
+            w_ih_ptr + row_g[None, :] * s_wi_n + w_off, mask=n_mask[None, :], other=0.0
+        )
+        wo = tl.load(
+            w_ih_ptr + row_o[None, :] * s_wi_n + w_off, mask=n_mask[None, :], other=0.0
+        )
+        acc_i, acc_f, acc_g, acc_o = _gate_dots(
+            acc_i, acc_f, acc_g, acc_o, x, wi, wf, wg, wo, ACC_DTYPE
+        )
+    if k_full_end < I:
+        offs_k = k_full_end + tl.arange(0, BLOCK_K)
         k_mask = offs_k < I
+        w_off = offs_k[:, None] * s_wi_k
+        w_mask = k_mask[:, None] & n_mask[None, :]
         x = tl.load(
             x_ptr + offs_b[:, None] * s_xb + offs_k[None, :] * s_xk,
             mask=b_mask[:, None] & k_mask[None, :],
             other=0.0,
         )
-        w_off = offs_k[:, None] * s_wi_k
-        w_mask = k_mask[:, None] & n_mask[None, :]
-        wi = tl.load(w_ih_ptr + row_i[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0)
-        wf = tl.load(w_ih_ptr + row_f[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0)
-        wg = tl.load(w_ih_ptr + row_g[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0)
-        wo = tl.load(w_ih_ptr + row_o[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0)
-        acc_i = tl.dot(x, wi, acc_i, input_precision="ieee", out_dtype=ACC_DTYPE)
-        acc_f = tl.dot(x, wf, acc_f, input_precision="ieee", out_dtype=ACC_DTYPE)
-        acc_g = tl.dot(x, wg, acc_g, input_precision="ieee", out_dtype=ACC_DTYPE)
-        acc_o = tl.dot(x, wo, acc_o, input_precision="ieee", out_dtype=ACC_DTYPE)
+        x = _zero_k_columns(x, k_mask)
+        wi = _zero_k_rows(
+            tl.load(w_ih_ptr + row_i[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0),
+            k_mask,
+        )
+        wf = _zero_k_rows(
+            tl.load(w_ih_ptr + row_f[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0),
+            k_mask,
+        )
+        wg = _zero_k_rows(
+            tl.load(w_ih_ptr + row_g[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0),
+            k_mask,
+        )
+        wo = _zero_k_rows(
+            tl.load(w_ih_ptr + row_o[None, :] * s_wi_n + w_off, mask=w_mask, other=0.0),
+            k_mask,
+        )
+        acc_i, acc_f, acc_g, acc_o = _gate_dots(
+            acc_i, acc_f, acc_g, acc_o, x, wi, wf, wg, wo, ACC_DTYPE
+        )
     gate_i = _round(acc_i, ROUND_DTYPE, ACC_DTYPE)
     gate_f = _round(acc_f, ROUND_DTYPE, ACC_DTYPE)
     gate_g = _round(acc_g, ROUND_DTYPE, ACC_DTYPE)
@@ -141,24 +211,60 @@ def _lstm_cell_kernel(
     acc_f = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
     acc_g = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
     acc_o = tl.zeros((BLOCK_B, BLOCK_H), dtype=ACC_DTYPE)
-    for k0 in range(0, H, BLOCK_K):
+    k_full_end = (H // BLOCK_K) * BLOCK_K
+    for k0 in range(0, k_full_end, BLOCK_K):
         offs_k = k0 + tl.arange(0, BLOCK_K)
+        w_off = offs_k[:, None] * s_wh_k
+        hx = tl.load(
+            h_ptr + offs_b[:, None] * s_hb + offs_k[None, :] * s_hk,
+            mask=b_mask[:, None],
+            other=0.0,
+        )
+        wi = tl.load(
+            w_hh_ptr + row_i[None, :] * s_wh_n + w_off, mask=n_mask[None, :], other=0.0
+        )
+        wf = tl.load(
+            w_hh_ptr + row_f[None, :] * s_wh_n + w_off, mask=n_mask[None, :], other=0.0
+        )
+        wg = tl.load(
+            w_hh_ptr + row_g[None, :] * s_wh_n + w_off, mask=n_mask[None, :], other=0.0
+        )
+        wo = tl.load(
+            w_hh_ptr + row_o[None, :] * s_wh_n + w_off, mask=n_mask[None, :], other=0.0
+        )
+        acc_i, acc_f, acc_g, acc_o = _gate_dots(
+            acc_i, acc_f, acc_g, acc_o, hx, wi, wf, wg, wo, ACC_DTYPE
+        )
+    if k_full_end < H:
+        offs_k = k_full_end + tl.arange(0, BLOCK_K)
         k_mask = offs_k < H
+        w_off = offs_k[:, None] * s_wh_k
+        w_mask = k_mask[:, None] & n_mask[None, :]
         hx = tl.load(
             h_ptr + offs_b[:, None] * s_hb + offs_k[None, :] * s_hk,
             mask=b_mask[:, None] & k_mask[None, :],
             other=0.0,
         )
-        w_off = offs_k[:, None] * s_wh_k
-        w_mask = k_mask[:, None] & n_mask[None, :]
-        wi = tl.load(w_hh_ptr + row_i[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
-        wf = tl.load(w_hh_ptr + row_f[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
-        wg = tl.load(w_hh_ptr + row_g[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
-        wo = tl.load(w_hh_ptr + row_o[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0)
-        acc_i = tl.dot(hx, wi, acc_i, input_precision="ieee", out_dtype=ACC_DTYPE)
-        acc_f = tl.dot(hx, wf, acc_f, input_precision="ieee", out_dtype=ACC_DTYPE)
-        acc_g = tl.dot(hx, wg, acc_g, input_precision="ieee", out_dtype=ACC_DTYPE)
-        acc_o = tl.dot(hx, wo, acc_o, input_precision="ieee", out_dtype=ACC_DTYPE)
+        hx = _zero_k_columns(hx, k_mask)
+        wi = _zero_k_rows(
+            tl.load(w_hh_ptr + row_i[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0),
+            k_mask,
+        )
+        wf = _zero_k_rows(
+            tl.load(w_hh_ptr + row_f[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0),
+            k_mask,
+        )
+        wg = _zero_k_rows(
+            tl.load(w_hh_ptr + row_g[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0),
+            k_mask,
+        )
+        wo = _zero_k_rows(
+            tl.load(w_hh_ptr + row_o[None, :] * s_wh_n + w_off, mask=w_mask, other=0.0),
+            k_mask,
+        )
+        acc_i, acc_f, acc_g, acc_o = _gate_dots(
+            acc_i, acc_f, acc_g, acc_o, hx, wi, wf, wg, wo, ACC_DTYPE
+        )
     gate_i += _round(acc_i, ROUND_DTYPE, ACC_DTYPE)
     gate_f += _round(acc_f, ROUND_DTYPE, ACC_DTYPE)
     gate_g += _round(acc_g, ROUND_DTYPE, ACC_DTYPE)
@@ -211,10 +317,17 @@ def _lstm_cell_kernel(
 def _block(value, limit):
     """Smallest power of two at least ``value``, clamped to [16, limit].
 
-    16 is ``tl.dot``'s minimum tile extent. The upper clamps are small on
-    purpose: the kernel keeps eight accumulator tiles live at once, so a wider
-    tile buys no extra reuse and only costs registers and occupancy. Capping
-    the tile instead lets a wide layer spread over more blocks.
+    16 is ``tl.dot``'s minimum tile extent. The upper clamps are per-axis: the
+    batch and hidden clamps keep the four gate accumulators of one program
+    inside the register/DSM budget while still giving a wide layer enough work
+    per program. The previous clamps were ``(16, 32)``, i.e. a 16x32 tile, so
+    every core case ran with at most 512 accumulator elements per program.
+    Sweeping tiles on the core cases (bit-identical output, ``err=0``) gives
+    ``(32, 64)``: ``(batch=128, hidden=512)`` 0.4105 -> 0.0768 ms (5.3x) and
+    ``(batch=64, hidden=256)`` 0.0806 -> 0.0395 ms (2.0x). ``(64, 128)`` is
+    faster on the widest case in a quiet run but loses on the narrower ones and
+    is far more sensitive to whatever else is resident on the device, so the
+    clamps stop at ``(32, 64)``.
     """
     return max(16, min(limit, triton.next_power_of_2(max(int(value), 1))))
 
@@ -306,7 +419,7 @@ def lstm_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     Returns:
         A ``(hy, cy)`` tuple, each of shape ``(batch, hidden_size)``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LSTM_CELL")
+    logger.debug("GEMS_ENFLAME LSTM_CELL")
     if len(hx) != 2:
         raise RuntimeError("lstm_cell expects two hidden states")
     h_prev, c_prev = hx[0], hx[1]
@@ -329,8 +442,8 @@ def lstm_cell(input, hx, w_ih, w_hh, b_ih=None, b_hh=None):
     if batch == 0 or hidden_size == 0:
         return hy, cy
 
-    block_b = _block(batch, 16)
-    block_h = _block(hidden_size, 32)
+    block_b = _block(batch, 32)
+    block_h = _block(hidden_size, 64)
     block_k = _block(max(input_size, hidden_size), 64)
 
     _lstm_cell_kernel[(triton.cdiv(batch, block_b), triton.cdiv(hidden_size, block_h))](

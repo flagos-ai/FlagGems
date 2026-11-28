@@ -102,6 +102,7 @@ vendor_info = VendorDescriptor(
     dispatch_key="PrivateUse1",
     triton_extra_name=get_triton_extra_name(),
     fp64_enabled=False,
+    complex_enabled=False,
 )
 
 CUSTOMIZED_UNUSED_OPS = (

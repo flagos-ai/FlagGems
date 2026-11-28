@@ -57,11 +57,23 @@ REPLICATION_PAD1D_BACKWARD_DTYPES = utils.ALL_FLOAT_DTYPES + [
 @pytest.mark.parametrize("dtype", REPLICATION_PAD1D_BACKWARD_DTYPES)
 def test_replication_pad1d_backward(shape, padding, dtype):
     use_cpu_reference = flag_gems.vendor_name == "mthreads" and dtype == torch.complex64
+    use_synthetic_grad = flag_gems.vendor_name == "enflame" and dtype.is_complex
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     ref_inp = inp.cpu() if use_cpu_reference else utils.to_reference(inp)
 
-    pad_input = ref_inp if use_cpu_reference else inp
-    padded_out = torch.ops.aten.replication_pad1d(pad_input, padding)
+    if use_synthetic_grad:
+        # The torch_gcu aten forward pass (topsatenReplicationPad1d) on complex
+        # inputs aborts the process (TOPSATEN_STATUS_NOT_SUPPORT is fatal), so
+        # it cannot build grad_output. The padded width depends only on padding;
+        # construct the all-ones gradient directly and keep the same assertions.
+        padded_out = torch.ones(
+            (*shape[:-1], shape[-1] + padding[0] + padding[1]),
+            dtype=dtype,
+            device=inp.device,
+        )
+    else:
+        pad_input = ref_inp if use_cpu_reference else inp
+        padded_out = torch.ops.aten.replication_pad1d(pad_input, padding)
     grad_output = torch.ones_like(padded_out, device=inp.device)
     ref_grad = (
         grad_output.cpu() if use_cpu_reference else utils.to_reference(grad_output)

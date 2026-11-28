@@ -86,6 +86,13 @@ def test_perf_avg_pool3d():
     bench.run()
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::avg_pool3d_backward; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.avg_pool3d_backward
 def test_perf_avg_pool3d_backward():
     bench = AvgPool3dBenchmark(

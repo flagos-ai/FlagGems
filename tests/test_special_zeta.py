@@ -277,6 +277,13 @@ def test_special_zeta_out_casts_after_float_compute():
 
 
 @pytest.mark.special_zeta
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::special_zeta"
+    ),
+)
 def test_special_zeta_q_gradient():
     x = torch.tensor([2.0, 3.0, 4.0], device=flag_gems.device)
     q = torch.tensor([1.5, 2.5, 3.5], device=flag_gems.device, requires_grad=True)
@@ -292,6 +299,13 @@ def test_special_zeta_q_gradient():
 
 
 @pytest.mark.special_zeta
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::special_zeta"
+    ),
+)
 def test_special_zeta_x_gradient_is_not_implemented():
     x = torch.tensor([2.0, 3.0, 4.0], device=flag_gems.device, requires_grad=True)
     q = torch.tensor([1.5, 2.5, 3.5], device=flag_gems.device)

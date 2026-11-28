@@ -54,6 +54,15 @@ FORWARD_OPS = [
 ]
 ASCEND_ABI = flag_gems.vendor_name == "ascend"
 _LEGACY_ASCEND = ASCEND_ABI and version.parse(triton.__version__) < version.parse("3.5")
+# enflame (torch_gcu) native _embedding_bag / _embedding_bag_forward_only only guarantees that output
+# is correct; the four auxiliary outputs do not follow the ATen contract: in mode 0/1 offset2bag returns an empty
+# tensor, bag_size
+# is uninitialized (all zeros), max_indices degenerates to a [num_bags] tensor of zeros, and max_indices of empty bags
+# is set to 0
+# rather than -1. This implementation therefore cannot serve as an ABI reference baseline (it directly conflicts
+# with the mathematical-contract assertions of _check_forward), so native cross-checking is skipped for this backend;
+# the ABI of the auxiliary outputs is covered by the contract assertions of _check_forward.
+_NATIVE_AUX_ABI = flag_gems.vendor_name != "enflame"
 _ERROR_CHILD = "FLAGGEMS_EMBEDDING_BAG_ERROR_CHILD"
 
 
@@ -359,6 +368,10 @@ def test_embedding_bag_mixed_indices_negative_padding(op, index_dtype, offset_dt
     assert all(t.dtype == torch.int64 for t in out[1:])
 
 
+@pytest.mark.skipif(
+    not _NATIVE_AUX_ABI,
+    reason="enflame native auxiliary outputs (offset2bag/bag_size/max_indices) undefined",
+)
 @pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("include_last", [False, True])
 @pytest.mark.parametrize("mode", [0, 1, 2])
@@ -526,6 +539,10 @@ def test_embedding_bag_mthreads_launch(
     )
 
 
+@pytest.mark.skipif(
+    not _NATIVE_AUX_ABI,
+    reason="enflame native auxiliary outputs (offset2bag/bag_size/max_indices) undefined",
+)
 @pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("weighted", [False, True])
 def test_embedding_bag_nonfinite_and_ties(op, weighted):

@@ -428,6 +428,13 @@ def test_fused_dropout_reservations_interoperate_with_native_rand():
 @pytest.mark.fused_dropout
 @pytest.mark.parametrize("p", [0.2, 0.8, 1.0])
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_fused_dropout"
+    ),
+)
 def test_fused_dropout_aten_autograd_uses_gems(monkeypatch, p, dtype):
     calls = {"forward": 0, "backward": 0}
     forward = flag_gems._fused_dropout
@@ -468,6 +475,13 @@ def test_fused_dropout_aten_autograd_uses_gems(monkeypatch, p, dtype):
     reason=(
         "torch_musa does not expose its initialized RNG state to torch checkpoint; "
         "native and Gems checkpoint replay both fail on this adapter"
+    ),
+)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_fused_dropout"
     ),
 )
 def test_fused_dropout_checkpoint_replays_default_rng():

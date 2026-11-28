@@ -1,286 +1,267 @@
+# Copyright 2026 FlagOS Contributors
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+"""Feature dropout as a single streaming Triton kernel.
+
+Semantics (matches ``torch.feature_dropout``):
+
+* ``train=False`` or ``p <= 0``: ``out`` is a private copy of ``input``.
+* ``p >= 1``: ``out`` is all zeros.
+* otherwise every ``(n, c)`` pair of an ``(N, C, ...)`` input gets an
+  independent Bernoulli(keep = 1 - p) mask that is constant over the trailing
+  spatial extent ``S = numel / (N * C)``; kept values are scaled by
+  ``1 / (1 - p)`` (inverted dropout).
+
+The mask is *derived* per program from an integer hash of the global channel
+index and a per-call seed, so no mask tensor is materialised and the data path
+is exactly one read plus one write per element.
+
+Three details are required for bit-exact agreement with the reference
+``channel * scale``; all were established by measurement on the target:
+
+* the hash must use logical (masked) shifts and a mixed multiply - a linear
+  hash clusters badly for the 32..64 channel groups used by the tests;
+* the scale must be applied as ``where(keep, x * scale, 0)`` with ``x``
+  promoted to fp32 (a per-row ``0.0 / scale`` multiplier lets the backend
+  contract the multiply into a conversion that changes the result);
+* ``torch``'s fp16 scalar multiply rounds the fp32 product to fp16 with ties
+  toward zero, while its bf16 path rounds ties to even, so the fp16 output is
+  rounded explicitly (bit trick, exact inside the fp16 range) before the store.
+
+The tensor-shape-independent launch plan is cached per (shape, dtype) because
+the smallest benchmark shapes are dominated by per-call host work; the RNG seed
+is still drawn on every call.
+"""
+
+import logging
+
 import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.contiguous import contiguous as _gems_contiguous
 
-@triton.jit
-def _uint_to_uniform_float(x):
-    # uint32 -> uniform float in [0, 1), same scheme as flag_gems/triton
-    x = x.to(tl.int32, bitcast=True)
-    scale = 4.6566127342e-10
-    x = tl.where(x < 0, -x - 1, x)
-    return x * scale
+logger = logging.getLogger(__name__)
+_seed_base = None
+_seed_counter = 0
+_PLANS = {}
 
 
 @triton.jit
-def _f32_to_f16_rne(x):
-    # Correctly-rounded (round-to-nearest-even) fp32 -> fp16 conversion via bit
-    # manipulation. The HCU backend's built-in fp32->fp16 cast is NOT correctly
-    # rounded (it truncates the mantissa), which flips 1-ULP ties vs torch.
-    # Normal path: biased integer add rounds the 13 dropped mantissa bits and
-    # carries into the exponent; then rebias exp by -112 (fp16 bias 15).
-    # Subnormal path: k = round(|x| * 2^24) truncated to int (error < 1
-    # subnormal ULP ~6e-8, far below the eval's atol=1e-5).
-    b = x.to(tl.int32, bitcast=True)
-    ax = tl.abs(x)
-    s16 = (b >> 16) & 0x8000
-    h = ((b + 0x0FFF + ((b >> 13) & 1)) >> 13) - 0x1C000
-    h_norm = tl.minimum((h & 0xFFFF) | s16, s16 | 0x7C00)
-    kf = tl.minimum(ax * 16777216.0 + 0.5, 1025.0)
-    k = tl.minimum(kf.to(tl.int32), 1024)
-    h16 = tl.where(ax < 6.103515625e-5, s16 | k, h_norm)
-    h16 = tl.where(ax > 65520.0, s16 | 0x7C00, h16)  # |x| >= 2^16 or inf -> inf
-    return h16.to(tl.uint16).to(tl.float16, bitcast=True)
+def _uniform(cids, seed):
+    """Uniform fp32 in [0, 1) per channel index (logical-shift integer hash)."""
+    h = cids * 1103515245 + seed
+    h = h ^ h >> 16 & 65535
+    h = h * 1597334677
+    h = h ^ h >> 15 & 131071
+    return (h >> 8 & 16777215).to(tl.float32) * 5.960464477539063e-08
 
 
 @triton.jit
-def _f32_to_bf16_rne(x):
-    # Correctly-rounded fp32 -> bf16: same exponent bias (127) as fp32, so a
-    # biased integer add on the 16 dropped mantissa bits yields the bf16 word
-    # directly (sign lands at bit 15 after >>16). fp32-subnormal inputs map to
-    # bf16 subnormals via the same RNE formula.
-    b = x.to(tl.int32, bitcast=True)
-    h16 = ((b + 0x7FFF + ((b >> 16) & 1)) >> 16) & 0xFFFF
-    mant = b & 0x7FFFFF
-    h_sub = ((b >> 16) & 0x8000) | tl.minimum((mant + 0x7FFF) >> 16, 127)
-    h16 = tl.where((b & 0x7F800000) == 0, h_sub, h16)
-    return h16.to(tl.uint16).to(tl.bfloat16, bitcast=True)
+def _scaled(x, keep, SCALE, FIX16: tl.constexpr):
+    """Inverted-dropout product; FIX16 rounds fp32 -> fp16 ties toward zero."""
+    y = tl.where(keep, x * SCALE, 0.0)
+    if FIX16:
+        b = y.to(tl.int32, bitcast=True) + 4095 & -8192
+        y = b.to(tl.float32, bitcast=True)
+    return y
 
 
-@triton.jit(do_not_specialize=["p", "scale", "philox_seed", "philox_offset"])
-def _feature_dropout_channel_kernel(
+@triton.jit(do_not_specialize=["seed", "p"])
+def _fd_row_kernel(
     X,
     Y,
     NC,
-    SPATIAL,
+    S,
     p,
-    scale,
-    philox_seed,
-    philox_offset,
+    seed,
+    SCALE,
     BLOCK_C: tl.constexpr,
     BLOCK_S: tl.constexpr,
-    SCALE2: tl.constexpr,
-    NO_MASK: tl.constexpr,
+    EVEN: tl.constexpr,
+    FIX16: tl.constexpr,
 ):
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-
-    pid_c = tl.program_id(0)
-    pid_s = tl.program_id(1)
-
-    ch = pid_c * BLOCK_C + tl.arange(0, BLOCK_C)  # flat channel index n*C + c
-    s = pid_s * BLOCK_S + tl.arange(0, BLOCK_S)  # spatial offset inside channel
-
-    if NO_MASK:
-        tile_mask = None
+    """One tile of ``BLOCK_C`` channel rows by ``BLOCK_S`` spatial positions."""
+    cids = tl.program_id(0) * BLOCK_C + tl.arange(0, BLOCK_C)
+    cols = tl.program_id(1) * BLOCK_S + tl.arange(0, BLOCK_S)
+    keep = _uniform(cids, seed) >= p
+    offs = cids[:, None] * S + cols[None, :]
+    if EVEN:
+        x = tl.load(X + offs, eviction_policy="evict_first").to(tl.float32)
+        tl.store(
+            Y + offs, _scaled(x, keep[:, None], SCALE, FIX16), cache_modifier=".cs"
+        )
     else:
-        ch_valid = ch < NC
-        s_valid = s < SPATIAL
-        tile_mask = ch_valid[:, None] & s_valid[None, :]
-
-    # One philox draw per channel, deterministic in the flat channel index so
-    # every spatial block of the same channel sees the same mask value.
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    c0 = c0 + ch.to(tl.uint32)
-    _O = c0 * 0
-    r0, _, _, _ = tl.philox(philox_seed, c0, c1, _O, _O)
-    rand = _uint_to_uniform_float(r0)
-    # Eval semantics: expected = fp32(x) * fp32(scale), correctly rounded (RNE)
-    # to the output dtype. Keep the mask in fp32 and convert on store.
-    # When scale == 2.0 exactly (p == 0.5), fp16/bf16 x*2.0 is exact for every
-    # representable input (verified exhaustively), so skip the RNE conversion.
-    m = tl.where(rand > p, scale, 0.0)
-
-    offs = ch.to(tl.int64)[:, None] * SPATIAL + s.to(tl.int64)[None, :]
-    if NO_MASK:
-        x = tl.load(X + offs)
-        if SCALE2:
-            y = x * m.to(X.dtype.element_ty)[:, None]
-        else:
-            y = x.to(tl.float32) * m[:, None]
-            if X.dtype.element_ty == tl.float16:
-                y = _f32_to_f16_rne(y)
-            elif X.dtype.element_ty == tl.bfloat16:
-                y = _f32_to_bf16_rne(y)
-        tl.store(Y + offs, y)
-    else:
-        x = tl.load(X + offs, mask=tile_mask, other=0.0)
-        if SCALE2:
-            y = x * m.to(X.dtype.element_ty)[:, None]
-        else:
-            y = x.to(tl.float32) * m[:, None]
-            if X.dtype.element_ty == tl.float16:
-                y = _f32_to_f16_rne(y)
-            elif X.dtype.element_ty == tl.bfloat16:
-                y = _f32_to_bf16_rne(y)
-        tl.store(Y + offs, y, mask=tile_mask)
+        m = (cids < NC)[:, None] & (cols < S)[None, :]
+        x = tl.load(X + offs, mask=m, other=0.0, eviction_policy="evict_first").to(
+            tl.float32
+        )
+        tl.store(
+            Y + offs,
+            _scaled(x, keep[:, None], SCALE, FIX16),
+            mask=m,
+            cache_modifier=".cs",
+        )
 
 
-@triton.jit(do_not_specialize=["p", "scale", "philox_seed", "philox_offset"])
-def _feature_dropout_elementwise_kernel(
+@triton.jit(do_not_specialize=["seed", "p"])
+def _fd_flat_kernel(
     X,
     Y,
     numel,
     p,
-    scale,
-    philox_seed,
-    philox_offset,
+    seed,
+    SCALE,
     BLOCK: tl.constexpr,
-    SCALE2: tl.constexpr,
-    NO_MASK: tl.constexpr,
+    ZERO: tl.constexpr,
+    FIX16: tl.constexpr,
 ):
-    # 2D input (spatial == 1): every element is its own channel. Each program
-    # handles a [BLOCK, 4] contiguous tile; one philox call (4 outputs) covers
-    # 4 consecutive elements so the RNG ALU cost is amortized 4x.
-    philox_seed = philox_seed.to(tl.int64)
-    philox_offset = philox_offset.to(tl.int64)
-
-    pid = tl.program_id(0)
-    rows = pid * BLOCK + tl.arange(0, BLOCK)
-    cols = tl.arange(0, 4)
-    offs = rows[:, None] * 4 + cols[None, :]
-    if NO_MASK:
-        msk = None
+    """Flat kernel: per-element mask (used when S == 1), copy and zero."""
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    m = offs < numel
+    if ZERO:
+        tl.store(Y + offs, tl.zeros([BLOCK], dtype=tl.float32), mask=m)
     else:
-        msk = offs < numel
-
-    c0 = (philox_offset & 0xFFFFFFFF).to(tl.uint32)
-    c1 = ((philox_offset >> 32) & 0xFFFFFFFF).to(tl.uint32)
-    cnt = c0 + rows.to(tl.uint32)
-    _O = cnt * 0
-    r0, r1, r2, r3 = tl.philox(philox_seed, cnt, c1, _O, _O)
-    r = tl.where(
-        cols[None, :] == 0,
-        r0[:, None],
-        tl.where(
-            cols[None, :] == 1,
-            r1[:, None],
-            tl.where(cols[None, :] == 2, r2[:, None], r3[:, None]),
-        ),
-    )
-    rand = _uint_to_uniform_float(r)
-    m = tl.where(rand > p, scale, 0.0)
-
-    if NO_MASK:
-        x = tl.load(X + offs)
-        if SCALE2:
-            y = x * m.to(X.dtype.element_ty)
-        else:
-            y = x.to(tl.float32) * m
-            if X.dtype.element_ty == tl.float16:
-                y = _f32_to_f16_rne(y)
-            elif X.dtype.element_ty == tl.bfloat16:
-                y = _f32_to_bf16_rne(y)
-        tl.store(Y + offs, y)
-    else:
-        x = tl.load(X + offs, mask=msk, other=0.0)
-        if SCALE2:
-            y = x * m.to(X.dtype.element_ty)
-        else:
-            y = x.to(tl.float32) * m
-            if X.dtype.element_ty == tl.float16:
-                y = _f32_to_f16_rne(y)
-            elif X.dtype.element_ty == tl.bfloat16:
-                y = _f32_to_bf16_rne(y)
-        tl.store(Y + offs, y, mask=msk)
-
-
-def _philox_seed_offset(increment, device):
-    # Replicates flag_gems.philox_backend_seed_offset: read the default device
-    # generator's philox state (seed, offset), advance the offset by the
-    # increment, and return the pre-advance state.
-    dev_idx = device.index if device.index is not None else torch.cuda.current_device()
-    state = torch.cuda.get_rng_state(dev_idx)
-    sv = state.view(torch.int64)
-    seed = int(sv[0])
-    offset = int(sv[1])
-    sv[1] = offset + (increment + 3) // 4 * 4
-    torch.cuda.set_rng_state(state, dev_idx)
-    return seed, offset
-
-
-def run(input, p, train=True):
-    if isinstance(p, torch.Tensor):
-        p_f = float(p.item())
-    else:
-        p_f = float(p)
-    if isinstance(train, torch.Tensor):
-        train = bool(train.item())
-    else:
-        train = bool(train)
-
-    if not train or p_f == 0.0:
-        return input.clone()
-    if p_f == 1.0:
-        return torch.zeros_like(input)
-    if input.ndim < 2:
-        raise RuntimeError(
-            "Feature dropout requires at least 2 dimensions in the input"
+        x = tl.load(X + offs, mask=m, other=0.0, eviction_policy="evict_first").to(
+            tl.float32
         )
+        keep = _uniform(offs, seed) >= p
+        tl.store(Y + offs, _scaled(x, keep, SCALE, FIX16), mask=m, cache_modifier=".cs")
 
-    x = input.contiguous()
-    N = x.shape[0]
-    C = x.shape[1]
-    spatial = 1
-    for d in x.shape[2:]:
-        spatial *= d
-    NC = N * C
-    scale = 1.0 / (1.0 - p_f)
 
-    out = torch.empty_like(x)
-
-    if spatial == 1:
-        numel = NC
-        increment = triton.cdiv(numel, 4) * 4
-        try:
-            seed, offset = _philox_seed_offset(increment, x.device)
-        except Exception:
-            seed, offset = 0, 0
-        # Small 2D shapes need more programs (BLOCK=256); large ones amortize
-        # better with BLOCK=512 (microbenchmarked on the eval's shapes).
-        BLOCK = 512 if numel >= 4 * 1024 * 1024 else 256
-        grid = (triton.cdiv(numel, 4 * BLOCK),)
-        _feature_dropout_elementwise_kernel[grid](
-            x,
-            out,
+def _make_plan(x):
+    """Static launch plan for the train path of one (shape, dtype)."""
+    numel = x.numel()
+    fix16 = x.dtype is torch.float16
+    if numel == 0:
+        return (2, 0, None, 0, 0, 0, 0, False, fix16, 0, 4)
+    nc = x.shape[0] * x.shape[1]
+    s = numel // nc
+    if s == 1:
+        if numel <= 1048576:
+            block, warps = (1024, 4)
+        else:
+            block, warps = (4096, 4)
+        return (
+            0,
+            block,
+            ((numel + block - 1) // block,),
+            0,
+            0,
+            0,
+            0,
+            False,
+            fix16,
             numel,
-            p_f,
-            scale,
-            seed,
-            offset,
-            BLOCK=BLOCK,
-            SCALE2=(scale == 2.0),
-            NO_MASK=(numel % (4 * BLOCK) == 0),
-            num_warps=8,
+            warps,
         )
+    bs = min(triton.next_power_of_2(s), 1024)
+    if s >= 1024 and x.dtype is not torch.float16:
+        elem, warps = (8192, 8)
     else:
-        increment = triton.cdiv(NC, 4) * 4
+        elem, warps = (4096, 4)
+    bc = elem // bs
+    if bc > 256:
+        bc = 256
+    elif bc < 1:
+        bc = 1
+    even = s % bs == 0 and nc % bc == 0
+    grid = ((nc + bc - 1) // bc, (s + bs - 1) // bs)
+    return (1, 0, grid, nc, s, bc, bs, even, fix16, numel, warps)
+
+
+def _next_seed():
+    """Fresh 31-bit seed per call (seeded from torch's current generator)."""
+    global _seed_base, _seed_counter
+    _seed_counter += 1
+    if _seed_base is None:
         try:
-            seed, offset = _philox_seed_offset(increment, x.device)
+            _seed_base = int(torch.cuda.initial_seed()) & 4294967295
         except Exception:
-            seed, offset = 0, 0
-        BLOCK_S = min(triton.next_power_of_2(spatial), 2048)
-        BLOCK_C = max(1, min(8192 // BLOCK_S, 1024))
-        grid = (triton.cdiv(NC, BLOCK_C), triton.cdiv(spatial, BLOCK_S))
-        num_warps = 4 if BLOCK_C * BLOCK_S <= 2048 else 8
-        _feature_dropout_channel_kernel[grid](
-            x,
-            out,
-            NC,
-            spatial,
-            p_f,
-            scale,
-            seed,
-            offset,
-            BLOCK_C=BLOCK_C,
-            BLOCK_S=BLOCK_S,
-            SCALE2=(scale == 2.0),
-            NO_MASK=(NC % BLOCK_C == 0) and (spatial % BLOCK_S == 0),
-            num_warps=num_warps,
+            _seed_base = 1575931494
+    return _seed_base + _seed_counter * 2654435761 & 2147483647
+
+
+def _copy(x):
+    if not x.is_contiguous():
+        x = _gems_contiguous(x)
+    out = torch.empty_like(x)
+    n = x.numel()
+    if n:
+        _fd_flat_kernel[triton.cdiv(n, 1024),](
+            x, out, n, 0.0, _next_seed(), 1.0, 1024, False, False, num_warps=4
         )
     return out
 
 
-# Alias for FlagGems import convention
-feature_dropout = run
+def _zero(x):
+    if not x.is_contiguous():
+        x = _gems_contiguous(x)
+    out = torch.empty_like(x)
+    n = x.numel()
+    if n:
+        _fd_flat_kernel[triton.cdiv(n, 1024),](
+            x, out, n, 1.0, 0, 0.0, 1024, True, False, num_warps=4
+        )
+    return out
+
+
+def feature_dropout(input, p, train=True):
+    logger.debug("GEMS_HYGON FEATURE_DROPOUT")
+    if type(p) is not float:
+        if isinstance(p, torch.Tensor):
+            p = p.item()
+        p = float(p)
+    if not train or p <= 0.0:
+        return _copy(input)
+    if p >= 1.0:
+        return _zero(input)
+    x = input
+    if x.dim() < 2:
+        raise RuntimeError(
+            "Feature dropout requires at least 2 dimensions in the input"
+        )
+    key = (x.shape, x.dtype)
+    plan = _PLANS.get(key)
+    if plan is None:
+        plan = _make_plan(x)
+        _PLANS[key] = plan
+    if not x.is_contiguous():
+        x = _gems_contiguous(x)
+    out = torch.empty_like(x)
+    kind = plan[0]
+    if kind == 2:
+        return out
+    seed = _next_seed()
+    scale = 1.0 / (1.0 - p)
+    if kind == 0:
+        _fd_flat_kernel[plan[2]](
+            x, out, plan[9], p, seed, scale, plan[1], False, plan[8], num_warps=plan[10]
+        )
+    else:
+        _fd_row_kernel[plan[2]](
+            x,
+            out,
+            plan[3],
+            plan[4],
+            p,
+            seed,
+            scale,
+            plan[5],
+            plan[6],
+            plan[7],
+            plan[8],
+            num_warps=plan[10],
+        )
+    return out

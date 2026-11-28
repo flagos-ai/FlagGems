@@ -230,7 +230,7 @@ _dot_usable = True
 def _compute_linear_combination(input, coefficients, *, out=None):
     global _dot_usable
 
-    logger.debug("GEMS_ENFLAME_GCU400 _COMPUTE_LINEAR_COMBINATION")
+    logger.debug("GEMS_ENFLAME _COMPUTE_LINEAR_COMBINATION")
     assert input.ndimension() > 0 and input.numel() > 0, "Empty tensor not supported"
 
     # coefficients is [m, n]; input is [n, ...]
@@ -373,5 +373,5 @@ def _compute_linear_combination(input, coefficients, *, out=None):
 
 
 def _compute_linear_combination_out(input, coefficients, *, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 _COMPUTE_LINEAR_COMBINATION_OUT")
+    logger.debug("GEMS_ENFLAME _COMPUTE_LINEAR_COMBINATION_OUT")
     return _compute_linear_combination(input, coefficients, out=out)

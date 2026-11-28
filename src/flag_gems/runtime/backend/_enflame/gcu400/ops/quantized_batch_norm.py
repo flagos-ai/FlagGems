@@ -429,9 +429,12 @@ def _allocate_out(input, output_scale, output_zero_point):
 def _resize_quantized_out(out, shape):
     """Resize a quantized ``out`` tensor to ``shape``, ATen-style.
 
-    ``aten::resize_`` is not implemented for the QuantizedCUDA backend, so the
-    metadata is rewritten through ``set_(storage, offset, size, stride)``, which
-    is registered. This reproduces what ``at::native::resize_output`` does for a
+    ``aten::resize_`` and ``aten::set_(storage, offset, size, stride)`` both
+    lower to ``_copy_from_and_resize`` on GCU, which refuses to resize a
+    quantized device tensor (``device side quantized resize_ is not
+    implemented``). The storage itself can still grow, and ``as_strided_`` is a
+    pure metadata rewrite that stays registered for quantized tensors, so
+    together they reproduce what ``at::native::resize_output`` does for a
     strided tensor: the storage offset is preserved, the storage only ever
     grows, and the resized tensor is given contiguous strides.
     """
@@ -447,7 +450,7 @@ def _resize_quantized_out(out, shape):
     needed = (offset + acc) * out.element_size()
     if acc != 0 and storage.size() < needed:
         storage.resize_(needed)
-    out.set_(storage, offset, tuple(shape), strides)
+    out.as_strided_(tuple(shape), strides, offset)
     return out
 
 
@@ -603,7 +606,7 @@ def quantized_batch_norm(
     output_scale=1.0,
     output_zero_point=0,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_BATCH_NORM")
+    logger.debug("GEMS_ENFLAME QUANTIZED_BATCH_NORM")
     return _quantized_batch_norm_impl(
         input, weight, bias, mean, var, eps, output_scale, output_zero_point
     )
@@ -621,7 +624,7 @@ def quantized_batch_norm_out(
     *,
     out=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_BATCH_NORM_OUT")
+    logger.debug("GEMS_ENFLAME QUANTIZED_BATCH_NORM_OUT")
 
     if out is None:
         raise TypeError(
@@ -727,29 +730,6 @@ def _view_gcu(self, size):
     return _VIEW_OP.redispatch(_QCPU_KEYSET, self, size)
 
 
-def _install_gcu_quantized_batch_norm_bridge():
-    global _QBN_BRIDGE_LIBRARY
-    if getattr(torch, "_flaggems_gcu_qbn_bridge", False):
-        return
-    library = torch.library.Library("aten", "IMPL")
-    _QBN_BRIDGE_LIBRARY = library
-    for op_name, kernel in (
-        ("quantized_batch_norm", quantized_batch_norm),
-        ("quantized_batch_norm.out", quantized_batch_norm_out),
-        ("view", _view_gcu),
-    ):
-        try:
-            library.impl(op_name, kernel, "QuantizedPrivateUse1")
-        except Exception as err:  # noqa: BLE001
-            logger.debug(
-                "GCU quantized bridge: %s not registered on "
-                "QuantizedPrivateUse1: %s",
-                op_name,
-                err,
-            )
-    torch._flaggems_gcu_qbn_bridge = True
-
-
 def _gems_registration_active():
     try:
         import flag_gems
@@ -761,54 +741,99 @@ def _gems_registration_active():
 
 _PRE_SHIM_TENSOR_CLONE = None
 
+# Raw-code storage dtype behind each supported quantized dtype: the manual
+# clone copies the payload through a plain integer view, so the view element
+# width must match the quantizer's code width (qint32 codes are 4 bytes wide).
+_QSTORAGE_DTYPES = {
+    torch.quint8: torch.uint8,
+    torch.qint8: torch.int8,
+    torch.qint32: torch.int32,
+}
 
-def _quantized_safe_clone(self, *args, **kwargs):
-    """Narrow ``Tensor.clone`` shim: per-tensor quantized tensors under the
-    FlagGems registrar.
+_EMPTY_PER_CHANNEL_OP = getattr(
+    torch.ops.aten, "_empty_per_channel_affine_quantized", None
+)
 
-    With ``use_gems()`` active, ``aten::clone`` dispatches to the FlagGems
-    clone kernel even for quantized tensors, whose ``torch.empty_strided``
-    allocation rejects quantized dtypes outright ("empty_strided not
-    supported on quantized tensors yet"). Every quantized clone on that path
-    therefore dies -- e.g. the ``quantized_max_pool1d`` quantize shim's
-    franken rebuild, which this operator's ``.out`` benchmark exercises when
-    it allocates its ``out`` tensor inside the timed region. The shim clones
-    per-tensor affine quantized tensors manually (same quantizer, same sizes
-    and strides, payload copied through plain integer views) and passes every
-    other call through untouched, so no currently-working path changes.
+
+def _empty_quantized_like(qtensor):
+    """Allocate uninitialised quantized storage carrying ``qtensor``'s quantizer.
+
+    Both kernels reached here are the device-independent QuantizedCPU metadata
+    kernels (same redispatch convention as ``_adopt_quantizer``), so the
+    quantizer survives while the storage lives on the GCU device.
     """
-    if (
-        not args
-        and not kwargs
-        and self.is_quantized
-        and _gems_registration_active()
-        and self.qscheme() == torch.per_tensor_affine
-    ):
-        fresh = _EMPTY_AFFINE_OP.redispatch(
+    if qtensor.qscheme() == torch.per_tensor_affine:
+        return _EMPTY_AFFINE_OP.redispatch(
             _QCPU_KEYSET,
-            list(self.shape),
-            dtype=self.dtype,
-            device=self.device,
-            scale=self.q_scale(),
-            zero_point=self.q_zero_point(),
+            list(qtensor.shape),
+            dtype=qtensor.dtype,
+            device=qtensor.device,
+            scale=qtensor.q_scale(),
+            zero_point=qtensor.q_zero_point(),
             memory_format=torch.contiguous_format,
         )
-        if self.numel():
-            storage_dtype = _QINT_DTYPES.get(self.dtype, torch.uint8)
-            src_view = torch.empty(0, dtype=storage_dtype, device=self.device).set_(
-                self.untyped_storage(),
-                self.storage_offset(),
-                tuple(self.shape),
-                self.stride(),
-            )
-            dst_view = torch.empty(0, dtype=storage_dtype, device=self.device).set_(
-                fresh.untyped_storage(),
-                fresh.storage_offset(),
-                tuple(fresh.shape),
-                fresh.stride(),
-            )
-            dst_view.copy_(src_view)
-        return fresh
+    if qtensor.qscheme() == torch.per_channel_affine and _EMPTY_PER_CHANNEL_OP:
+        return _EMPTY_PER_CHANNEL_OP.redispatch(
+            _QCPU_KEYSET,
+            list(qtensor.shape),
+            qtensor.q_per_channel_scales(),
+            qtensor.q_per_channel_zero_points(),
+            qtensor.q_per_channel_axis(),
+            dtype=qtensor.dtype,
+            device=qtensor.device,
+            memory_format=torch.contiguous_format,
+        )
+    return None
+
+
+def _manual_quantized_clone(qtensor):
+    """Clone an affine quantized tensor without ``torch.empty_strided``.
+
+    Returns ``None`` for quantizers this shim does not rebuild, so the caller
+    can fall back to the native implementation unchanged.
+    """
+    fresh = _empty_quantized_like(qtensor)
+    if fresh is None:
+        return None
+    if qtensor.numel():
+        storage_dtype = _QSTORAGE_DTYPES[qtensor.dtype]
+        src_view = torch.empty(0, dtype=storage_dtype, device=qtensor.device).set_(
+            qtensor.untyped_storage(),
+            qtensor.storage_offset(),
+            tuple(qtensor.shape),
+            qtensor.stride(),
+        )
+        dst_view = torch.empty(0, dtype=storage_dtype, device=qtensor.device).set_(
+            fresh.untyped_storage(),
+            fresh.storage_offset(),
+            tuple(fresh.shape),
+            fresh.stride(),
+        )
+        dst_view.copy_(src_view)
+    return fresh
+
+
+def _quantized_safe_clone(self, *args, **kwargs):
+    """Narrow ``Tensor.clone`` shim: affine quantized tensors on this backend.
+
+    Cloning a quantized tensor goes through ``torch.empty_strided``, which
+    rejects quantized dtypes outright ("empty_strided not supported on
+    quantized tensors yet"). On this backend that happens on *both* paths:
+    with ``use_gems()`` active the FlagGems clone kernel allocates the result
+    that way, and without the registrar the QuantizedPrivateUse1 fallback
+    reaches the same allocation -- e.g. the ``quantized_max_pool1d`` shim's
+    franken rebuild, and the accuracy suite's ``to_reference`` oracle, which
+    clones quantized inputs directly. The shim therefore clones per-tensor and
+    per-channel affine quantized tensors manually (same quantizer, contiguous
+    sizes/strides, payload copied through plain integer views) and passes every
+    other call -- non-quantized tensors, non-affine quantizers, calls carrying
+    extra ``clone`` arguments -- through untouched, so no currently-working
+    path changes.
+    """
+    if not args and not kwargs and self.is_quantized:
+        fresh = _manual_quantized_clone(self)
+        if fresh is not None:
+            return fresh
     return _PRE_SHIM_TENSOR_CLONE(self, *args, **kwargs)
 
 
@@ -821,7 +846,6 @@ def _install_quantized_clone_shim():
     torch.Tensor.clone = _quantized_safe_clone
 
 
-_install_gcu_quantized_batch_norm_bridge()
 _install_quantized_clone_shim()
 
 
