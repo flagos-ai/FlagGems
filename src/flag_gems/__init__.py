@@ -2274,7 +2274,12 @@ _FULL_CONFIG = (
     ("rrelu_with_noise_", rrelu_with_noise_),
     ("rrelu_with_noise_backward", rrelu_with_noise_backward),
     ("rrelu_with_noise_functional", rrelu_with_noise_functional),
-    ("rsqrt", rsqrt),
+    (
+        "rsqrt",
+        rsqrt,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("rsqrt_", rsqrt_),
     ("rsub.Scalar", rsub_scalar),
     ("rsub.Tensor", rsub_tensor),
