@@ -45,6 +45,12 @@ def max_kernel_1(
     min_value = get_dtype_min(inp.type.element_ty)
     inp_val = tl.load(inp_ptrs, mask=mask, other=min_value)
     max_val = tl.max(inp_val)
+    if inp.dtype.element_ty.is_floating():
+        # tl.max uses maxNum semantics, which drops a NaN operand. ATen's
+        # torch.max propagates NaN, so restore it explicitly when the tile has
+        # at least one NaN element.
+        has_nan = tl.max((inp_val != inp_val).to(tl.int32))
+        max_val = tl.where(has_nan > 0, float("nan"), max_val)
     mid_ptr = mid + pid
     tl.store(mid_ptr, max_val)
 
@@ -58,6 +64,10 @@ def max_kernel_2(mid, out, mid_size, BLOCK_MID: tl.constexpr):
     min_value = get_dtype_min(mid.type.element_ty)
     mid_val = tl.load(mid_ptrs, mask=mask, other=min_value)
     max_val = tl.max(mid_val)
+    if mid.dtype.element_ty.is_floating():
+        # See max_kernel_1: keep NaN visible through the second stage.
+        has_nan = tl.max((mid_val != mid_val).to(tl.int32))
+        max_val = tl.where(has_nan > 0, float("nan"), max_val)
     tl.store(out, max_val)
 
 
@@ -97,9 +107,34 @@ def max_kernel(
         inp_ptrs = inp + offset
         inp_vals = tl.load(inp_ptrs, mask=mask, other=min_value)
         max_value, max_index = tl.max(inp_vals, axis=1, return_indices=True)
-        update_mask = max_value > result_value
-        result_value = tl.where(update_mask, max_value, result_value)
-        result_index = tl.where(update_mask, i + max_index, result_index)
+        if dtype.is_floating():
+            # tl.max drops NaN operands (maxNum semantics), so detect them
+            # explicitly. ATen propagates the NaN value and reports the first
+            # NaN position as the argmax, which both need to be reproduced
+            # here; once a row is NaN it must not be overwritten by a later
+            # tile.
+            nan_mask = inp_vals != inp_vals
+            tile_has_nan = tl.max(nan_mask.to(tl.int32), axis=1) > 0
+            tile_nan_index = tl.min(
+                tl.where(nan_mask, n_offset[None, :], N), axis=1
+            ).to(tl.int64)
+            result_is_nan = result_value != result_value
+            take_nan = tile_has_nan & (~result_is_nan)
+            take_max = (~tile_has_nan) & (max_value > result_value) & (~result_is_nan)
+            result_value = tl.where(
+                take_nan,
+                float("nan"),
+                tl.where(take_max, max_value, result_value),
+            )
+            result_index = tl.where(
+                take_nan,
+                tile_nan_index,
+                tl.where(take_max, i + max_index, result_index),
+            )
+        else:
+            update_mask = max_value > result_value
+            result_value = tl.where(update_mask, max_value, result_value)
+            result_index = tl.where(update_mask, i + max_index, result_index)
     mask1 = m_offset < M
     offset_index = m_offset
     out_value_ptrs = out_value + offset_index
