@@ -130,3 +130,42 @@ def test_cat_out_matches_reference(dtype):
     flag_gems.cat_out([a, b], dim, out=out)
 
     utils.gems_assert_close(out, ref_out, dtype)
+
+
+# Batches with three or more inputs of uneven size: a batched kernel that
+# selects the source tensor with an if/elif chain on program_id(1) can drop
+# the third/fourth input on some compilers (seen on thead/PPU).
+CAT_MULTI_TENSOR_CASES = [
+    (((1, 512), (1, 512), (1, 1024)), -1),
+    (((1, 512), (1, 1024), (1, 512)), -1),
+    (((1, 512), (1, 512), (1, 512), (1, 1024)), -1),
+    (((1, 256),) * 5, -1),
+    (((1, 4, 64), (1, 4, 32), (1, 4, 128)), -1),
+    (((1, 32, 64), (1, 32, 16), (1, 32, 128), (1, 32, 8)), -1),
+    (((3, 5), (1, 5), (7, 5)), 0),
+    (((2, 3, 8), (2, 7, 8), (2, 1, 8)), 1),
+]
+
+
+@pytest.mark.cat
+@pytest.mark.parametrize("shape, dim", CAT_MULTI_TENSOR_CASES)
+@pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float32, torch.int32])
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_cat_multi_tensor(shape, dim, dtype):
+    if dtype in utils.INT_DTYPES:
+        inp = [
+            torch.randint(low=0, high=0x7FFF, size=s, dtype=dtype, device="cpu").to(
+                flag_gems.device
+            )
+            for s in shape
+        ]
+    else:
+        inp = [torch.randn(s, dtype=dtype, device=flag_gems.device) for s in shape]
+    ref_inp = [utils.to_reference(_) for _ in inp]
+    ref_out = torch.cat(ref_inp, dim)
+
+    res_out = flag_gems.cat(inp, dim)
+
+    utils.gems_assert_equal(res_out, ref_out)

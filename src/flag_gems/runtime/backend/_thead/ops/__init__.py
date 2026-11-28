@@ -32,6 +32,7 @@ from .baddbmm import baddbmm, baddbmm_out
 from .baddbmm_ import baddbmm_
 from .bmm import bmm, bmm_out
 from .bmm_w8a8_int8 import bmm_w8a8_int8 as bmm_w8a8
+from .cat import cat, cat_out
 from .cholesky_inverse import cholesky_inverse
 from .compute_linear_combination import _compute_linear_combination
 from .conv2d import conv2d
@@ -49,7 +50,19 @@ from .fused_rms_norm_backward import _fused_rms_norm_backward
 from .gcd_ import gcd, gcd_
 from .greater_ import greater_
 from .grid_sampler_3d_backward import grid_sampler_3d_backward
-from .grouped_gemm_w8a8 import grouped_gemm_w8a8
+
+try:
+    from .grouped_gemm_w8a8 import grouped_gemm_w8a8
+except ImportError as _grouped_gemm_w8a8_err:
+    # triton.experimental.tle is an optional PPU extension.  Letting the
+    # import escape would make ``_import_module_safe`` treat the whole
+    # ``_thead.ops`` package as missing and disable every thead override.
+    grouped_gemm_w8a8 = None
+    print(
+        "[Warning] _thead.ops.grouped_gemm_w8a8 unavailable: "
+        f"{_grouped_gemm_w8a8_err}"
+    )
+
 from .gru import gru
 from .igamma import igamma
 from .index_copy_ import index_copy, index_copy_
@@ -137,6 +150,8 @@ __all__ = [
     "bmm",
     "bmm_out",
     "bmm_w8a8",
+    "cat",
+    "cat_out",
     "cholesky_inverse",
     "conv2d",
     "conv_tbc_backward",
