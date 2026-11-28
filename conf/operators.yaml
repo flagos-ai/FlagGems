@@ -13137,6 +13137,18 @@ ops:
   stages:
   - alpha: '2.0'
   - stable: '3.0'
+- id: log_softmax_backward
+  description: The backward computation of `_log_softmax()`, exercised through the
+    autograd of the forward operator.
+  for:
+  - _log_softmax
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: log_softmax_backward_data
   description: 'Computes the gradient of the input tensor with respect to a `log_softmax`
     operation
