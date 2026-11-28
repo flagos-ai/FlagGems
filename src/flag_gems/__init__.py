@@ -2302,7 +2302,12 @@ _FULL_CONFIG = (
     ("set_", set_default),
     ("set_.source_Tensor", set_source_tensor),
     ("set_.source_Tensor_storage_offset", set_source_tensor_storage_offset),
-    ("sgn", sgn),
+    (
+        "sgn",
+        sgn,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("sgn.out", sgn_out),
     ("sgn_", sgn_),
     ("sigmoid", sigmoid),

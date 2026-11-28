@@ -219,3 +219,116 @@ def test_sgn_out_rejects_mismatched_dtype():
 def test_sgn_empty(dtype):
     inp = torch.empty((0, 3), dtype=dtype, device=flag_gems.device)
     _assert_matches_torch(inp)
+
+
+@pytest.mark.sgn_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_sgn_backward_real(shape, dtype):
+    inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    ref_inp = utils.to_reference(inp.detach()).requires_grad_()
+    res_inp = inp.detach().requires_grad_()
+
+    ref_out = torch.sgn(ref_inp)
+    res_out = flag_gems.sgn(res_inp)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, utils.to_reference(grad))
+    (res_grad,) = torch.autograd.grad(res_out, res_inp, grad)
+    direct_grad = flag_gems.sgn_backward(inp, grad, flag_gems.sgn(inp))
+
+    atol = 1e-3 if dtype == torch.complex32 else 1e-4
+    utils.gems_assert_close(res_grad, ref_grad, dtype, atol=atol)
+    utils.gems_assert_close(direct_grad, ref_grad, dtype, atol=atol)
+
+
+@pytest.mark.sgn_backward
+@pytest.mark.parametrize("shape", COMPLEX_SHAPES)
+@pytest.mark.parametrize("dtype", utils.COMPLEX_DTYPES)
+def test_sgn_backward_complex(shape, dtype):
+    inp = _make_input(shape, dtype)
+    grad = _make_input(shape, dtype)
+    ref_inp = _to_reference(inp.detach()).requires_grad_()
+    res_inp = inp.detach().requires_grad_()
+
+    ref_out = torch.sgn(ref_inp)
+    res_out = flag_gems.sgn(res_inp)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, _to_reference(grad))
+    (res_grad,) = torch.autograd.grad(res_out, res_inp, grad)
+    direct_grad = flag_gems.sgn_backward(inp, grad, flag_gems.sgn(inp))
+
+    atol = 1e-3 if dtype == torch.complex32 else 1e-4
+    utils.gems_assert_close(res_grad, ref_grad, dtype, atol=atol)
+    utils.gems_assert_close(direct_grad, ref_grad, dtype, atol=atol)
+
+
+@pytest.mark.sgn_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.COMPLEX_DTYPES)
+def test_sgn_backward_registered_dispatch(dtype):
+    inp = _make_input((7, 11), dtype).requires_grad_()
+    grad = _make_input((7, 11), dtype)
+    ref_inp = _to_reference(inp.detach()).requires_grad_()
+    ref_out = torch.sgn(ref_inp)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, _to_reference(grad))
+
+    lib = torch.library.Library("aten", "IMPL")
+    previous_registrar = getattr(flag_gems, "current_work_registrar", None)
+    try:
+        flag_gems.only_enable(lib=lib, include=["sgn"])
+        out = torch.sgn(inp)
+        assert "SgnAutogradFunction" in type(out.grad_fn).__name__
+        (res_grad,) = torch.autograd.grad(out, inp, grad)
+    finally:
+        lib._destroy()
+        flag_gems.current_work_registrar = previous_registrar
+
+    atol = 1e-3 if dtype == torch.complex32 else 1e-4
+    utils.gems_assert_close(res_grad, ref_grad, dtype, atol=atol)
+
+
+@pytest.mark.sgn_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES + utils.COMPLEX_DTYPES)
+def test_sgn_backward_noncontiguous(dtype):
+    inp = _make_input((5, 7), dtype).t()
+    grad = _make_input((5, 7), dtype).t()
+    ref_inp = _to_reference(inp.detach()).requires_grad_()
+    res_inp = inp.detach().requires_grad_()
+
+    ref_out = torch.sgn(ref_inp)
+    res_out = flag_gems.sgn(res_inp)
+    (ref_grad,) = torch.autograd.grad(ref_out, ref_inp, _to_reference(grad))
+    (res_grad,) = torch.autograd.grad(res_out, res_inp, grad)
+
+    atol = 1e-3 if dtype == torch.complex32 else 1e-4
+    utils.gems_assert_close(res_grad, ref_grad, dtype, atol=atol)
+
+
+@pytest.mark.sgn_backward
+def test_sgn_backward_zero_complex():
+    inp = torch.zeros((17,), dtype=torch.complex64, device=flag_gems.device)
+    grad = _make_input((17,), torch.complex64)
+    result = flag_gems.sgn(inp)
+    res_grad = flag_gems.sgn_backward(inp, grad, result)
+    expected = torch.zeros_like(utils.to_reference(inp))
+    utils.gems_assert_equal(res_grad, expected)
+
+
+@pytest.mark.sgn_backward
+def test_sgn_backward_single_kernel():
+    from torch.profiler import ProfilerActivity, profile
+
+    inp = _make_input((64, 96), torch.complex64).requires_grad_()
+    grad = _make_input((64, 96), torch.complex64)
+    out = flag_gems.sgn(inp)
+
+    with profile(activities=[ProfilerActivity.CUDA]) as prof:
+        torch.autograd.grad(out, inp, grad)
+        flag_gems.runtime.torch_device_fn.synchronize()
+
+    launches = [
+        (event.key, event.count)
+        for event in prof.key_averages()
+        if event.device_time_total > 0
+    ]
+    kernels = [item for item in launches if "sgn_backward" in item[0].lower()]
+    assert len(kernels) == 1 and kernels[0][1] == 1, launches
+    assert sum(count for _, count in launches) == 1, launches

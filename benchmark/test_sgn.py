@@ -15,7 +15,23 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+
+class SgnBackwardBenchmark(base.UnaryPointwiseBenchmark):
+    def unpack_to_args_kwargs(self, input_tuple):
+        args, kwargs = super().unpack_to_args_kwargs(input_tuple)
+        args = [
+            (
+                arg.requires_grad_(True)
+                if torch.is_tensor(arg) and arg.is_complex()
+                else arg
+            )
+            for arg in args
+        ]
+        return args, kwargs
 
 
 @pytest.mark.sgn
@@ -45,5 +61,19 @@ def test_sgn_out():
         op_name="sgn_out",
         torch_op=torch.sgn,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.sgn_backward
+def test_sgn_backward():
+    bench = SgnBackwardBenchmark(
+        op_name="sgn_backward",
+        torch_op=torch.sgn,
+        gems_op=flag_gems.sgn,
+        # Real sgn has a structurally zero derivative; benchmark the non-trivial
+        # complex derivative that the fused Triton kernel computes.
+        dtypes=consts.COMPLEX_DTYPES,
+        is_backward=True,
     )
     bench.run()
