@@ -19,6 +19,7 @@ vendor_info = VendorDescriptor(
     device_name="cuda",
     triton_extra_name="hip",
     device_query_cmd="rocm-smi",
+    triton_extra_name="hip",
 )
 
 """
