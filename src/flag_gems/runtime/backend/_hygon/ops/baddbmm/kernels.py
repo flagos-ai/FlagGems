@@ -24,9 +24,15 @@ from flag_gems.utils.triton_version_utils import HAS_TLE
 
 if HAS_TLE:
     import triton.experimental.tle.language as tle
+    from triton.experimental import tle as tle_runtime
 
     from ..bmm.regular import _native_dot
     from .ring import baddbmm_ring_kernel
+
+    _is_tle_supported = getattr(tle_runtime, "is_tle_supported", None)
+    HAS_ASYNC_LOAD = _is_tle_supported is not None and _is_tle_supported("load")
+else:
+    HAS_ASYNC_LOAD = False
 
 
 @triton.jit
@@ -59,6 +65,8 @@ def baddbmm_kernel(
     STAGE_SHARED: tl.constexpr = False,
     UNROLL: tl.constexpr = 1,
     BATCH: tl.constexpr = 1,
+    ASYNC_B_GROUP: tl.constexpr = 0,
+    ALLOW_ASYNC_B: tl.constexpr = False,
 ):
     pid, batch = tl.program_id(0), tl.program_id(1)
     gm, gn = tl.cdiv(M, BLOCK_M), tl.cdiv(N, BLOCK_N)
@@ -79,18 +87,38 @@ def baddbmm_kernel(
         )
         local_b = tle.gpu.local_ptr(shared_b)
     acc = tl.zeros((BLOCK_M, BLOCK_N), tl.float32)
-    for ki in tl.range(tl.cdiv(K, BLOCK_K), loop_unroll_factor=UNROLL):
-        am = ((M % BLOCK_M == 0) | (rm < M))[:, None]
-        bn = ((N % BLOCK_N == 0) | (rn < N))[None, :]
-        km = (K % BLOCK_K == 0) | (rk + ki * BLOCK_K < K)
-        a = tl.load(ap, am & km[None, :], 0)
-        b = tl.load(bp, bn & km[:, None], 0)
-        if STAGE_SHARED:
-            tl.store(local_b, b)
-            b = tl.load(local_b)
-        acc = tl.dot(a, b, acc, input_precision="ieee", out_dtype=tl.float32)
-        ap += BLOCK_K * AK
-        bp += BLOCK_K * BK
+    if ASYNC_B_GROUP and ALLOW_ASYNC_B:
+        for _ in range(K // (ASYNC_B_GROUP * BLOCK_K)):
+            # Issue the full B tiles before their corresponding dot products.
+            b_tiles = ()
+            for i in tl.static_range(ASYNC_B_GROUP):
+                b_tiles += (tle.load(bp + i * BLOCK_K * BK, is_async=True),)
+            a_tiles = ()
+            for i in tl.static_range(ASYNC_B_GROUP):
+                a_tiles += (tl.load(ap + i * BLOCK_K * AK, rm[:, None] < M, 0),)
+            for i in tl.static_range(ASYNC_B_GROUP):
+                acc = tl.dot(
+                    a_tiles[i],
+                    b_tiles[i],
+                    acc,
+                    input_precision="ieee",
+                    out_dtype=tl.float32,
+                )
+            ap += ASYNC_B_GROUP * BLOCK_K * AK
+            bp += ASYNC_B_GROUP * BLOCK_K * BK
+    else:
+        for ki in tl.range(tl.cdiv(K, BLOCK_K), loop_unroll_factor=UNROLL):
+            am = ((M % BLOCK_M == 0) | (rm < M))[:, None]
+            bn = ((N % BLOCK_N == 0) | (rn < N))[None, :]
+            km = (K % BLOCK_K == 0) | (rk + ki * BLOCK_K < K)
+            a = tl.load(ap, am & km[None, :], 0)
+            b = tl.load(bp, bn & km[:, None], 0)
+            if STAGE_SHARED:
+                tl.store(local_b, b)
+                b = tl.load(local_b)
+            acc = tl.dot(a, b, acc, input_precision="ieee", out_dtype=tl.float32)
+            ap += BLOCK_K * AK
+            bp += BLOCK_K * BK
     mask = (rm[:, None] < M) & (rn[None, :] < N)
     acc *= ALPHA
     if BETA != 0:
@@ -110,6 +138,11 @@ def _prune_configs(configs, named_args, **kwargs):
         unroll = meta.get("UNROLL", 1)
         stages = config.num_stages
         if meta.get("STAGE_SHARED", False) and (not HAS_TLE or m < 256):
+            continue
+        async_group = meta.get("ASYNC_B_GROUP", 0)
+        if async_group and (
+            not kwargs["ALLOW_ASYNC_B"] or n % bn or k % (bk * async_group)
+        ):
             continue
         if unroll >= 4 and (itemsize != 2 or k > 512):
             continue
@@ -454,11 +487,34 @@ def _make_tuner(kernel, contract, prune=None, key=None):
                     "GROUP_M": 4,
                     "STAGE_SHARED": False,
                     "UNROLL": 1,
+                    "ASYNC_B_GROUP": 0,
                 },
                 num_warps=4,
                 num_stages=1,
             )
         ]
+        if HAS_ASYNC_LOAD:
+            configs += [
+                triton.Config(
+                    {
+                        "BLOCK_M": bm,
+                        "BLOCK_N": bn,
+                        "BLOCK_K": bk,
+                        "GROUP_M": 4,
+                        "STAGE_SHARED": False,
+                        "UNROLL": 1,
+                        "ASYNC_B_GROUP": group,
+                    },
+                    num_warps=4,
+                    num_stages=1,
+                )
+                for bm, bn, bk, group in (
+                    (32, 64, 64, 4),
+                    (32, 64, 128, 4),
+                    (64, 64, 64, 2),
+                    (64, 128, 64, 2),
+                )
+            ]
     elif contract == "baddbmm_packed":
         configs = [
             triton.Config(
@@ -496,6 +552,8 @@ def _make_tuner(kernel, contract, prune=None, key=None):
             "ALPHA",
             "BETA",
         ]
+        if contract == "baddbmm":
+            key.append("ALLOW_ASYNC_B")
     return libentry()(
         libtuner(
             configs=configs,
