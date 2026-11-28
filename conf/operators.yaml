@@ -3649,6 +3649,21 @@ ops:
   - Math
   stages:
   - beta: '5.3'
+- id: clone_backward
+  description: The backward computation of `clone()`, exercised through the autograd
+    of the forward operator. ATen has no `clone_backward` schema, so this is reached
+    via `_CloneFunction.backward` in `flag_gems.ops.clone` rather than a standalone
+    dispatch entry.
+  for:
+  - clone
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5.0'
 - id: coalesce
   description: 'De-duplicates a sparse COO tensor: groups the stored coordinates by
     their linear index, sorts unique coordinates ascending and sums duplicated values.

@@ -37,6 +37,17 @@ def _clone_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
 
 
 class _CloneFunction(torch.autograd.Function):
+    """Autograd node for ``clone``.
+
+    ``clone`` is a pure copy, so its VJP is the identity: ATen implements it
+    with the C++ ``CopyBackwards`` node, which hands ``grad_output`` straight
+    through (no allocation, no kernel) and only converts when the grad's dtype
+    differs from the input's. Wrapping the forward here keeps that contract
+    while letting the Triton copy kernel run for the forward pass, and mirrors
+    what ``torch.clone`` does -- the backward is deliberately *not* a tensor
+    copy, so there is no ``aten::clone_backward`` schema to register.
+    """
+
     @staticmethod
     def forward(ctx, inp, memory_format):
         ctx.memory_format = memory_format
@@ -44,6 +55,9 @@ class _CloneFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_out):
+        # Identity VJP: upstream gradients reuse ``grad_out``'s storage, the
+        # same aliasing ``CopyBackwards`` produces. The autograd engine clones
+        # on accumulation into ``.grad``, so no copy is needed here.
         return grad_out, None
 
 
