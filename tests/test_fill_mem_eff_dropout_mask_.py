@@ -44,8 +44,26 @@ MASK_SHAPES = (
 MASK_DTYPES = [torch.float32]
 
 
+# aten::_fill_mem_eff_dropout_mask_ only exists for CUDA, so the ATen reference
+# oracle cannot run on GCU (PrivateUse1). Only the test cases that compare
+# against that oracle are skipped there; the value-range case below exercises the
+# Gems kernel alone and still runs on GCU.
+ENFLAME_ATEN_REF_SKIP = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: aten::_fill_mem_eff_dropout_mask_ is CUDA-only, "
+        "no PrivateUse1 kernel on GCU"
+    ),
+)
+
+
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@ENFLAME_ATEN_REF_SKIP
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="aten::_fill_mem_eff_dropout_mask_ (curand) reference unavailable on XPU",
+)
 @pytest.mark.fill_mem_eff_dropout_mask_
 @pytest.mark.parametrize("shape", MASK_SHAPES)
 @pytest.mark.parametrize("seed_offset", [(42, 0), (42, 100), (7, 0), (7, 1024)])
@@ -78,6 +96,11 @@ def test_fill_mem_eff_dropout_mask__value_range(shape):
 
 @pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is not available")
 @pytest.mark.skipif(cfg.TO_CPU, reason="Unsupported in CPU mode")
+@ENFLAME_ATEN_REF_SKIP
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "kunlunxin",
+    reason="aten::_fill_mem_eff_dropout_mask_ (curand) reference unavailable on XPU",
+)
 @pytest.mark.fill_mem_eff_dropout_mask_
 @pytest.mark.parametrize("shape", MASK_SHAPES)
 def test_fill_mem_eff_dropout_mask__inplace(shape):

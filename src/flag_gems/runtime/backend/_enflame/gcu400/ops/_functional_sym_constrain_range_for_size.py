@@ -15,36 +15,19 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
-
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-NUM_SIPS = 24
-
-
-@libentry()
-@triton.jit(do_not_specialize=["N_total"])
-def _functional_sym_constrain_range_for_size_kernel(
-    x_ptr,
-    y_ptr,
-    N_total,
-    BLOCK: tl.constexpr,
-):
-    pid = tl.program_id(0)
-    num_pids = tl.num_programs(0)
-    arange = tl.arange(0, BLOCK)
-    for block_id in tl.range(pid, (N_total + BLOCK - 1) // BLOCK, num_pids):
-        off = block_id * BLOCK + arange
-        mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask)
-        tl.store(y_ptr + off, x, mask=mask)
-
 
 def _functional_sym_constrain_range_for_size(*args, **kwargs):
+    r"""Pass through the dep_token of a symbolic-shape marker op.
+
+    ``aten::_functional_sym_constrain_range_for_size(Scalar size, int? min,
+    int? max, Tensor dep_token) -> Tensor`` only records a size range hint for
+    symbolic shape tracing. At eager runtime nothing is produced or mutated, so
+    no device kernel is launched (same contract as metadata-only ops such as
+    ``aten::alias``) and the dep_token is returned as-is.
+    """
     logger.debug("GEMS_ENFLAME FUNCTIONAL_SYM_CONSTRAIN_RANGE_FOR_SIZE")
     tensor_arg = None
     for a in args:
@@ -58,15 +41,6 @@ def _functional_sym_constrain_range_for_size(*args, **kwargs):
                 break
 
     if tensor_arg is not None:
-        if tensor_arg.is_contiguous():
-            N_total = tensor_arg.numel()
-            if N_total > 0:
-                BLOCK = 8192
-                grid_size = min((N_total + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
-                with torch_device_fn.device(tensor_arg.device):
-                    _functional_sym_constrain_range_for_size_kernel[(grid_size,)](
-                        tensor_arg, tensor_arg, N_total, BLOCK=BLOCK, num_warps=4
-                    )
         return tensor_arg
 
     return args[0] if len(args) > 0 else None

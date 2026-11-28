@@ -127,12 +127,21 @@ def test_trapz_non_contiguous(dtype):
 @pytest.mark.parametrize("dtype", utils.ALL_INT_DTYPES)
 def test_trapz_int_promotion(dtype):
     """Integer inputs are promoted to float32, matching PyTorch."""
+    if (
+        flag_gems.vendor_name == "enflame"
+        and dtype in (torch.int16, torch.int32)
+        and not utils.TO_CPU
+    ):
+        pytest.skip(
+            "Enflame native trapezoid integer sum promotes to unsupported Int64"
+        )
     inp = torch.randint(-8, 8, (3, 4), device="cpu", dtype=dtype).to(flag_gems.device)
     ref_inp = utils.to_reference(inp)
 
     ref_out = torch.trapezoid(ref_inp, dx=0.5, dim=-1)
     res_out = flag_gems.trapz(inp, dx=0.5, dim=-1)
 
+    assert res_out.device == inp.device
     assert res_out.dtype == torch.float32
     utils.gems_assert_close(res_out, ref_out, torch.float32, reduce_dim=4)
 
@@ -170,6 +179,9 @@ def test_trapz_complex(shape, dtype, dim):
     """Complex inputs are unsupported and must raise a RuntimeError."""
     if dim >= len(shape) or dim < -len(shape):
         pytest.skip("Invalid dim for shape")
+
+    if flag_gems.vendor_name == "ascend" and dtype == torch.complex32:
+        pytest.skip("Ascend does not support casting complex inputs to complex32")
 
     real = torch.randn(shape, device=flag_gems.device)
     imag = torch.randn(shape, device=flag_gems.device)

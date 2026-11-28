@@ -87,11 +87,11 @@ def _foreach_tensor_direct_kernel(
     o14,
     o15,
     scalar_ptr,
-    t,
     DT: tl.constexpr,
     BLOCK: tl.constexpr,
     OP: tl.constexpr,
 ):
+    t = tl.program_id(0)
     a = _select_ptr(
         t, a0, a1, a2, a3, a4, a5, a6, a7, a8, a9, a10, a11, a12, a13, a14, a15
     )
@@ -147,7 +147,6 @@ def _try_direct(self, other, inplace, op):
         *a_ptrs,
         *o_ptrs,
         other,
-        nt,
         tl_dtype(dtype),
         block,
         op,

@@ -78,7 +78,7 @@ def test_addmm(monkeypatch):
         op_name="addmm",
         input_fn=_input_fn,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -90,7 +90,7 @@ def test_addmm_vector_bias(monkeypatch):
         op_name="addmm_vector_bias",
         input_fn=_input_fn_vector_bias,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -133,6 +133,13 @@ def _gems_addmm_dtype_out(bias, mat1, mat2, out_dtype, out, beta=1.0, alpha=1.0)
     flag_gems.vendor_name in ("ascend", "mthreads"),
     reason="Issue #5385: Native torch.addmm benchmark does not support out_dtype.",
 )
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::addmm.dtype; its CPU "
+        "fallback raises NotImplementedError, so there is no native baseline"
+    ),
+)
 def test_addmm_dtype(monkeypatch):
     bench = base.BlasBenchmark(
         op_name="addmm_dtype",
@@ -165,6 +172,13 @@ def _input_fn_dtype_out(b, m, n, k, dtype, device, b_column_major):
 @pytest.mark.skipif(
     flag_gems.vendor_name in ("ascend", "mthreads"),
     reason="Issue #5385: Native torch.addmm benchmark does not support out_dtype.",
+)
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::addmm.dtype_out; its CPU "
+        "fallback raises NotImplementedError, so there is no native baseline"
+    ),
 )
 def test_addmm_dtype_out(monkeypatch):
     bench = base.BlasBenchmark(
@@ -202,7 +216,7 @@ def test_addmm_out(monkeypatch):
         op_name="addmm_out",
         input_fn=_input_fn_out,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()
@@ -214,7 +228,7 @@ def test_addmm_out_vector_bias(monkeypatch):
         op_name="addmm_out_vector_bias",
         input_fn=_input_fn_vector_bias_out,
         torch_op=torch.addmm,
-        dtypes=consts.FLOAT_DTYPES,
+        dtypes=consts.FP16_BF16_DTYPES,
     )
 
     bench.run()

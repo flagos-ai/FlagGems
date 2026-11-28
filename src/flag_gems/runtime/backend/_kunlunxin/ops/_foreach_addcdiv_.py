@@ -166,7 +166,8 @@ def _foreach_addcdiv__Scalar(self, tensor1, tensor2, value=1):
     t1 = check_tensor_list(tensor1)
     t2 = check_tensor_list(tensor2)
     if len(tensors) == len(t1) == len(t2):
-        values = _resolve_scalars(tensors, value)
+        # _resolve_scalars returns (values, common, value_class).
+        values, _, _ = _resolve_scalars(tensors, value)
         if _try_fast(tensors, t1, t2, values):
             return None
     return _generic_scalar(self, tensor1, tensor2, value=value)
@@ -178,7 +179,8 @@ def _foreach_addcdiv__ScalarList(self, tensor1, tensor2, value=1):
     t1 = check_tensor_list(tensor1)
     t2 = check_tensor_list(tensor2)
     if len(tensors) == len(t1) == len(t2):
-        values = _resolve_scalars(tensors, value)
+        # _resolve_scalars returns (values, common, value_class).
+        values, _, _ = _resolve_scalars(tensors, value)
         if _try_fast(tensors, t1, t2, values):
             return None
     return _generic_scalar_list(self, tensor1, tensor2, value=value)
@@ -190,7 +192,8 @@ def _foreach_addcdiv__Tensor(self, tensor1, tensor2, value=1):
     t1 = check_tensor_list(tensor1)
     t2 = check_tensor_list(tensor2)
     if len(tensors) == len(t1) == len(t2):
-        values = _resolve_scalars(tensors, value)
+        # _resolve_scalars returns (values, common, value_class).
+        values, _, _ = _resolve_scalars(tensors, value)
         if _try_fast(tensors, t1, t2, values):
             return None
     return _generic_tensor(self, tensor1, tensor2, value=value)

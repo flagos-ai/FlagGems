@@ -19,13 +19,50 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
+
+# Kunlunxin silently materialises a float64/complex128 device tensor as
+# float32/complex64 (``support_fp64 == False``), so the fp64 cases below can
+# never construct their own reference.  Gate them on that backend only; other
+# vendors keep their previous behaviour.
+_skip_if_kunlunxin_no_fp64 = pytest.mark.skipif(
+    flag_gems.vendor_name in ("kunlunxin", "enflame")
+    and not flag_gems.runtime.device.support_fp64,
+    reason="Kunlunxin and Enflame does not support FP64",
+)
+
+# Kunlunxin's eager ldexp is the implementation this backend override
+# replaces: it loses the sign of zero, flushes subnormal scales, overflows
+# extreme integral exponents, and its real->complex / fp16 ``out=`` overloads
+# are missing or write garbage.  Compute the reference on CPU there (the same
+# path ``--ref cpu`` takes); other vendors keep their on-device reference.
+_cpu_reference = flag_gems.vendor_name in ("kunlunxin", "enflame")
+
+
+def _to_reference(inp, upcast=False):
+    if not _cpu_reference:
+        return utils.to_reference(inp, upcast)
+    ref_inp = inp.cpu()
+    if upcast:
+        # CPU always has fp64; mirror ``--ref cpu`` and keep the reference
+        # exact even though the device under test cannot represent it.
+        ref_inp = ref_inp.to(
+            torch.complex128 if ref_inp.is_complex() else torch.float64
+        )
+    return ref_inp
 
 
 @pytest.mark.ldexp
 @pytest.mark.parametrize(
-    "dtype,exponent", [(torch.float32, 128), (torch.float64, 1024)]
+    "dtype,exponent",
+    [
+        (torch.float32, 128),
+        pytest.param(torch.float64, 1024, marks=_skip_if_kunlunxin_no_fp64),
+    ],
 )
 def test_ldexp_integral_exponent_boundaries(dtype, exponent):
+    if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     inp = torch.tensor(
         [2.0 ** (-exponent + 2), 2.0 ** (-exponent + 1), 0.0, float("inf")],
         dtype=dtype,
@@ -57,25 +94,30 @@ def test_ldexp_cpu_scalar_operand(cpu_operand, exponent_dtype):
         with pytest.raises(RuntimeError):
             flag_gems.ldexp(inp, other)
         return
-    reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
+    reference = torch.ldexp(_to_reference(inp), _to_reference(other))
     result = flag_gems.ldexp(inp, other)
     utils.gems_assert_close(result, reference, result.dtype)
 
 
 @pytest.mark.ldexp_out
-@pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
+@pytest.mark.parametrize(
+    "dtype", [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+)
 def test_ldexp_real_operands_complex_out(dtype):
     inp = torch.randn(17, device=flag_gems.device)
     other = torch.randint(-3, 4, (17,), device=inp.device)
-    reference_input = utils.to_reference(inp)
-    reference = torch.empty(17, dtype=dtype, device=reference_input.device)
-    if cfg.TO_CPU:
+    reference_input = _to_reference(inp)
+    reference_other = _to_reference(other)
+    if cfg.TO_CPU or _cpu_reference:
         # PyTorch 2.11 CPU integer-exponent out kernels assert internally when
         # casting a real result to complex; validate the values via functional
-        # ldexp plus the output cast. CUDA still exercises the native overload.
-        reference = torch.ldexp(reference_input, utils.to_reference(other)).to(dtype)
+        # ldexp plus the output cast.  Kunlunxin's native real->complex out
+        # kernel writes garbage instead of zeroing the imaginary part, so its
+        # reference takes the same path.
+        reference = torch.ldexp(reference_input, reference_other).to(dtype)
     else:
-        torch.ldexp(reference_input, utils.to_reference(other), out=reference)
+        reference = torch.empty(17, dtype=dtype, device=reference_input.device)
+        torch.ldexp(reference_input, reference_other, out=reference)
     out = torch.empty(17, dtype=dtype, device=inp.device)
     result = flag_gems.ldexp_out(inp, other, out=out)
     assert result is out
@@ -83,6 +125,10 @@ def test_ldexp_real_operands_complex_out(dtype):
 
 
 @pytest.mark.ldexp
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="complex64 tensor creation via randn_like aborts on this device",
+)
 @pytest.mark.parametrize(
     "conj_input,conj_other", [(True, False), (False, True), (True, True)]
 )
@@ -93,7 +139,7 @@ def test_ldexp_lazy_conjugation(conj_input, conj_other):
         inp = inp.conj()
     if conj_other:
         other = other.conj()
-    reference = torch.ldexp(utils.to_reference(inp), utils.to_reference(other))
+    reference = torch.ldexp(_to_reference(inp), _to_reference(other))
     result = flag_gems.ldexp(inp, other)
     utils.gems_assert_close(result, reference, inp.dtype)
 
@@ -105,8 +151,8 @@ def test_ldexp(shape, dtype):
     self = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     other = torch.randint(-8, 9, shape, device=flag_gems.device, dtype=torch.int32)
 
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self, True)
+    ref_other = _to_reference(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -123,10 +169,20 @@ def test_ldexp(shape, dtype):
         (torch.float16, torch.int64, torch.float16),
         (torch.bfloat16, torch.int32, torch.bfloat16),
         (torch.float16, torch.float32, torch.float32),
-        (torch.float32, torch.float64, torch.float64),
+        pytest.param(
+            torch.float32,
+            torch.float64,
+            torch.float64,
+            marks=_skip_if_kunlunxin_no_fp64,
+        ),
     ],
 )
 def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128)
+        for _dt in (self_dtype, other_dtype, expected_dtype)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     shape = (37, 53)
     if self_dtype == torch.bool:
         self = torch.randint(0, 2, shape, device=flag_gems.device).bool()
@@ -139,8 +195,8 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     else:
         other = torch.randint(-8, 9, shape, dtype=other_dtype, device=flag_gems.device)
 
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -160,12 +216,17 @@ def test_ldexp_dtype_promotion(self_dtype, other_dtype, expected_dtype):
     ],
 )
 def test_ldexp_zero_dim_promotion(self_dtype, other_dtype, expected_dtype):
+    if not utils.fp64_is_supported and any(
+        _dt in (torch.float64, torch.complex128)
+        for _dt in (self_dtype, other_dtype, expected_dtype)
+    ):
+        pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
     if self_dtype.is_complex and flag_gems.vendor_name in ("ascend", "tsingmicro"):
         pytest.skip("The backend does not support complex tensors")
     self = torch.randn((17,), dtype=self_dtype, device=flag_gems.device)
     other = torch.randn((), dtype=other_dtype, device=flag_gems.device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
 
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
     res_out = flag_gems.ldexp(self, other)
@@ -180,8 +241,8 @@ def test_ldexp_broadcast_noncontiguous_and_empty():
     self = torch.randn((19, 7), device=flag_gems.device).T
     other = torch.randint(-8, 9, (19,), device=flag_gems.device, dtype=torch.int64)
 
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self, True)
+    ref_other = _to_reference(other)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
     res_out = flag_gems.ldexp(self, other)
     utils.gems_assert_close(res_out, ref_out, torch.float32)
@@ -206,8 +267,8 @@ def test_ldexp_special_values(dtype):
         dtype=dtype,
         device=flag_gems.device,
     )
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other, True)
+    ref_self = _to_reference(self, True)
+    ref_other = _to_reference(other, True)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -230,8 +291,8 @@ def test_ldexp_special_values(dtype):
 def test_ldexp_complex():
     self = torch.randn((19, 7), dtype=torch.complex64, device=flag_gems.device)
     other = torch.randn((7,), dtype=torch.complex64, device=flag_gems.device)
-    ref_self = utils.to_reference(self, True)
-    ref_other = utils.to_reference(other, True)
+    ref_self = _to_reference(self, True)
+    ref_other = _to_reference(other, True)
     ref_out = torch.ops.aten.ldexp.Tensor(ref_self, ref_other)
 
     res_out = flag_gems.ldexp(self, other)
@@ -245,8 +306,8 @@ def test_ldexp_out_alias_resize_and_stride(dtype):
     self = torch.randn((11, 37), dtype=dtype, device=flag_gems.device)
     other = torch.randint(-8, 9, (37,), device=flag_gems.device, dtype=torch.int32)
 
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
     ref_storage = torch.empty((37, 11), dtype=dtype, device=ref_self.device)
     ref_out_buf = ref_storage.T
     ref_out = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out_buf)
@@ -272,21 +333,29 @@ def test_ldexp_out_alias_resize_and_stride(dtype):
 
 
 @pytest.mark.ldexp_out
-@pytest.mark.parametrize("out_dtype", [torch.float16, torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "out_dtype",
+    [torch.float16, torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)],
+)
 def test_ldexp_out_dtype_casting(out_dtype):
     if cfg.TO_CPU and out_dtype != torch.float32:
         pytest.skip("ATen CPU ldexp.out does not support dynamic output dtype casting")
     self = torch.randn((17,), dtype=torch.float32, device=flag_gems.device)
     other = torch.randint(-4, 5, (17,), dtype=torch.int32, device=flag_gems.device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
-    ref_out_buf = torch.empty((17,), dtype=out_dtype, device=ref_self.device)
-    ref_out = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out_buf)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
+    if _cpu_reference:
+        # Kunlunxin's native out kernel raises for a dtype-casting output, so
+        # validate the cast through the functional overload instead.
+        ref_out = torch.ldexp(ref_self, ref_other).to(out_dtype)
+    else:
+        ref_out_buf = torch.empty((17,), dtype=out_dtype, device=ref_self.device)
+        ref_out = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out_buf)
+        assert ref_out is ref_out_buf
     out = torch.empty((17,), dtype=out_dtype, device=flag_gems.device)
 
     result = flag_gems.ldexp_out(self, other, out=out)
 
-    assert ref_out is ref_out_buf
     assert result is out
     assert result.dtype == ref_out.dtype
     utils.gems_assert_close(result, ref_out, out_dtype)
@@ -296,8 +365,8 @@ def test_ldexp_out_dtype_casting(out_dtype):
 def test_ldexp_out_aliasing():
     self = torch.randn((17,), device=flag_gems.device)
     other = torch.randint(-4, 5, (17,), dtype=torch.int32, device=flag_gems.device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
 
     ref_result = torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_self)
     result = flag_gems.ldexp_out(self, other, out=self)
@@ -330,8 +399,8 @@ def test_ldexp_out_rejects_device_mismatch():
     other = torch.ones((17,), dtype=torch.int32, device=flag_gems.device)
     wrong_device = "meta" if self.device.type == "cpu" else "cpu"
     out = torch.empty((17,), device=wrong_device)
-    ref_self = utils.to_reference(self)
-    ref_other = utils.to_reference(other)
+    ref_self = _to_reference(self)
+    ref_other = _to_reference(other)
     ref_out = torch.empty((17,), device="meta")
     with pytest.raises(RuntimeError):
         torch.ops.aten.ldexp.out(ref_self, ref_other, out=ref_out)

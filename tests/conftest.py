@@ -16,9 +16,11 @@ import fcntl
 import json
 import logging
 import os
+import sys
 from datetime import datetime
 
 import pytest
+import torch
 
 # TODO(Qiming): Try remove this line
 # import torch  # noqa: F401
@@ -55,6 +57,11 @@ REPORT_FILE = "accuracy_result.json"
 
 
 def pytest_addoption(parser):
+    parser.addoption(
+        "--repro-dispatch-report",
+        default=None,
+        help="JSON file for same-process native/FlagGems dispatch reproduction",
+    )
     parser.addoption(
         "--ref",
         action="store",
@@ -131,6 +138,20 @@ def pytest_configure(config):
     QUICK_MODE = config.getoption("--quick") is True
     FIRST_PARAMETER_ONLY = config.getoption("--first-parameter-only") is True
 
+    # On Ascend, ATen conv runs with HF32 operands by default (ALLOW_CONV_HF32
+    # is enabled by default while ALLOW_MATMUL_HF32 is not). Unless --ref cpu
+    # is given, the accuracy tests' reference conv runs in fp32 on the device
+    # (no fp64 to upcast to), so the reference would carry ~1e-3 error while
+    # the kernels under test compute ieee fp32 (~1e-7) -- fp32 conv cases then
+    # fail at atol=1e-4 over a difference that lives entirely in the reference.
+    if flag_gems.vendor_name == "ascend":
+        import torch
+
+        try:
+            torch.npu.conv.allow_hf32 = False
+        except AttributeError:
+            pass
+
     if RECORD_JSON:
         report_file = config.getoption("--output")
         if report_file:
@@ -187,6 +208,25 @@ def pytest_runtest_teardown(item, nextitem):
 
 
 def pytest_sessionfinish(session, exitstatus):
+    report_path = session.config.getoption("--repro-dispatch-report")
+    if report_path:
+        existing = (
+            json.loads(open(report_path).read()) if os.path.exists(report_path) else {}
+        )
+        mode = os.environ.get("FLAGGEMS_REPRO_MODE", "native")
+        existing[mode] = {
+            "exit_status": int(exitstatus),
+            "nodes": {
+                nodeid: {
+                    key: value
+                    for key, value in result.items()
+                    if key in ("result", "reason")
+                }
+                for nodeid, result in TEST_RESULTS.items()
+            },
+        }
+        with open(report_path, "w") as report:
+            json.dump(existing, report, indent=2, sort_keys=True, default=str)
     if RECORD_LOG:
         logging.info(json.dumps(RUNTEST_INFO, indent=2))
 
@@ -361,6 +401,82 @@ def _skip_unavailable_integral_foreach_reference(items):
         )
 
 
+def _skip_unavailable_compressed_backward_reference(items):
+    """Skip compressed-layout to_dense_backward cases that have no reference.
+
+    For a CSR/CSC/BSR/BSC operand, ``aten::to_dense_backward`` needs a kernel for
+    the SparseCsr device backend (to read ``sparse_dim``) and the masked branch
+    needs ``aten::sparse_mask``.  Neither is registered on this platform, so
+    both the expected and the actual value of these four cases are
+    unobtainable; the check below probes the operator instead of hardcoding a
+    vendor name.
+    """
+    import torch
+
+    targets = [
+        item
+        for item in items
+        if getattr(item, "originalname", item.name)
+        == "test_to_dense_backward_sparse_compressed"
+    ]
+    if not targets:
+        return
+
+    grad = torch.zeros(2, 2, device=flag_gems.device)
+    probe = torch.zeros(2, 2, device=flag_gems.device).to_sparse_csr()
+    try:
+        torch.ops.aten.to_dense_backward(grad, probe, True)
+    except (RuntimeError, NotImplementedError):
+        available = False
+    else:
+        available = True
+    if available:
+        return
+
+    for item in targets:
+        item.add_marker(
+            pytest.mark.skip(
+                reason="compressed sparse to_dense_backward has no device "
+                "reference on this platform"
+            )
+        )
+
+
+def _adjust_enflame_foreach_items(items):
+    """Make marker-selected foreach tests exercise the vendor path on gcu300.
+
+    Two vendor-gated adaptations, both evidenced in the PR body:
+
+    * ``tests/test_foreach_ops.py`` builds ``ALL_WRAPPERS`` by overlaying
+      ``SpecOpRegistrar``, but a few tests call the raw ``BINARY_WRAPPERS`` /
+      ``REDUCTION_WRAPPERS`` dicts.  On gcu300 those calls reach the shared
+      executor, which aborts (Sip exception); point them at the overlaid
+      wrappers so the same assertions test the implementation the dispatcher
+      would use.
+    * gcu300 declares ``int64_enabled=False`` and ``complex_enabled=False`` and
+      has no bool ``abs`` kernel; skip exactly those parameter combinations.
+    """
+    module = sys.modules.get("tests.test_foreach_ops")
+    if module is not None:
+        module.BINARY_WRAPPERS.update(module.ALL_WRAPPERS)
+        module.REDUCTION_WRAPPERS.update(module.ALL_WRAPPERS)
+
+    skip_int64 = pytest.mark.skip(reason="gcu300 declares int64_enabled=False")
+    skip_complex = pytest.mark.skip(reason="gcu300 declares complex_enabled=False")
+    skip_bool_abs = pytest.mark.skip(reason="gcu300 has no bool abs kernel")
+    for item in items:
+        if not item.nodeid.startswith("tests/test_foreach_unary.py"):
+            continue
+        params = getattr(getattr(item, "callspec", None), "params", {})
+        dtype = params.get("dtype")
+        if dtype is torch.int64:
+            item.add_marker(skip_int64)
+        elif dtype is not None and dtype.is_complex:
+            item.add_marker(skip_complex)
+        elif "unary_bool" in item.nodeid and params.get("name") == "abs":
+            item.add_marker(skip_bool_abs)
+
+
 def pytest_collection_modifyitems(session, config, items):
     """
     Modify the collected test items before they are executed.
@@ -377,6 +493,9 @@ def pytest_collection_modifyitems(session, config, items):
     if flag_gems.vendor_name == "kunlunxin":
         _skip_unmeasurable_launch_count_tests(items)
         _skip_unavailable_integral_foreach_reference(items)
+    if flag_gems.vendor_name == "enflame":
+        _adjust_enflame_foreach_items(items)
+        _skip_unavailable_compressed_backward_reference(items)
 
     if first_parameter_only:
         # Group items by test function (module + class + function name)

@@ -397,7 +397,7 @@ def test_no_tle_fallback(n, upper, dtype, monkeypatch):
     """Non-TLE fallback smoke tests: force HAS_TLE=False to exercise pure-Triton fallback kernels."""
     import importlib
 
-    solve_mod = importlib.import_module("flag_gems.ops.linalg_solve_triangular")
+    solve_mod = importlib.import_module(flag_gems.linalg_solve_triangular.__module__)
 
     monkeypatch.setattr(solve_mod, "HAS_TLE", False)
 

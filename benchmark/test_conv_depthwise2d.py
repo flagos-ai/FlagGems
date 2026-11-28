@@ -68,6 +68,13 @@ def _conv_depthwise2d_torch_op(
     )
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::_conv_depthwise2d; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.conv_depthwise2d
 def test_conv_depthwise2d():
     torch.backends.cudnn.allow_tf32 = False

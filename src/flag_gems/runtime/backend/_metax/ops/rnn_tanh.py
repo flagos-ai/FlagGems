@@ -39,6 +39,12 @@ _DOT_PRECISION = tl.constexpr(
     "tf32x3" if runtime.device.vendor_name == "nvidia" else "ieee"
 )
 
+# MetaX's Triton backend mis-pipelines loop-carried global-memory dependencies
+# in the recurrent time-step loops when num_stages > 1, which makes the forward
+# and backward RNN kernels return nondeterministic results.  Keep every RNN
+# kernel non-pipelined on this backend.
+_NUM_STAGES = 1
+
 
 @triton.jit
 def _load_input(
@@ -2077,8 +2083,7 @@ def _launch_forward(
                     triton.cdiv(rows, block_m),
                     triton.cdiv(hidden_size, block_n),
                 )
-                launch_warps = 1 if vendor == "ascend" else 4
-                launch_stages = 1 if vendor in ("ascend", "metax", "iluvatar") else 2
+                launch_warps = 4
                 rnn_tanh_input_linear_kernel[linear_grid](
                     current_input,
                     weight_ih,
@@ -2102,7 +2107,7 @@ def _launch_forward(
                     BLOCK_N=block_n,
                     BLOCK_K=block_k,
                     num_warps=launch_warps,
-                    num_stages=launch_stages,
+                    num_stages=_NUM_STAGES,
                 )
                 block_b = 16
                 block_h = max(16, triton.next_power_of_2(hidden_size))
@@ -2123,10 +2128,8 @@ def _launch_forward(
                     direction,
                     BLOCK_B=block_b,
                     BLOCK_H=block_h,
-                    num_warps=(
-                        1 if vendor == "ascend" else (8 if block_h >= 128 else 4)
-                    ),
-                    num_stages=launch_stages,
+                    num_warps=8 if block_h >= 128 else 4,
+                    num_stages=_NUM_STAGES,
                 )
             elif use_ascend_chunked:
                 rows = seq_len * batch_size
@@ -2161,7 +2164,7 @@ def _launch_forward(
                     BLOCK_N=block_n,
                     BLOCK_K=block_k,
                     num_warps=1,
-                    num_stages=1,
+                    num_stages=_NUM_STAGES,
                 )
                 chunk_size = 3
                 block_b = 8
@@ -2210,7 +2213,7 @@ def _launch_forward(
                             BLOCK_B=block_b,
                             BLOCK_H=block_h,
                             num_warps=1,
-                            num_stages=1,
+                            num_stages=_NUM_STAGES,
                         )
                         # Reuse only a full, non-initial, non-final chunk.
                         # Its dynamic start index is neither scalar-specialized
@@ -2253,7 +2256,7 @@ def _launch_forward(
                     BLOCK_N=block_n,
                     BLOCK_K=block_k,
                     num_warps=1,
-                    num_stages=1,
+                    num_stages=_NUM_STAGES,
                 )
                 # The 128-wide recurrent state fits in one reduction tile;
                 # avoid two matrix iterations and their intermediate transfers.
@@ -2313,7 +2316,7 @@ def _launch_forward(
                                 BLOCK_N=block_n,
                                 BLOCK_K=block_k,
                                 num_warps=1,
-                                num_stages=1,
+                                num_stages=_NUM_STAGES,
                             )
                             if step == reusable_step and time_index > 1:
                                 compiled_middle = compiled_kernel[direct_grid]
@@ -2343,7 +2346,7 @@ def _launch_forward(
                                 BLOCK_M=activation_block_m,
                                 BLOCK_N=activation_block_n,
                                 num_warps=1,
-                                num_stages=1,
+                                num_stages=_NUM_STAGES,
                             )
                             if (
                                 step == reusable_step
@@ -2403,7 +2406,7 @@ def _launch_forward(
                                 BLOCK_N=block_n,
                                 BLOCK_K=block_k,
                                 num_warps=1,
-                                num_stages=1,
+                                num_stages=_NUM_STAGES,
                             )
                             if (
                                 step == reusable_step
@@ -2448,7 +2451,7 @@ def _launch_forward(
                     BLOCK_I=block_i,
                     BLOCK_H=block_h,
                     num_warps=8 if block_h >= 128 else 4,
-                    num_stages=2,
+                    num_stages=_NUM_STAGES,
                 )
             else:
                 if hidden_read is None:
@@ -2484,7 +2487,7 @@ def _launch_forward(
                     APPLY_DROPOUT=apply_dropout,
                     BLOCK_H=64,
                     num_warps=4,
-                    num_stages=2,
+                    num_stages=_NUM_STAGES,
                 )
         layer_outputs.append(layer_output)
         current_input = layer_output
@@ -2620,7 +2623,7 @@ def _launch_backward(
                     direction,
                     BLOCK_H=64,
                     num_warps=1,
-                    num_stages=1,
+                    num_stages=_NUM_STAGES,
                 )
             elif hidden_size <= 256 and hidden_size >= 16:
                 block_b = max(16, min(16, triton.next_power_of_2(batch_size)))
@@ -2643,7 +2646,7 @@ def _launch_backward(
                     BLOCK_B=block_b,
                     BLOCK_H=block_h,
                     num_warps=8 if block_h >= 128 else 4,
-                    num_stages=2,
+                    num_stages=_NUM_STAGES,
                 )
             else:
                 rnn_tanh_bptt_vector_kernel[(batch_size,)](
@@ -2926,7 +2929,7 @@ def _launch_packed_forward(
                         BLOCK_I=block_i,
                         BLOCK_H=block_h,
                         num_warps=8 if block_h >= 128 else 4,
-                        num_stages=2,
+                        num_stages=_NUM_STAGES,
                     )
                 else:
                     rnn_tanh_packed_forward_step_vector_kernel[(active_batch,)](

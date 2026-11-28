@@ -28,6 +28,10 @@ if cfg.QUICK_MODE:
 else:
     ATTN_HEADS = [2, 4, 8, 16, 32]
 
+# Vendors whose reference is the plain torch softmax formulation below instead of
+# NVIDIA TransformerEngine (unavailable on these backends).
+TORCH_REFERENCE_VENDORS = ("enflame", "kunlunxin")
+
 # Make sure every thread has same seed.
 random.seed(time.time() // 100)
 
@@ -60,20 +64,21 @@ def test_scaled_softmax_forward(
         device=flag_gems.device,
     )
 
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in TORCH_REFERENCE_VENDORS:
         p_ref = _torch_scaled_softmax_forward(s, scale_factor)
     else:
         try:
             from transformer_engine.pytorch import cpp_extensions as tex
         except ImportError:
-            pytest.skip(
-                "transformer_engine_torch is not available, skipping accuracy test"
-            )
+            tex = None
 
         te_scaled_softmax_forward = getattr(tex, "scaled_softmax_forward", None)
         if te_scaled_softmax_forward is None:
-            pytest.skip("'scaled_softmax_forward' not found in TransformerEngine")
-        p_ref = te_scaled_softmax_forward(s, scale_factor)
+            # TransformerEngine is unavailable; fall back to the torch
+            # reference so the lane still validates the kernel.
+            p_ref = _torch_scaled_softmax_forward(s, scale_factor)
+        else:
+            p_ref = te_scaled_softmax_forward(s, scale_factor)
     p_ref = utils.to_reference(p_ref)
     p = flag_gems.scaled_softmax_forward(s, scale_factor)
 
@@ -101,26 +106,27 @@ def test_scaled_softmax_backward(
         device=flag_gems.device,
     )
 
-    if flag_gems.vendor_name == "kunlunxin":
+    if flag_gems.vendor_name in TORCH_REFERENCE_VENDORS:
         p_ref = _torch_scaled_softmax_forward(s, scale_factor)
+        te_scaled_softmax_backward = None
     else:
         try:
             from transformer_engine.pytorch import cpp_extensions as tex
         except ImportError:
-            pytest.skip(
-                "transformer_engine_torch is not available, skipping accuracy test"
-            )
+            tex = None
 
         te_scaled_softmax_forward = getattr(tex, "scaled_softmax_forward", None)
         te_scaled_softmax_backward = getattr(tex, "scaled_softmax_backward", None)
-        if te_scaled_softmax_forward is None:
-            pytest.skip("'scaled_softmax_forward' not found in TransformerEngine")
-        if te_scaled_softmax_backward is None:
-            pytest.skip("'scaled_softmax_backward' not found in TransformerEngine")
-        p_ref = te_scaled_softmax_forward(s, scale_factor)
+        if te_scaled_softmax_forward is None or te_scaled_softmax_backward is None:
+            # TransformerEngine is unavailable; use the torch reference for
+            # both the softmax result and its backward.
+            te_scaled_softmax_backward = None
+            p_ref = _torch_scaled_softmax_forward(s, scale_factor)
+        else:
+            p_ref = te_scaled_softmax_forward(s, scale_factor)
     p = flag_gems.scaled_softmax_forward(s, scale_factor)
     in_grad = flag_gems.scaled_softmax_backward(out_grad, p, scale_factor)
-    if flag_gems.vendor_name == "kunlunxin":
+    if te_scaled_softmax_backward is None:
         in_grad_ref = _torch_scaled_softmax_backward(out_grad, p_ref, scale_factor)
     else:
         in_grad_ref = te_scaled_softmax_backward(out_grad, p_ref, scale_factor)

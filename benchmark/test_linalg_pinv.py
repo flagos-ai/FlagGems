@@ -17,7 +17,7 @@
 import pytest
 import torch
 
-from flag_gems.ops.linalg_pinv import linalg_pinv
+from flag_gems import linalg_pinv
 
 from . import base
 

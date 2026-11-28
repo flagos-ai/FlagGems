@@ -253,6 +253,7 @@ def _is_fast_path(self, tensor1, tensor2):
 
 
 def _fast_path(self, tensor1, tensor2, value):
+    # _resolve_scalars returns (values, common, value_class).
     values, _, _ = foreach._resolve_scalars(self, value)
     dtype = self[0].dtype
     device = self[0].device
@@ -285,6 +286,7 @@ def _fast_path(self, tensor1, tensor2, value):
 
 
 def _foreach_addcmul_ScalarList(self, tensor1, tensor2, value=1):
+    logger.debug("GEMS_KUNLUNXIN _FOREACH_ADDCMUL_SCALARLIST")
     self = foreach.check_tensor_list(self)
     tensor1 = foreach.check_tensor_list(tensor1)
     tensor2 = foreach.check_tensor_list(tensor2)

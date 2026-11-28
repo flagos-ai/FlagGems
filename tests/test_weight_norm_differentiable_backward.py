@@ -20,6 +20,8 @@ import flag_gems
 from . import accuracy_utils as utils
 from . import conftest as cfg
 
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
+
 SHAPES = [(4, 8), (32, 257), (3, 5, 17)]
 FLOAT_DTYPES = [torch.float32] if cfg.QUICK_MODE else utils.ALL_FLOAT_DTYPES
 
@@ -30,7 +32,12 @@ def _make_inputs(shape, dim, dtype, device):
     grad_w = torch.randn(shape, dtype=dtype, device=device)
     saved_v = torch.randn(shape, dtype=dtype, device=device)
     saved_g = torch.randn(broadcast_shape, dtype=dtype, device=device)
-    _, saved_norms = torch._weight_norm_interface(saved_v, saved_g, dim)
+    if IS_KUNLUNXIN and saved_v.numel() == 0:
+        saved_norms = torch.zeros(broadcast_shape, dtype=torch.float32, device=device)
+    elif IS_KUNLUNXIN and dtype == torch.float16:
+        _, saved_norms = flag_gems.weight_norm_interface(saved_v, saved_g, dim)
+    else:
+        _, saved_norms = torch._weight_norm_interface(saved_v, saved_g, dim)
     return grad_w, saved_v, saved_g, saved_norms, dim
 
 

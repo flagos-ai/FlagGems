@@ -27,6 +27,18 @@ vdot:
 randperm:
   <<: *single_dim_shapes
 
+# aten::_unique2 flattens and sorts the input, so the shape sweep must stay
+# below sort's 2**30 per-launch limit; without this entry the Benchmark
+# catch-all below would benchmark it on the 2**30 generic shape and abort.
+unique2:
+  shapes:
+    - [1024]
+    - [4096]
+    - [16384]
+    - [65536]
+    - [262144]
+  shape_desc: "N"
+
 gelu_backward:
   shapes:
     - [1048576] # 1024 * 1024
@@ -36,6 +48,28 @@ gelu_backward:
     - [256, 1024, 1024]
 
 softmax_backward:
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [256, 1024, 1024]
+
+# The default shape set of `_softmax_backward_data` / `.out` (DEFAULT_SHAPES in
+# benchmark/consts.py) leads with the 1-D shape (1073741824,), for which the native
+# `topsatenSoftmaxBackwardData` of this backend returns TOPSATEN_STATUS_NOT_SUPPORT and the C++
+# layer aborts the process with std::runtime_error (so the baseline cannot be timed).
+# The same shape set as softmax_backward is used here: keep the 1-D (1M) coverage and use 3-D for
+# the huge cases.
+softmax_backward_data:
+  shapes:
+    - [1048576] # 1024 * 1024
+    - [64, 64]
+    - [4096, 4096]
+    - [64, 512, 512]
+    - [256, 1024, 1024]
+
+softmax_backward_out:
   shapes:
     - [1048576] # 1024 * 1024
     - [64, 64]
@@ -68,6 +102,16 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+bmm_w8a8:
+  # Official per-channel INT8 BMM performance cases from benchmark/test_bmm_w8a8.py.
+  # Enflame init_user_config requires this file and otherwise falls back to a
+  # single-element shape that the benchmark cannot unpack, so define B, M, N, K.
+  shapes:
+    - [1, 1, 1024, 4096]
+    - [1, 128, 1024, 4096]
+    - [2, 33, 65, 129]
+  shape_desc: "B, M, N, K"
+
 grouped_mm:
   shapes:
     - [16, 512, 2048]
@@ -75,6 +119,43 @@ grouped_mm:
     - [64, 2048, 128]
   shape_desc: "Groups, N, K"
 
+grouped_gemm_w8a8:
+  # Cases from GroupedGemmInt8Benchmark.DEFAULT_SHAPES; without this key the
+  # generic Benchmark shapes are picked and the 4-tuple unpack in
+  # get_input_iter fails on the single-element [1073741824] case.
+  shapes:
+    - [45, 512, 6144, 257]
+    - [45, 6144, 256, 257]
+  shape_desc: "M, N, K, E"
+
+_ctc_loss:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+_ctc_loss_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+_ctc_loss_backward:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
+_ctc_loss_backward_out:
+  shapes:
+    - [64, 4, 32, 16]
+    - [256, 16, 64, 48]
+    - [512, 32, 64, 48]
+    - [1024, 32, 128, 96]
+  shape_desc: "T, N, C, S"
 ctc_loss:
   shapes:
     - [64, 4, 32, 16]
@@ -110,6 +191,136 @@ repeat:
     - [256, 128, 64]
     - [512, 32, 32]
     - [64, 64, 64, 64]
+
+# median(no-dim) inherits Benchmark default shapes ([1073741824], ...); that
+# width exceeds enflame Triton selection limits (f16 key-select <= 16384).
+median:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
+median_out:
+  shapes:
+    - [2]
+    - [64]
+    - [65]
+    - [128]
+    - [256]
+    - [257]
+    - [1024]
+    - [4096]
+    - [4, 8, 16, 8]
+  shape_desc: "input shape"
+
+median_dim:
+  shapes:
+    - [1536, 640]
+    - [144, 8192]
+    - [768, 1536]
+    - [32, 384, 128]
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
+
+median_dim_values:
+  shapes:
+    - [1536, 640]
+    - [144, 8192]
+    - [768, 1536]
+    - [32, 384, 128]
+    - [[32, 384, 128], 1, false]
+    - [[640, 1536], 0, false]
+    - [[8, 64, 384, 64], 2, false]
+  shape_desc: "input shape or [input shape, dim, keepdim]"
+
+# tile / repeat_interleave amplify volume; avoid falling back to UnaryPointwise
+# giant 1-D shapes (e.g. 536870912) that overflow GCU grid launch ints.
+tile:
+  shapes:
+    - [16, 256, 256]
+    - [64, 64, 64]
+    - [256, 128, 64]
+    - [512, 32, 32]
+    - [64, 64, 64, 64]
+
+repeat_interleave_self_int:
+  shapes:
+    - [16, 256, 256]
+    - [64, 64, 64]
+    - [256, 128, 64]
+    - [512, 32, 32]
+    - [64, 64, 64, 64]
+
+# self_Tensor scales the output volume by sum(repeats), so the generic
+# Benchmark fallback shapes (e.g. [1024, 1024, 1024] with 1024 repeats) ask for
+# a ~60 GiB output and fail with GCU OOM. Keep the op on the small shape set its
+# benchmark class already declares as DEFAULT_SHAPES.
+repeat_interleave_self_tensor:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+
+# repeat_interleave.Tensor only uses shape[0] to size the repeats vector, so the
+# generic 1-D/3-D fallback buys nothing; keep the ladder its benchmark class declares.
+repeat_interleave_tensor:
+  shapes:
+    - [16, 256, 256]
+    - [128, 256, 256]
+    - [64, 64, 64, 64]
+
+# O(N*C^2) backward: the generic 2-D fallback contains [4096, 4096], i.e. about
+# 7e10 multiply-adds per iteration, which stalls the core-stage benchmark.
+# Pin the same small 2-D ladder the shared benchmark/core_shapes.yaml declares.
+multilabel_margin_loss_backward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
+
+# index_put_impl_ input_fn consumes (input_shape, indices_shape, values_shape,
+# is_bool). The generic fallback asks for a [1024, 1024, 1024] destination
+# tensor (4 GiB) and fails, so pin a bounded ladder that still covers 1-D, 2-D,
+# 3-D scatter and the boolean-mask path.
+index_put_impl_:
+  shapes:
+    - [[1048576], [[65536]], [65536], false]
+    - [[32, 32], [[8], [8]], [8], false]
+    - [[1024, 1024], [[64], [64]], [64], false]
+    - [[512, 512, 512], [[128], [128], [128]], [128], false]
+    - [[512, 512], [[512, 512]], [262144], true]
+  shape_desc: "input_shape, indices_shape, values_shape, is_bool"
+
+# cdist_backward input_fn unpacks (batch, n1, dim); avoid 1-D UnaryPointwise fallback.
+cdist_backward:
+  shapes:
+    - [2, 16, 32]
+    - [4, 32, 64]
+    - [8, 64, 128]
+    - [16, 128, 256]
+  shape_desc: "batch, n1, dim"
+
+# conv_transpose2d input_fn unpacks 10-tuple hyperparams.
+conv_transpose2d:
+  shapes:
+    - [1, 64, 32, 32, 32, 3, 3, 1, 1, 1]
+    - [4, 32, 32, 32, 32, 3, 3, 2, 1, 1]
+    - [8, 16, 64, 64, 16, 5, 5, 2, 2, 1]
+    - [16, 32, 16, 16, 64, 3, 3, 2, 1, 1]
+  shape_desc: "N, Cin, H, W, Cout, Kh, Kw, stride, pad, groups"
 
 MvAndOuterBenchmark:
   shapes:
@@ -214,6 +425,20 @@ kron:
     - [160, 160]
   shape_desc: "M, N"
 
+# multilabel_margin_loss_forward costs O(N*C^2) per row, so the
+# GenericBenchmark2DOnly shapes above (e.g. (4096,4096) -> 6.7e10 class pairs)
+# keep the native baseline and the GCU kernel busy for hours. Mirror the small
+# generic core_shapes.yaml set so the class axis stays representative.
+multilabel_margin_loss_forward:
+  shapes:
+    - [8, 128]
+    - [32, 256]
+    - [16, 512]
+    - [8, 1024]
+    - [2, 2048]
+    - [1, 4096]
+  shape_desc: "N, C"
+
 # default 4d-only shapes
 GenericBenchmark4DOnly:
   shapes:
@@ -256,6 +481,19 @@ FractionalMaxPool2dBenchmark:
     - [64, 256, 14, 14]
     - [128, 512, 7, 7]
   shape_desc: "N, C, H, W"
+
+# Benchmarks whose shapes carry more than one parameter cannot fall back to the
+# generic one-parameter `Benchmark` defaults below (the shape tuple would be
+# unpacked as (input_shape, normalized_shape) and fail with "not enough values
+# to unpack"), so they need an explicit two-element entry.
+LayerNormBackwardLargeMBenchmark:
+  shapes:
+    - [[64, 16, 64, 16], [16]]
+    - [[128, 16, 16, 32], [32]]
+    - [[32768, 128], [128]]
+    - [[32768, 256], [256]]
+    - [[32768, 257], [257]]
+  shape_desc: "input_shape, normalized_shape"
 
 # the default shapes info
 Benchmark:
@@ -432,3 +670,132 @@ ReshapeAndCacheFlashBenchmark:
     - [21, 4, 80, 16, 10000]
     - [42, 8, 64, 8, 1024]
     - [42, 8, 80, 16, 10000]
+
+# The foreach list operators build 16 tensors per call; falling back to shapes with
+# 1024**3 elements in DEFAULT_SHAPES would OOM in float32 on a 144 GiB device.
+# Explicitly use medium-sized shapes consistent with the common benchmark/core_shapes.yaml.
+ForeachOpsBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+ForeachUnaryBenchmark:
+  shapes:
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+  shape_desc: "M, N (per tensor, list of 16)"
+
+# GCU400-specific: the matrix_norm reference requires at least 2 dimensions.
+# The common core_shapes.yaml has this entry, but the enflame backend shape file is missing,
+# so set_shapes falls back to 1D DEFAULT_SHAPES and the reference side raises
+# "A must have at least 2 dimensions". Add valid 2D/3D/4D shapes here.
+linalg_matrix_norm_out:
+  shapes:
+    - [256, 512]
+    - [2, 2048]
+    - [4, 32, 64]
+    - [16, 2, 2048]
+    - [8, 4, 32, 32]
+  shape_desc: "(*B), M, N"
+
+linalg_matrix_norm:
+  shapes:
+    - [256, 512]
+    - [2, 2048]
+    - [4, 32, 64]
+    - [16, 2, 2048]
+    - [8, 4, 32, 32]
+  shape_desc: "(*B), M, N"
+
+# The vendor shape file replaces the shared benchmark/core_shapes.yaml, and its
+# `Benchmark:` class entry shadows any op that only exists in the shared table:
+# such an op gets the 1-D DEFAULT_SHAPES and its input builder fails with
+# "ValueError: not enough values to unpack". Mirror the shared entries below.
+embedding_spmdm: &embedding_spmdm_shapes
+  shapes:
+    - [1024, 32, 64, 8]
+    - [1024, 64, 64, 16]
+    - [4096, 64, 128, 32]
+    - [4096, 128, 128, 32]
+    - [8192, 128, 256, 16]
+    - [8192, 256, 256, 32]
+    - [16384, 128, 512, 64]
+    - [32768, 256, 256, 64]
+    - [65536, 128, 1024, 32]
+    - [131072, 64, 2048, 16]
+  shape_desc: "V, D, B, S"
+
+embedding_spmdm_weighted:
+  <<: *embedding_spmdm_shapes
+
+embedding_spmdm_grad:
+  <<: *embedding_spmdm_shapes
+
+embedding_spmdm_grad_weighted:
+  <<: *embedding_spmdm_shapes
+
+# Without this entry the op falls back to the 1-D DEFAULT_SHAPES, where the
+# builder materialises ~1 GiB tensors and the benchmark never finishes.
+index_select_backward:
+  shapes:
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    - [16, 16, 64]
+    - [32, 32, 128]
+  shape_desc: "N, M"
+
+linalg_qr: &linalg_qr_shapes
+  shapes:
+    - [8, 8]
+    - [64, 64]
+    - [256, 256]
+    - [512, 512]
+    - [1024, 1024]
+    - [128, 32]
+    - [512, 64]
+    - [4096, 4]
+    - [8192, 8]
+    - [8, 32]
+    - [16, 64]
+    - [32, 128]
+    - [64, 256]
+    - [64, 8, 8]
+    - [128, 32, 32]
+    - [32, 128, 128]
+    - [4, 1024, 1024]
+  shape_desc: "(*B), M, N"
+
+linalg_qr_out:
+  <<: *linalg_qr_shapes
+
+unsafe_index:
+  shapes:
+    - [[268435456], [[65536]]]
+    - [[32, 32], [[8], [8]]]
+    - [[32, 32], [[8], [2, 8]]]
+    - [[32, 32], [[2, 8]]]
+    - [[512, 512, 512], [[2, 128], [2, 128], [2, 128]]]
+
+moe_load_balance_loss: &moe_load_balance_loss_shapes
+  shapes:
+    - [256, 8, 2]
+    - [1024, 8, 2]
+    - [4096, 16, 2]
+    - [4096, 64, 4]
+    - [16384, 64, 4]
+    - [32768, 128, 8]
+  shape_desc: "T, N_e, K"
+
+moe_load_balance_loss_mask:
+  <<: *moe_load_balance_loss_shapes
+
+IntMMBenchmark:
+  shapes:
+    - [32, 256, 256]
+    - [64, 1024, 1024]
+    - [256, 2048, 2048]
+  shape_desc: "M, N, K"

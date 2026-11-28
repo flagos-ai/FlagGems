@@ -160,8 +160,12 @@ DTYPES = [
     pytest.param(
         torch.uint8,
         marks=pytest.mark.skipif(
-            flag_gems.vendor_name == "ascend",
-            reason="Native CANN backward does not support uint8",
+            flag_gems.vendor_name in ("ascend", "enflame"),
+            reason=(
+                "Native CANN backward does not support uint8; on enflame "
+                "aten::upsample_nearest2d_backward has no uint8 GCU kernel "
+                "(not implemented for 'Byte'), so the baseline cannot be timed"
+            ),
         ),
     ),
 ]

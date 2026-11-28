@@ -40,6 +40,14 @@ else:
 )
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
 @pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame torch_gcu aten::outer returns tensors without grad_fn, so the "
+        "reference-side autograd.grad is unsupported; an independent CPU float64 "
+        "analytic gate covers forward and both input gradients"
+    ),
+)
+@pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro",
     reason="Issues #3861: some ops hang in op tests",
 )

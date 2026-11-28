@@ -26,6 +26,7 @@ import flag_gems
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
+from .accuracy_utils import _SKIP_FP64
 
 DEVICE = flag_gems.device
 
@@ -50,6 +51,17 @@ def _inputs(case):
     return raw + raw.transpose(-1, -2), uplo
 
 
+def _reference_eigvalsh(inp, UPLO="L"):
+    if flag_gems.vendor_name == "mthreads":
+        # This image falls back to CPU for eigvalsh and lacks LAPACK.
+        import numpy as np
+
+        return torch.from_numpy(
+            np.linalg.eigvalsh(inp.detach().cpu().numpy(), UPLO=UPLO)
+        )
+    return torch.ops.aten.linalg_eigvalsh.default(inp, UPLO=UPLO)
+
+
 @pytest.mark.linalg_eigvalsh
 @pytest.mark.parametrize("case", CASES)
 def test_linalg_eigvalsh(case):
@@ -57,10 +69,10 @@ def test_linalg_eigvalsh(case):
     if dtype == torch.float64 and not utils.fp64_is_supported:
         pytest.skip("float64 is not supported by this device")
     inputs = _inputs(case)
-    ref = torch.ops.aten.linalg_eigvalsh.default(
-        utils.to_reference(inputs[0], True), UPLO=inputs[1]
-    )
+    ref = _reference_eigvalsh(utils.to_reference(inputs[0], True), UPLO=inputs[1])
     res = flag_gems.linalg_eigvalsh(inputs[0], UPLO=inputs[1])
+    if flag_gems.vendor_name == "mthreads":
+        assert res.device == inputs[0].device
     utils.gems_assert_close(res, ref.to(dtype), dtype, reduce_dim=case[1])
 
 
@@ -81,7 +93,7 @@ def _symmetric(n, batch=(), dtype=torch.float32, seed=0):
 def test_linalg_eigvalsh_empty(shape):
     """A zero-order matrix has no eigenvalues, so the result is zero-sized."""
     inp = torch.zeros(shape, dtype=torch.float32, device=DEVICE)
-    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(inp, True))
+    ref = _reference_eigvalsh(utils.to_reference(inp, True))
     res = flag_gems.linalg_eigvalsh(inp)
     assert res.shape == ref.shape
     assert res.dtype == inp.dtype
@@ -93,8 +105,10 @@ def test_linalg_eigvalsh_noncontiguous():
     base = _symmetric(5, batch=(2,))
     view = base.transpose(-1, -2)
     assert not view.is_contiguous()
-    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(view, True))
+    ref = _reference_eigvalsh(utils.to_reference(view, True))
     res = flag_gems.linalg_eigvalsh(view)
+    if flag_gems.vendor_name == "mthreads":
+        assert res.device == view.device
     utils.gems_assert_close(res, ref.to(torch.float32), torch.float32, reduce_dim=5)
 
 
@@ -126,8 +140,10 @@ def test_linalg_eigvalsh_degenerate_eigenvalues(diagonal):
     duplicated value.
     """
     inp = torch.diag(torch.tensor(diagonal, dtype=torch.float32, device=DEVICE))
-    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(inp, True))
+    ref = _reference_eigvalsh(utils.to_reference(inp, True))
     res = flag_gems.linalg_eigvalsh(inp)
+    if flag_gems.vendor_name == "mthreads":
+        assert res.device == inp.device
     utils.gems_assert_close(
         res, ref.to(torch.float32), torch.float32, reduce_dim=len(diagonal)
     )
@@ -163,8 +179,10 @@ def test_linalg_eigvalsh_reads_requested_triangle():
     ref_inp = utils.to_reference(inp, True)
     lower = flag_gems.linalg_eigvalsh(inp, UPLO="L")
     upper = flag_gems.linalg_eigvalsh(inp, UPLO="U")
-    ref_l = torch.ops.aten.linalg_eigvalsh.default(ref_inp, UPLO="L")
-    ref_u = torch.ops.aten.linalg_eigvalsh.default(ref_inp, UPLO="U")
+    if flag_gems.vendor_name == "mthreads":
+        assert lower.device == upper.device == inp.device
+    ref_l = _reference_eigvalsh(ref_inp, UPLO="L")
+    ref_u = _reference_eigvalsh(ref_inp, UPLO="U")
     utils.gems_assert_close(lower, ref_l.to(torch.float32), torch.float32, reduce_dim=2)
     utils.gems_assert_close(upper, ref_u.to(torch.float32), torch.float32, reduce_dim=2)
     assert not torch.allclose(lower, upper)
@@ -231,8 +249,10 @@ def test_linalg_eigvalsh_fp64_preserved():
         pytest.skip("float64 is not supported by this device")
     inp = _symmetric(4, dtype=torch.float64)
     res = flag_gems.linalg_eigvalsh(inp)
+    if flag_gems.vendor_name == "mthreads":
+        assert res.device == inp.device
     assert res.dtype == torch.float64
-    ref = torch.ops.aten.linalg_eigvalsh.default(utils.to_reference(inp, True))
+    ref = _reference_eigvalsh(utils.to_reference(inp, True))
     utils.gems_assert_close(res, ref, torch.float64, reduce_dim=4)
 
 
@@ -246,7 +266,9 @@ def test_linalg_eigvalsh_autograd_input_is_detached():
 
 @pytest.mark.linalg_eigvalsh_out
 @pytest.mark.parametrize("uplo", ["L", "U"])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
+@pytest.mark.parametrize(
+    "dtype", [torch.float32, pytest.param(torch.float64, marks=_SKIP_FP64)]
+)
 def test_linalg_eigvalsh_out(uplo, dtype):
     """The out overload writes in place, returns ``out`` and matches ATen."""
     if dtype == torch.float64 and not utils.fp64_is_supported:

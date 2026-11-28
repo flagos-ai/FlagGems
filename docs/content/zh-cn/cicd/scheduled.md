@@ -32,29 +32,40 @@ vendors that aren't touched by a given PR.
 以捕获那些只在全量算子测试或某个 PR 未涉及的厂商后端上才会暴露的回归问题。
 
 <!--
-## `daily.yaml` — full-suite regression on NVIDIA
+## `daily.yaml` — full-suite regression on NVIDIA and Ascend
 
 **Trigger:** cron `3 16 * * *` (00:03 Beijing time, daily); also manual
 `workflow_dispatch`.
 
-Runs the entire operator test suite (not just changed operators) on the
-NVIDIA runner:
+Runs the entire operator test suite (not just changed operators):
 
 - `cpp-op` — the full C++ extension test suite.
 - `python-op` — `tools/test-op.sh` with `CHANGED_FILES=__ALL__`, which
-  expands to every `tests/test*.py` file. Also collects coverage and
-  uploads it as the `op-ut-coverage` artifact.
+  expands to every `tests/test*.py` file. It runs as 4 matrix shards on the
+  self-hosted `jiuding` runner (an **NVIDIA A100-40G** server with the
+  official upstream **Triton** compiler installed, rather than FlagTree), to
+  test baseline compatibility on official Triton and the Ampere architecture.
+  Each shard collects coverage and uploads it as an
+  `op-ut-coverage-shard<N>` artifact.
+- `ascend-op` — the same full suite in 4 shards on the `cann9` runner, run
+  through `backend-test.yaml` with the `ascend-cann900` backend.
 - `examples` — `tools/test-examples.sh` against all example/model tests.
 -->
-## `daily.yaml` — NVIDIA 平台全量回归测试
+## `daily.yaml` — NVIDIA 与 Ascend 平台全量回归测试
 
 **触发条件：** cron 表达式 `3 16 * * *`（每天北京时间 00:03）；此外支持手动
 触发（`workflow_dispatch`）。
 
-在 NVIDIA runner（配备 **NVIDIA A100-40G** GPU 服务器，运行环境安装官方 upstream **Triton** 编译器而非 FlagTree）上运行完整的算子测试套件（而非仅测试变更的算子）：
+运行完整的算子测试套件（而非仅测试变更的算子）：
 
 - `cpp-op` —— 完整的 C++ 扩展测试套件。
-- `python-op` —— 以 `CHANGED_FILES=__ALL__` 运行 `tools/test-op.sh`，覆盖全部 `tests/test*.py` 算子测试用例，并在官方 Triton 编译器与 Ampere 架构硬件环境下收集代码覆盖率数据，作为 `op-ut-coverage` 构件（artifact）上传。
+- `python-op` —— 以 `CHANGED_FILES=__ALL__` 运行 `tools/test-op.sh`，覆盖全部
+  `tests/test*.py` 测试用例。它以 4 个矩阵分片运行在自托管的 `jiuding` runner 上
+  （**NVIDIA A100-40G** 服务器，安装官方 upstream **Triton** 编译器而非 FlagTree），
+  用于检验官方 Triton 与 Ampere 架构下的基线兼容性。每个分片收集覆盖率数据，并作为
+  `op-ut-coverage-shard<N>` 构件（artifact）上传。
+- `ascend-op` —— 在 `cann9` runner 上以 4 个分片运行同一套完整测试，通过
+  `backend-test.yaml` 使用 `ascend-cann900` 后端。
 - `examples` —— 对所有示例/模型测试运行 `tools/test-examples.sh`。
 
 <!--
@@ -63,21 +74,30 @@ NVIDIA runner:
 **Trigger:** `workflow_run` after `daily` completes; also manual
 `workflow_dispatch` with a `run_id` input.
 
-Downloads the `op-ut-coverage` artifact produced by `daily.yaml`, unpacks
-the HTML coverage report and summary markdown, commits them under
-`docs/static/coverage/<date>` and `docs/content/en/references/test/unit/`,
-and pushes directly to the `gh-pages` branch. `hugo-site.yaml` then rebuilds
-and republishes the site in response to that push.
+Downloads every artifact in the `daily` run whose name is `op-ut-coverage` or
+starts with `op-ut-coverage-` (one per NVIDIA or Ascend shard). If there are
+none, it publishes nothing. Each artifact holds the HTML report of its own
+shard and the raw coverage data is not uploaded, so the reports are not merged.
+Each one is published separately: its HTML report goes to
+`docs/static/coverage/<COVERAGE_ID>` and its summary markdown to
+`docs/content/en/references/test/unit/<COVERAGE_ID>-summary.md`, where
+`COVERAGE_ID` comes from a file in the artifact and starts with the date (for
+example `20261113-shard0`). The commits are pushed directly to the `gh-pages`
+branch. `hugo-site.yaml` rebuilds and republishes the site when `coverage`
+completes and on pushes to `gh-pages`.
 -->
 ## `coverage.yaml` — 将覆盖率发布到文档站点
 
 **触发条件：** `daily` 工作流执行完成后触发（`workflow_run`）；此外支持手动
 触发（`workflow_dispatch`），需提供 `run_id` 参数。
 
-下载 `daily.yaml` 生成的 `op-ut-coverage` 构件，解压 HTML 覆盖率报告和
-汇总 markdown 文件，将其提交到 `docs/static/coverage/<date>` 和
-`docs/content/en/references/test/unit/` 目录下，并直接推送到 `gh-pages`
-分支。`hugo-site.yaml` 随后会响应该推送，重新构建并发布站点。
+下载 `daily` 这次运行中名称为 `op-ut-coverage` 或以 `op-ut-coverage-` 开头的全部
+构件（每个 NVIDIA 或 Ascend 分片一个）；一个都没有时不发布任何内容。每个构件只含
+各自分片的 HTML 报告，原始覆盖率数据没有上传，因此这些报告不会被合并，而是分别发布：
+HTML 报告放到 `docs/static/coverage/<COVERAGE_ID>`，汇总 markdown 放到
+`docs/content/en/references/test/unit/<COVERAGE_ID>-summary.md`。`COVERAGE_ID` 来自
+构件中的一个文件，开头为日期（例如 `20261113-shard0`）。提交会直接推送到 `gh-pages`
+分支。`coverage` 完成后以及 `gh-pages` 收到推送时，`hugo-site.yaml` 会重新构建并发布站点。
 
 <!--
 ## `ops-test.yaml` — multi-vendor QA acceptance testing
@@ -103,14 +123,9 @@ filtered by the `vendors` input (case-insensitive, empty = all enabled
 vendors); the `ops` input likewise narrows the run to specific operators
 (empty = every stage via `--stages all`).
 
-Backends are split into two execution modes:
-
-- **Container-based** (`test-container`) — runs inside the backend's Docker
-  image, for vendors whose SDK is distributed as a container. Job timeout
-  is 1440 minutes (24h) to accommodate the longest vendor runs (e.g. Ascend
-  910B).
-- **Native** (`test-native`) — runs directly on the self-hosted runner
-  without a container, with an 1080-minute (18h) job timeout.
+Every backend runs in the single `test-container` job, inside the backend's
+Docker image. Its job timeout is 1440 minutes (24h), the only timeout for the
+test run, to accommodate the longest vendor runs (e.g. Ascend 910B).
 
 Each matrix job attempts checkout up to three times (the initial attempt plus
 at most two retries, waiting 30s before each retry),
@@ -141,13 +156,9 @@ GitHub Actions 原生的 `schedule` 触发器——因为在负载较高时，�
 筛选（不区分大小写，留空表示所有已启用的厂商）；`ops` 输入参数同样用于
 将测试范围缩小到指定算子（留空则通过 `--stages all` 运行全部测试阶段）。
 
-各后端按两种执行方式划分：
-
-- **基于容器**（`test-container`） —— 在后端对应的 Docker 镜像内运行，
-  适用于以容器形式分发 SDK 的厂商。作业超时时间为 1440 分钟（24 小时），
-  以适配耗时最长的厂商测试（例如 Ascend 910B）。
-- **原生运行**（`test-native`） —— 直接在自托管 runner 上运行，不使用
-  容器，作业超时时间为 1080 分钟（18 小时）。
+所有后端都在同一个 `test-container` 作业中运行，使用后端对应的 Docker 镜像。
+作业超时时间为 1440 分钟（24 小时），这是测试运行的唯一超时设置，用于适配耗时最长的
+厂商测试（例如 Ascend 910B）。
 
 矩阵中的每个作业最多尝试检出代码 3 次（首次失败后最多重试 2 次，
 每次重试前等待 30 秒），随后安装
@@ -187,7 +198,7 @@ gh workflow run random-test.yaml \
 测试作业。随后 `test-operator` 作业把 runner 标签映射为厂商和 backend
 profile（例如 `a100`/`h100`/`h20` → `nvidia-cuda133`，`ascend`/`cann9` →
 `ascend-cann900`；标签未知时直接用标签本身作为两者的值），检出代码，运行对应
-厂商的 GPU 检查脚本和 `setup-flaggems`，再执行
+厂商的 GPU 检查脚本和 `setup-project`（来自 `flagos-ai/FlagOps`），再执行
 `tools/run_tests.py --ops <operators> --gpus <gpus>`。`results/` 目录会作为
 名为 `random-test` 的构件上传。
 
@@ -251,7 +262,7 @@ checks they complement.
 
 - `ci-report-feishu.yaml` reports every `rule-check` completion to a Feishu
   Bitable for tracking pass/fail trends over time.
-- `ops-test.yaml` and `command.yaml`'s failure paths send Feishu chat
+- `ops-test.yaml` sends Feishu chat
   notifications via `.github/scripts/notify_feishu.py`.
 - `ops-test.yaml` also uploads results to an internal "op-monitor" HTTP
   service for longer-term dashboards.
@@ -264,11 +275,11 @@ These are observability workflows; they do not gate merges.
   多维表格（Bitable），用于跟踪长期的通过/失败趋势。它由 `workflow_run`
   （而非 `pull_request`）触发，因此在基础仓库上下文中执行，即使是来自 fork
   的 PR 也能拿到密钥；该运行本身只需要 `tools/ci_report_feishu.py` 和令牌，
-  所以采用只检出该路径的稀疏检出。由于 GitHub API 可能滞后于已完成的工作流，
+  （仅依赖标准库），所以运行在自托管的 `cpu-runner` 上，并使用
+  `flagos-ai/FlagOps` 的 `robust-checkout` 检出（5 轮，先 SSH 后 HTTPS）。由于 GitHub API 可能滞后于已完成的工作流，
   脚本会先等待 5 秒，再以 10 秒 / 20 秒的退避最多重试 3 次。它在 PR 流程中的
   作用见[拉取请求检查](pull-request.md)。
-- `ops-test.yaml` 和 `command.yaml` 的失败处理路径会通过
-  `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
+- `ops-test.yaml` 会通过 `.github/scripts/notify_feishu.py` 发送飞书群消息通知。
 - `ops-test.yaml` 还会将结果上传到内部的 "op-monitor" HTTP 服务，用于
   生成长期监控看板。
 

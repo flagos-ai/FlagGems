@@ -74,6 +74,10 @@ class IndexReduceBenchmark(base.Benchmark):
             yield inp, dim, index, source, kwargs
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.index_reduce_
 @_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
@@ -90,6 +94,10 @@ def test_index_reduce_(reduce):
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.index_reduce
 @_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])
@@ -106,6 +114,10 @@ def test_index_reduce(reduce):
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.index_reduce_out
 @_ASCEND_NATIVE_BASELINE_SKIP
 @pytest.mark.parametrize("reduce", ["prod", "mean", "amax", "amin"])

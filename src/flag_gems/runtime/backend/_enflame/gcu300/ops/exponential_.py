@@ -94,7 +94,7 @@ def transform_exponential(u, lambd, eps):
     return v
 
 
-def exponential_(x, lambd: float = 1.0, *, gen=None):
+def exponential_(x, lambd: float = 1.0, *, generator=None):
     logger.debug("GEMS_ENFLAME EXPONENTIAL_")
     if x.dtype == torch.int64:
         x = x.to(torch.int32)
@@ -110,8 +110,16 @@ def exponential_(x, lambd: float = 1.0, *, gen=None):
     grid_fn = lambda meta: (triton.cdiv(N, meta["BLOCK"] * UNROLL),)
     # (TODO) Using Triton autotuner makes kernel parameters opaque to the caller,
     # hence we cannot obtain the per thread offset as in Pytorch.
-    increment = triton.cdiv(N, UNROLL)
-    philox_seed, philox_offset = philox_backend_seed_offset(increment, generator=gen)
+    # Each program draws BLOCK philox counters, including the lanes its masked
+    # tail stores drop, so a call consumes grid * BLOCK counters. `N // UNROLL`
+    # under-reserves whenever BLOCK > 1 (e.g. small N), and the next call then
+    # replays part of this call's random stream (Issue #7162). Evaluate the same
+    # BLOCK heuristic here so the reservation matches the launch.
+    block = runtime.get_heuristic_config("exponential_")["BLOCK"]({"N": N})
+    increment = triton.cdiv(N, block * UNROLL) * block
+    philox_seed, philox_offset = philox_backend_seed_offset(
+        increment, generator=generator
+    )
     eps = torch.finfo(dtype).eps
     x_ = x if inplace else torch.empty(x.size(), dtype=dtype, device=device)
     seed = torch.tensor(philox_seed, dtype=torch.int64).to(torch.int32)
