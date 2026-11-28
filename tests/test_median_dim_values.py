@@ -34,7 +34,23 @@ def _unique_input(shape, dim, dtype):
 def _selected_along_dim(inp, dim, indices, keepdim):
     """Elements that ``indices`` actually points at."""
     idx = indices if keepdim else indices.unsqueeze(dim)
-    picked = torch.gather(inp, dim, idx)
+    if flag_gems.vendor_name == "kunlunxin" and inp.dtype in (
+        torch.int16,
+        torch.uint8,
+    ):
+        # KLX int16/uint8 gather is unavailable; this is only a post-candidate
+        # selected-value observation, not a replacement median operation.
+        assert indices.device == inp.device
+        assert indices.dtype == torch.int64
+        host_inp, host_idx = inp.detach().cpu(), idx.detach().cpu()
+        assert host_inp.dtype == inp.dtype and host_inp.shape == inp.shape
+        assert host_idx.dtype == idx.dtype and host_idx.shape == idx.shape
+        host_picked = torch.gather(host_inp, dim, host_idx)
+        picked = host_picked.to(inp.device)
+        assert picked.dtype == inp.dtype and picked.shape == idx.shape
+        assert picked.device == inp.device
+    else:
+        picked = torch.gather(inp, dim, idx)
     return picked if keepdim else picked.squeeze(dim)
 
 
@@ -145,3 +161,94 @@ def test_median_dim_values_out_rejects_bad_index_dtype():
 
     with pytest.raises(RuntimeError):
         flag_gems.median_dim_values(inp, dim=1, values=values, indices=indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin validation regression"
+)
+@pytest.mark.parametrize("dim", [-4, 3])
+def test_median_dim_values_invalid_dim(dim):
+    inp = torch.empty((2, 3, 4), device=flag_gems.device)
+    values = torch.empty((2, 3), device=flag_gems.device)
+    indices = torch.empty((2, 3), dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(IndexError):
+        flag_gems.median_dim_values(inp, dim, values=values, indices=indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin 64-bit regression"
+)
+@pytest.mark.parametrize("dim", [0, 1])
+def test_median_dim_values_strided_int64(dim):
+    data = [
+        [2**40, -(2**40), 3],
+        [2**40 + 1, -(2**40) - 1, 2],
+        [2**40 + 2, -(2**40) - 2, 1],
+    ]
+    reference = torch.tensor(data, dtype=torch.int64).t()
+    inp = torch.tensor(data, dtype=torch.int64, device=flag_gems.device).t()
+    expected = torch.median(reference, dim=dim)
+    shape = tuple(expected.values.shape)
+    values = torch.empty(shape, dtype=torch.int64, device=flag_gems.device)
+    indices = torch.empty(shape, dtype=torch.int64, device=flag_gems.device)
+    result = flag_gems.median_dim_values(inp, dim, values=values, indices=indices)
+    torch.testing.assert_close(result.values.cpu(), expected.values, rtol=0, atol=0)
+    torch.testing.assert_close(result.indices.cpu(), expected.indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin FP64 capability"
+)
+def test_median_dim_values_rejects_float64_before_launch():
+    # This runtime narrows device FP64 allocations to FP32. A CPU tensor keeps
+    # the requested dtype and verifies rejection before any device/kernel use.
+    inp = torch.tensor([1.0, 2.0], dtype=torch.float64, device="cpu")
+    with pytest.raises(NotImplementedError, match="float64 is not supported"):
+        flag_gems.median_dim_values(inp)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin wrapper regression"
+)
+def test_median_dim_values_default_dim():
+    inp = _unique_input((3, 5), 0, torch.float32)
+    expected = torch.median(inp.cpu(), dim=0)
+    values = torch.empty((5,), device=flag_gems.device)
+    indices = torch.empty((5,), dtype=torch.int64, device=flag_gems.device)
+    result = flag_gems.median_dim_values(inp, values=values, indices=indices)
+    torch.testing.assert_close(result.values.cpu(), expected.values)
+    torch.testing.assert_close(result.indices.cpu(), expected.indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin output-stride regression"
+)
+@pytest.mark.parametrize("dtype", [torch.float32, torch.int64])
+def test_median_dim_values_strided_output(dtype):
+    inp = _unique_input((3, 5, 7), 1, dtype)
+    expected = torch.median(inp.cpu(), dim=1)
+    values = torch.empty((7, 3), dtype=dtype, device=flag_gems.device).t()
+    indices = torch.empty((7, 3), dtype=torch.int64, device=flag_gems.device).t()
+    strides = (values.stride(), indices.stride())
+    result = flag_gems.median_dim_values(inp, 1, values=values, indices=indices)
+    assert result.values is values and result.indices is indices
+    assert (values.stride(), indices.stride()) == strides
+    torch.testing.assert_close(values.cpu(), expected.values)
+    torch.testing.assert_close(indices.cpu(), expected.indices)
+
+
+@pytest.mark.median_dim_values
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "kunlunxin", reason="Kunlunxin wrapper limits"
+)
+def test_median_dim_values_large_reduction_and_unknown_name():
+    inp = torch.empty((4097,), device=flag_gems.device)
+    with pytest.raises(NotImplementedError, match="limit 4096"):
+        flag_gems.median_dim_values(inp)
+    with pytest.raises(RuntimeError, match="Name 'missing' not found"):
+        flag_gems.median_dim_values(inp, "missing")
