@@ -35,9 +35,23 @@ logger = logging.getLogger(__name__)
 # per-program pointer-select chains at BLOCK_SIZE<=1024, ~13ns/element, fp16
 # and fp32 identical).  Copying through 8-byte (int64-view) lanes instead
 # reaches ~2.7TB/s, within ~5% of the native cat kernel.
+#
+# 2026-11-16 probes: the wide-lane launch itself was wave-quantization bound
+# (grid = cdiv(max_lanes, BLOCK) x NT programs over 48 slots).  A capped
+# fixed grid of 48 programs with a grid-stride (chunk, tensor) loop and a
+# 4-stage software pipeline is uniformly faster across the whole fast-path
+# domain: big core shapes -1.7%..-3.5% (fp16 73.0->70.5us, 0.978x vs native),
+# medium -0.9%..-7.9%, NT=1 -10%, unequal-length masked -5%.  Tensor-major
+# chunk decoding, the mask-free EVEN specialization for the all-equal,
+# len % BLOCK == 0 case, BLOCK=8192 lanes and num_stages=4 (4 x 64KB = 256KB
+# DSM per program, within the 448KB dual-program budget) are the tuned
+# choices; BLOCK>=16384 in the loop, chunk-major decoding, NSPC=24, deeper
+# pipelines (B4096/ns8, B2048/ns16) and >8 warps were all measured worse.
 _FAST_LARGE = 1 << 20
-_WIDE_BLOCK = 32768  # int64 lanes -> 256KB per program (within DSM budget)
 _PLAIN_BLOCK = 65536  # element lanes, dtypes <= 4 bytes -> 256KB per program
+_GS48_BLOCK = 8192  # int64 lanes per chunk -> 64KB; 4 in flight = 256KB DSM
+_GS48_STAGES = 4
+_GS48_GRID = 48  # one program per slot: no per-wave scheduling tax
 
 # The external /opt/triton_gcu converter SIGSEGVs on a fraction of cold
 # compiles (compiler_problems/P02, flaggems_row_stack_toolchain_flaky_segv).
@@ -155,6 +169,60 @@ def _row_stack_wide_cat_kernel(
     mask = idx < length
     data = tl.load(src + idx, mask=mask)
     tl.store(Out + base + idx, data, mask=mask)
+
+
+@triton.jit
+def _row_stack_gs48_kernel(
+    Out,
+    In0,
+    In1,
+    In2,
+    In3,
+    len0,
+    len1,
+    len2,
+    len3,
+    base0,
+    base1,
+    base2,
+    base3,
+    nx,
+    nt,
+    BLOCK: tl.constexpr,
+    NSPC: tl.constexpr,
+    NSTG: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """Grid-stride linear copy over 8-byte lanes with a capped fixed grid.
+
+    NSPC programs stream all (chunk, tensor) work items round-robin so the
+    DMA pipeline stays full without paying the per-wave scheduling tax of a
+    cdiv(max_lanes, BLOCK)-wide 2D grid.  ``num_stages=NSTG`` keeps NSTG
+    chunk loads in flight (DSM: NSTG * BLOCK * 8B; 256KB at the tuned
+    config, inside the 448KB dual-program budget).  ``EVEN`` specializes the
+    all-tensors-equal, len % BLOCK == 0 case to mask-free loads/stores.
+    """
+    pid = tl.program_id(0)
+    total = nx * nt
+    for wid in tl.range(pid, total, NSPC, num_stages=NSTG):
+        tid = wid // nx
+        chunk = wid % nx
+        if tid == 0:
+            src, length, base = In0, len0, base0
+        elif tid == 1:
+            src, length, base = In1, len1, base1
+        elif tid == 2:
+            src, length, base = In2, len2, base2
+        else:
+            src, length, base = In3, len3, base3
+        idx = chunk * BLOCK + tl.arange(0, BLOCK)
+        if EVEN:
+            data = tl.load(src + idx)
+            tl.store(Out + base + idx, data)
+        else:
+            mask = idx < length
+            data = tl.load(src + idx, mask=mask)
+            tl.store(Out + base + idx, data, mask=mask)
 
 
 def _row_width(shape):
@@ -490,9 +558,10 @@ def _launch_fast_stack(aligned, out):
             acc += lens[j]
         out_lanes = out.view(-1).view(torch.int64)
         src_lanes = [tensor.view(-1).view(torch.int64) for tensor in ptrs]
-        grid = (triton.cdiv(max(lens), _WIDE_BLOCK), num)
+        nx = triton.cdiv(max(lens), _GS48_BLOCK)
+        even = len(set(lanes)) == 1 and lanes[0] % _GS48_BLOCK == 0
         _launch_with_toolchain_retry(
-            lambda: _row_stack_wide_cat_kernel[grid](
+            lambda: _row_stack_gs48_kernel[(_GS48_GRID,)](
                 out_lanes,
                 src_lanes[0],
                 src_lanes[1],
@@ -506,7 +575,12 @@ def _launch_fast_stack(aligned, out):
                 bases[1],
                 bases[2],
                 bases[3],
-                BLOCK=_WIDE_BLOCK,
+                nx,
+                num,
+                BLOCK=_GS48_BLOCK,
+                NSPC=_GS48_GRID,
+                NSTG=_GS48_STAGES,
+                EVEN=even,
                 num_warps=8 if itemsize == 4 else 4,
             )
         )
@@ -556,7 +630,7 @@ def _prepare(tensors):
 
 
 def row_stack(tensors: list):
-    logger.debug("GEMS_ENFLAME_GCU400 ROW_STACK")
+    logger.debug("GEMS_ENFLAME ROW_STACK")
 
     aligned = _fast_stack_eligible(tensors)
     if aligned is not None:
@@ -624,7 +698,7 @@ def _check_out(out, output_shape, dtype, memory_format, tensors):
 
 
 def row_stack_out(tensors: list, *, out: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 ROW_STACK_OUT")
+    logger.debug("GEMS_ENFLAME ROW_STACK_OUT")
 
     aligned = _fast_stack_eligible(tensors)
     if aligned is not None:

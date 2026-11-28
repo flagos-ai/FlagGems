@@ -28,31 +28,43 @@ Global CODEGEN_COFIGS is not modified, satisfying the skill's "pointwise_dynamic
 
 import logging
 
+import torch
 import triton
-import triton.language as tl
 
-from flag_gems.utils import pointwise_dynamic
-from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
+from flag_gems.runtime import torch_device_fn
+
+from .expm1__opt import _expm1_func
+from .special_expm1 import _choose_block, _special_expm1_kernel
 
 logger = logging.getLogger(__name__)
 
-
-_BASE = get_codegen_config()
-_OPT_CONFIG = CodeGenConfig(
-    max_tile_size=_BASE.max_tile_size,
-    max_grid_size=(1024, 1, 1),
-    max_num_warps_per_cta=_BASE.max_num_warps_per_cta,
-    prefer_block_pointer=_BASE.prefer_block_pointer,
-    prefer_1d_tile=_BASE.prefer_1d_tile,
-)
-
-
-@pointwise_dynamic(promotion_methods=[(0, "INT_TO_FLOAT")], config=_OPT_CONFIG)
-@triton.jit
-def _expm1_func(x):
-    return tl.exp(x.to(tl.float32)) - 1.0
+_GRID_SIZE = 48
+_INT32_MAX = 2**31 - 1
+_FAST_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 
 
 def expm1_out(A, out):
-    logger.debug("GEMS_ENFLAME_GCU400 EXPM1_OUT")
+    logger.debug("GEMS_ENFLAME EXPM1_OUT")
+    if (
+        A.dtype in _FAST_DTYPES
+        and out.is_contiguous()
+        and A.is_contiguous()
+        and A.numel() == out.numel()
+        and A.numel() > 0
+    ):
+        n = A.numel()
+        block = _choose_block(n, A.element_size())
+        if triton.cdiv(n, block) * block <= _INT32_MAX:
+            grid = (min(_GRID_SIZE, triton.cdiv(n, block)), 1, 1)
+            with torch_device_fn.device(A.device.index):
+                _special_expm1_kernel[grid](
+                    A.view(-1),
+                    out.view(-1),
+                    n,
+                    BLOCK=block,
+                    GRID=grid[0],
+                    ST=1,
+                    num_warps=2,
+                )
+            return out
     return _expm1_func(A, out0=out)

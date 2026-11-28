@@ -25,10 +25,25 @@ from .copy import copy_
 
 logger = logging.getLogger(__name__)
 
-# Expose the warp count explicitly for GCU400 tuning sweeps (compile-time constant, semantics unchanged).
-NUM_WARPS_GRU = 8
+# Launch geometry for the fused GRU cell kernel.
+# The grid is (row, column block): one program covers a contiguous column slice
+# of a single row, so the kernel needs no runtime division/modulo to recover
+# (row, column) from a flat linear index. That index arithmetic used to cost
+# more than the arithmetic of the cell itself on GCU400.
+# NUM_WARPS_GRU: warp count per program (kept as an explicit tuning knob).
+NUM_WARPS_GRU = 4
+# Row tile cap. One full row fits in a single program up to this width; wider
+# rows are split along the column axis of the grid.
+ROW_BLOCK_CAP = 2048
+# Column tile used for rows narrower than the cap.
+DEFAULT_BLOCK_SIZE = 1024
 
 _SUPPORTED_DTYPES = (torch.float16, torch.bfloat16, torch.float32, torch.float64)
+
+
+def _select_block_size(hidden_size):
+    """Pick the column tile width for one GRU cell row."""
+    return ROW_BLOCK_CAP if hidden_size >= ROW_BLOCK_CAP else DEFAULT_BLOCK_SIZE
 
 
 @libentry()
@@ -41,7 +56,6 @@ def _thnn_fused_gru_cell_kernel(
     hidden_bias,
     hy,
     workspace,
-    n_elements,
     hidden_size,
     input_stride_0,
     input_stride_1,
@@ -55,17 +69,23 @@ def _thnn_fused_gru_cell_kernel(
     hy_stride_1,
     workspace_stride_0,
     workspace_stride_1,
-    HAS_BIAS: tl.constexpr,
+    HAS_INPUT_BIAS: tl.constexpr,
+    HAS_HIDDEN_BIAS: tl.constexpr,
     IS_FP64: tl.constexpr,
     BLOCK_SIZE: tl.constexpr,
 ):
-    offsets = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    rows = offsets // hidden_size
-    cols = offsets % hidden_size
+    # row = batch index, columns = one contiguous slice of the 3 * hidden gates
+    row = tl.program_id(0)
+    cols = tl.program_id(1) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    # Tell the backend the column slice is a BLOCK_SIZE-aligned contiguous run so
+    # it can emit wide, unpredicated vector accesses.
+    cols = tl.max_contiguous(tl.multiple_of(cols, BLOCK_SIZE), BLOCK_SIZE)
+    mask = cols < hidden_size
 
-    input_base = rows * input_stride_0 + cols * input_stride_1
-    hidden_base = rows * hidden_stride_0 + cols * hidden_stride_1
+    # Gate planes are laid out as [reset | update | new] along the last axis, so
+    # the three loads of one operand differ by hidden_size * stride_1.
+    input_base = row * input_stride_0 + cols * input_stride_1
+    hidden_base = row * hidden_stride_0 + cols * hidden_stride_1
     input_reset = tl.load(input_gates + input_base, mask=mask, other=0.0)
     input_gate = tl.load(
         input_gates + input_base + hidden_size * input_stride_1,
@@ -89,11 +109,14 @@ def _thnn_fused_gru_cell_kernel(
         other=0.0,
     )
     hx_value = tl.load(
-        hx + rows * hx_stride_0 + cols * hx_stride_1,
+        hx + row * hx_stride_0 + cols * hx_stride_1,
         mask=mask,
         other=0.0,
     )
 
+    # Accumulate in fp32 for the reduced-precision dtypes: the activation
+    # functions and the gate sum are then evaluated with fp32 accuracy, matching
+    # ATen's reference which also upcasts.
     if not IS_FP64:
         input_reset = input_reset.to(tl.float32)
         input_gate = input_gate.to(tl.float32)
@@ -105,7 +128,9 @@ def _thnn_fused_gru_cell_kernel(
 
     reset_gate = input_reset + hidden_reset
     update_gate = input_gate + hidden_gate
-    if HAS_BIAS:
+    # The two biases are independent inputs: ATen applies hidden_bias even when
+    # input_bias is omitted, so each gets its own constexpr guard.
+    if HAS_INPUT_BIAS:
         bias_reset = tl.load(
             input_bias + cols * input_bias_stride, mask=mask, other=0.0
         )
@@ -119,6 +144,14 @@ def _thnn_fused_gru_cell_kernel(
             mask=mask,
             other=0.0,
         )
+        if not IS_FP64:
+            bias_reset = bias_reset.to(tl.float32)
+            bias_update = bias_update.to(tl.float32)
+            bias_new = bias_new.to(tl.float32)
+        reset_gate += bias_reset
+        update_gate += bias_update
+        input_new += bias_new
+    if HAS_HIDDEN_BIAS:
         hidden_bias_reset = tl.load(
             hidden_bias + cols * hidden_bias_stride, mask=mask, other=0.0
         )
@@ -135,17 +168,12 @@ def _thnn_fused_gru_cell_kernel(
             other=0.0,
         )
         if not IS_FP64:
-            bias_reset = bias_reset.to(tl.float32)
-            bias_update = bias_update.to(tl.float32)
-            bias_new = bias_new.to(tl.float32)
             hidden_bias_reset = hidden_bias_reset.to(tl.float32)
             hidden_bias_update = hidden_bias_update.to(tl.float32)
             hidden_bias_new = hidden_bias_new.to(tl.float32)
-        reset_gate += bias_reset
+        # Addition order is kept identical to ATen: input bias then hidden bias.
         reset_gate += hidden_bias_reset
-        update_gate += bias_update
         update_gate += hidden_bias_update
-        input_new += bias_new
         hidden_new += hidden_bias_new
 
     reset_gate = tl.sigmoid(reset_gate)
@@ -155,11 +183,13 @@ def _thnn_fused_gru_cell_kernel(
     hy_value = new_gate + update_gate * (hx_value - new_gate)
 
     tl.store(
-        hy + rows * hy_stride_0 + cols * hy_stride_1,
+        hy + row * hy_stride_0 + cols * hy_stride_1,
         hy_value,
         mask=mask,
     )
-    workspace_base = rows * workspace_stride_0 + cols * workspace_stride_1
+    # Workspace layout consumed by the fused backward: five planes holding
+    # r, z, n, hx and (r * hidden_new) respectively.
+    workspace_base = row * workspace_stride_0 + cols * workspace_stride_1
     tl.store(workspace + workspace_base, reset_gate, mask=mask)
     tl.store(
         workspace + workspace_base + hidden_size * workspace_stride_1,
@@ -248,18 +278,25 @@ def _launch_gru_cell(
     n_elements = batch_size * hidden_size
     if n_elements == 0:
         return
-    has_bias = input_bias is not None
-    block_size = 2048
+    has_input_bias = input_bias is not None
+    # `hidden_bias must be defined when input_bias is defined` (ATen): the
+    # hidden bias is only meaningful alongside an input bias, and a
+    # hidden-bias-only call must behave exactly like the biasless one
+    # (`test_accuracy_thnn_fused_gru_cell_hidden_bias_without_input_bias`).
+    has_hidden_bias = hidden_bias is not None and has_input_bias
+    block_size = _select_block_size(hidden_size)
+    # One program per (row, column tile); reads and writes stay coalesced along
+    # the contiguous gate axis and no linear-index decomposition is needed.
+    grid = (batch_size, triton.cdiv(hidden_size, block_size))
     with torch_device_fn.device(input_gates.device):
-        _thnn_fused_gru_cell_kernel[(triton.cdiv(n_elements, block_size),)](
+        _thnn_fused_gru_cell_kernel[grid](
             input_gates,
             hidden_gates,
             hx,
-            input_bias if has_bias else input_gates,
-            hidden_bias if has_bias else hidden_gates,
+            input_bias if has_input_bias else hx,
+            hidden_bias if has_hidden_bias else hx,
             hy,
             workspace,
-            n_elements,
             hidden_size,
             input_gates.stride(0),
             input_gates.stride(1),
@@ -267,13 +304,14 @@ def _launch_gru_cell(
             hidden_gates.stride(1),
             hx.stride(0),
             hx.stride(1),
-            input_bias.stride(0) if has_bias else 0,
-            hidden_bias.stride(0) if has_bias else 0,
+            input_bias.stride(0) if has_input_bias else 0,
+            hidden_bias.stride(0) if has_hidden_bias else 0,
             hy.stride(0),
             hy.stride(1),
             workspace.stride(0),
             workspace.stride(1),
-            HAS_BIAS=has_bias,
+            HAS_INPUT_BIAS=has_input_bias,
+            HAS_HIDDEN_BIAS=has_hidden_bias,
             IS_FP64=input_gates.dtype == torch.float64,
             BLOCK_SIZE=block_size,
             num_warps=NUM_WARPS_GRU,
@@ -287,7 +325,7 @@ def _thnn_fused_gru_cell(
     input_bias: torch.Tensor = None,
     hidden_bias: torch.Tensor = None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL")
+    logger.debug("GEMS_ENFLAME _THNN_FUSED_GRU_CELL")
     batch_size, hidden_size = _validate_inputs(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )
@@ -316,7 +354,7 @@ def _thnn_fused_gru_cell_out(
     out0: torch.Tensor,
     out1: torch.Tensor,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_GRU_CELL.OUT")
+    logger.debug("GEMS_ENFLAME _THNN_FUSED_GRU_CELL.OUT")
     batch_size, hidden_size = _validate_inputs(
         input_gates, hidden_gates, hx, input_bias, hidden_bias
     )
@@ -329,6 +367,8 @@ def _thnn_fused_gru_cell_out(
     )
     temporary = None
     if aliases_input:
+        # An output overlapping an input must be written only after the inputs
+        # are consumed, so compute into fresh buffers first.
         temporary = _thnn_fused_gru_cell(
             input_gates, hidden_gates, hx, input_bias, hidden_bias
         )

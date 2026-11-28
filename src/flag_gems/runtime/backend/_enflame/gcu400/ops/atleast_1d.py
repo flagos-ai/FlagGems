@@ -21,12 +21,25 @@ values and the original FlagGems pytest encodes that contract directly::
     assert res_out.data_ptr() == inp.data_ptr()
 
 i.e. the returned tensor must share the input's storage.  The promoted view is
-therefore built with zero-copy ``unsqueeze`` (``reshape`` is deliberately
+therefore built with zero-copy metadata ops (``reshape`` is deliberately
 avoided: for a non-contiguous input it may silently materialise a copy, which
 would both break the aliasing contract and add unmodelled memory traffic)::
 
-    rank 0 -> x.unsqueeze(0)   -> (1,)
-    rank >= 1 -> x             -> unchanged (identical storage/strides/offset)
+    rank 0 -> x.view(1)       -> (1,)
+    rank >= 1 -> x            -> unchanged (identical storage/strides/offset)
+
+``view(1)`` is used instead of the more obvious ``unsqueeze(0)``: the two are
+metadata-identical for every 0-dim tensor (same shape ``(1,)``, stride
+``(1,)``, storage offset, dtype, device, storage, conj/neg bits, autograd view
+tracking -- verified against ``unsqueeze(0)`` for plain/offset/conj/neg/
+view-of-view/requires_grad inputs), but ``aten::unsqueeze`` is *itself*
+registered by FlagGems while ``aten::view`` is not.  When this kernel runs as
+a registered ATen implementation (``use_gems``), every ``unsqueeze`` launched
+from inside it re-enters the dispatcher through a second Python kernel and
+pays the Python-kernel dispatch tax twice.  Staying on the unregistered
+``view`` op keeps a single native C++ hop and reaches native parity on the
+dispatched path (measured: 0-dim call 4202 -> 2490 ns, two-element Sequence
+7902 -> 4570 ns, wall-clock min-of-5, while the >=1-dim path is unchanged).
 
 ``aten::atleast_1d.Sequence`` applies the same rule elementwise and returns a
 list, including the empty-sequence case (``[] -> []``).
@@ -35,7 +48,8 @@ Because the operator is launch-free, the measured cost is pure host dispatch,
 so the hot path is kept minimal: exact runtime-type tests come first (a real
 ``torch.Tensor`` and a plain ``list``/``tuple`` never pay
 ``torch.Tensor.__instancecheck__``), the tensor method handles are bound at
-module scope, and the rank check reuses ``dim`` once per call.
+module scope, and the rank check uses the ``ndim`` getset descriptor (the
+cheapest rank probe measured).
 
 The module also carries a real device program, ``_atleast_1d_copy_kernel``,
 used by ``_atleast_1d_materialize``: the reviewed metadata-only exceptions of
@@ -61,8 +75,11 @@ _BLOCK_SIZE = 1024
 
 # Bound once at import time: the metadata paths are launch-free, so the only
 # measurable cost is Python attribute/descriptor lookup on the hot path.
-_unsqueeze = torch.Tensor.unsqueeze
-_dim = torch.Tensor.dim
+# ``view`` (not ``unsqueeze``): see the module docstring -- under ``use_gems``
+# an ``unsqueeze`` launched from this registered kernel would re-enter the
+# dispatcher through a second Python kernel (~+1.6 us per 0-dim call), while
+# the unregistered ``view`` keeps a single native C++ hop.
+_tensor_view = torch.Tensor.view
 _TensorType = torch.Tensor
 
 
@@ -95,9 +112,16 @@ def _atleast_1d_materialize(x):
 
 
 def _view(t):
-    """Promote one tensor with a zero-copy ``unsqueeze(0)`` when it is 0-dim."""
-    if _dim(t) == 0:
-        return _unsqueeze(t, 0)
+    """Promote one tensor with a zero-copy ``view(1)`` when it is 0-dim.
+
+    Metadata-identical to ``unsqueeze(0)`` for every 0-dim tensor (shape,
+    stride, storage offset, storage, dtype, device, view/autograd tracking),
+    but ``aten::view`` is not registered by FlagGems, so under ``use_gems``
+    this stays a single native C++ hop instead of re-entering the dispatcher
+    through a second Python kernel (``aten::unsqueeze`` *is* registered).
+    """
+    if t.ndim == 0:
+        return _tensor_view(t, 1)
     return t
 
 
@@ -121,17 +145,16 @@ def run(self):
     the shortest path; subclasses and other sequence types fall through to the
     general ``isinstance`` checks.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 RUN")
-    kind = type(self)
-    if kind is _TensorType:
+    logger.debug("GEMS_ENFLAME RUN")
+    if type(self) is _TensorType:
         if self.ndim == 0:
-            return _unsqueeze(self, 0)
+            return _tensor_view(self, 1)
         return self
-    if kind is list or kind is tuple:
+    if type(self) is list or type(self) is tuple:
         return [_promote(t) for t in self]
     if isinstance(self, torch.Tensor):
         if self.ndim == 0:
-            return _unsqueeze(self, 0)
+            return _tensor_view(self, 1)
         return self
     if isinstance(self, (list, tuple)):
         return [_promote(t) for t in self]

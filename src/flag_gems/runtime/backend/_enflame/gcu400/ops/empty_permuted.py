@@ -70,7 +70,7 @@ def empty_permuted(
     pin_memory=None,
 ):
     """Returns an uninitialized tensor whose memory follows `physical_layout`."""
-    logger.debug("GEMS_ENFLAME_GCU400 EMPTY_PERMUTED")
+    logger.debug("GEMS_ENFLAME EMPTY_PERMUTED")
     shape = tuple(size)
     physical_layout = list(physical_layout)
     if len(physical_layout) != len(shape):

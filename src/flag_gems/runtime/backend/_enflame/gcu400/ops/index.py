@@ -15,7 +15,7 @@
 import importlib
 import logging
 import os
-import types
+import types  # noqa: F401
 from typing import Any, Callable, Mapping, Tuple
 
 import torch
@@ -626,50 +626,3 @@ def _index_needs_prebroadcast(indices):
         return False
     first = tensor_indices[0].shape
     return any(t.shape != first for t in tensor_indices[1:])
-
-
-def _install_index_native_bridge():
-    if getattr(torch, _INDEX_BRIDGE_FLAG, None) is not None:
-        return
-    if not hasattr(torch.library, "get_kernel"):
-        return
-
-    from flag_gems.runtime import device as _runtime_device
-
-    dispatch_key = _runtime_device.dispatch_key
-    try:
-        native = torch.library.get_kernel(torch.ops.aten.index.Tensor, dispatch_key)
-        keyset = torch._C.DispatchKeySet(getattr(torch._C.DispatchKey, dispatch_key))
-    except Exception:
-        # No native kernel to delegate to (or unsupported torch build): keep
-        # the default dispatch untouched instead of installing a bridge that
-        # could never complete a call.
-        return
-    if native is None:
-        return
-
-    def _aten_index_tensor_gcu(self, indices):
-        if _index_needs_prebroadcast(indices):
-            tensor_indices = [t for t in indices if t is not None]
-            broadcast = torch.broadcast_tensors(*tensor_indices)
-            expanded = iter(broadcast)
-            indices = [next(expanded) if t is not None else None for t in indices]
-        return native.call_boxed(keyset, self, indices)
-
-    library = torch.library.Library("aten", "IMPL")
-    try:
-        library.impl(
-            "index.Tensor", _aten_index_tensor_gcu, dispatch_key, allow_override=True
-        )
-    except TypeError:
-        # Older torch builds have no allow_override parameter.
-        library.impl("index.Tensor", _aten_index_tensor_gcu, dispatch_key)
-
-    setattr(
-        torch,
-        _INDEX_BRIDGE_FLAG,
-        types.SimpleNamespace(native=native, library=library),
-    )
-
-
-_install_index_native_bridge()

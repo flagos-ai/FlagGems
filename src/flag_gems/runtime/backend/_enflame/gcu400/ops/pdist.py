@@ -26,212 +26,114 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+# Switch to the blocked implementation only above this pair count: with few pairs
+# the launch overhead dominates and the per-pair single-program form is cheaper.
+_PAIR_TILE_MIN_PAIRS = 768
+# Tile shape of the blocked implementation: BLOCK_J pairs at a time, accumulating
+# along the feature dim in BLOCK_M chunks
+_TILE_BLOCK_J = 64
+_TILE_BLOCK_M = 512
+# Maximum feature-dim chunk for the per-pair implementation
+_PAIR_BLOCK_M_MAX = 1024
 
-@libentry()
-@triton.jit
-def _pdist_forward_p2_kernel(
-    x_ptr,
-    out_ptr,
-    N,
-    M,
-    stride_x,
-    stride_out,
-    BLOCK_M: tl.constexpr,
-):
-    """Forward kernel for p=2 (Euclidean distance) case."""
-    # Each program handles one pair of rows
-    pid = tle.program_id(0)
-
-    # Convert flat index to (i, j) pair where i < j
-    # pdist output indices: for row i, pairs are (i, i+1), (i, i+2), ..., (i, n-1)
-    # Total pairs before row i: i * N - (i * (i + 1)) // 2
-    # Within row i's pairs: j - i - 1
-
-    # Binary search to find row i for this output index
-    # N*(N-1)//2 total pairs
-    num_pairs = N * (N - 1) // 2
-
-    if pid >= num_pairs:
-        return
-
-    # Find which row this pair belongs to
-    # We need smallest i such that i * N - (i * (i + 1)) // 2 > pid
-    # This is the cumulative count of pairs up to row i-1
-    lo = 0
-    hi = N - 1
-    while lo < hi:
-        mid = (lo + hi) // 2
-        pairs_before_mid = mid * N - (mid * (mid + 1)) // 2
-        if pairs_before_mid <= pid:
-            lo = mid + 1
-        else:
-            hi = mid
-
-    i = lo - 1 if lo > 0 else 0
-    pairs_before_i = i * N - (i * (i + 1)) // 2
-    j = pid - pairs_before_i + i + 1
-
-    if i >= N or j >= N:
-        return
-
-    # Load row i and row j
-    i_offset = i * stride_x
-    j_offset = j * stride_x
-
-    m_offsets = tl.arange(0, BLOCK_M)
-    m_mask = m_offsets < M
-
-    xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-    xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-
-    # Compute Euclidean distance: sum((xi - xj)^2)
-    diff = xi_vals - xj_vals
-    sq_dist = diff * diff
-    dist = tl.sum(sq_dist, axis=0)
-    dist = tl.sqrt(dist)
-
-    out_idx = pid * stride_out
-    tl.store(out_ptr + out_idx, dist.to(out_ptr.dtype.element_ty))
+# Distance mode constants (matching the MODE argument of the kernels)
+_MODE_P2 = 0
+_MODE_P1 = 1
+_MODE_INF = 2
+_MODE_GENERAL = 3
+_MODE_COUNT = 4  # p == 0: count the non-zero differences
 
 
 @libentry()
 @triton.jit
-def _pdist_forward_p1_kernel(
-    x_ptr,
-    out_ptr,
-    N,
-    M,
-    stride_x,
-    stride_out,
-    BLOCK_M: tl.constexpr,
-):
-    """Forward kernel for p=1 (Manhattan distance) case."""
-    pid = tle.program_id(0)
-
-    num_pairs = N * (N - 1) // 2
-
-    if pid >= num_pairs:
-        return
-
-    lo = 0
-    hi = N - 1
-    while lo < hi:
-        mid = (lo + hi) // 2
-        pairs_before_mid = mid * N - (mid * (mid + 1)) // 2
-        if pairs_before_mid <= pid:
-            lo = mid + 1
-        else:
-            hi = mid
-
-    i = lo - 1 if lo > 0 else 0
-    pairs_before_i = i * N - (i * (i + 1)) // 2
-    j = pid - pairs_before_i + i + 1
-
-    if i >= N or j >= N:
-        return
-
-    i_offset = i * stride_x
-    j_offset = j * stride_x
-
-    m_offsets = tl.arange(0, BLOCK_M)
-    m_mask = m_offsets < M
-
-    xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-    xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-
-    # Compute Manhattan distance: sum(|xi - xj|)
-    diff = tl.abs(xi_vals - xj_vals)
-    dist = tl.sum(diff, axis=0)
-
-    out_idx = pid * stride_out
-    tl.store(out_ptr + out_idx, dist.to(out_ptr.dtype.element_ty))
-
-
-@libentry()
-@triton.jit
-def _pdist_forward_inf_kernel(
-    x_ptr,
-    out_ptr,
-    N,
-    M,
-    stride_x,
-    stride_out,
-    BLOCK_M: tl.constexpr,
-):
-    """Forward kernel for p=inf (Chebyshev distance) case."""
-    pid = tle.program_id(0)
-
-    num_pairs = N * (N - 1) // 2
-
-    if pid >= num_pairs:
-        return
-
-    lo = 0
-    hi = N - 1
-    while lo < hi:
-        mid = (lo + hi) // 2
-        pairs_before_mid = mid * N - (mid * (mid + 1)) // 2
-        if pairs_before_mid <= pid:
-            lo = mid + 1
-        else:
-            hi = mid
-
-    i = lo - 1 if lo > 0 else 0
-    pairs_before_i = i * N - (i * (i + 1)) // 2
-    j = pid - pairs_before_i + i + 1
-
-    if i >= N or j >= N:
-        return
-
-    i_offset = i * stride_x
-    j_offset = j * stride_x
-
-    m_offsets = tl.arange(0, BLOCK_M)
-    m_mask = m_offsets < M
-
-    xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-    xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-
-    # Compute Chebyshev distance: max(|xi - xj|)
-    diff = tl.abs(xi_vals - xj_vals)
-    dist = tl.max(diff, axis=0)
-
-    out_idx = pid * stride_out
-    tl.store(out_ptr + out_idx, dist.to(out_ptr.dtype.element_ty))
-
-
-@libentry()
-@triton.jit
-def _pdist_forward_general_kernel(
+def _pdist_tiled_kernel(
     x_ptr,
     out_ptr,
     N,
     M,
     p_val,
     stride_x,
-    stride_out,
+    MODE: tl.constexpr,
+    BLOCK_J: tl.constexpr,
     BLOCK_M: tl.constexpr,
 ):
-    """Forward kernel for general p value."""
+    """Organized by (row i, j block): row i is loaded once per j block.
+
+    Compared with the per-pair form, feature-vector traffic drops from two copies
+    per pair to roughly one, and BLOCK_J distances are computed at once, which
+    amortizes the program overhead.
+    """
+    row_index = tle.program_id(0)
+    j_block = tle.program_id(1)
+    col_index = row_index + 1 + j_block * BLOCK_J + tl.arange(0, BLOCK_J)
+    col_mask = col_index < N
+
+    row_ptr_offset = row_index * stride_x
+    reduce_acc = tl.zeros([BLOCK_J], dtype=tl.float32)
+    for m_start in range(0, M, BLOCK_M):
+        feature_offsets = m_start + tl.arange(0, BLOCK_M)
+        feature_mask = feature_offsets < M
+        row_vals = tl.load(
+            x_ptr + row_ptr_offset + feature_offsets, mask=feature_mask, other=0.0
+        ).to(tl.float32)
+        other_vals = tl.load(
+            x_ptr + col_index[:, None] * stride_x + feature_offsets[None, :],
+            mask=col_mask[:, None] & feature_mask[None, :],
+            other=0.0,
+        ).to(tl.float32)
+        diff = row_vals[None, :] - other_vals
+        if MODE == 0:  # p = 2
+            reduce_acc += tl.sum(diff * diff, axis=1)
+        elif MODE == 1:  # p = 1
+            reduce_acc += tl.sum(tl.abs(diff), axis=1)
+        elif MODE == 2:  # p = inf
+            reduce_acc = tl.maximum(reduce_acc, tl.max(tl.abs(diff), axis=1))
+        elif MODE == 4:  # p = 0, count non-zero differences
+            reduce_acc += tl.sum(tl.where(diff != 0.0, 1.0, 0.0), axis=1)
+        else:
+            abs_diff = tl.abs(diff)
+            reduce_acc += tl.sum(
+                tl.where(abs_diff > 0.0, tl.exp(p_val * tl.log(abs_diff)), 0.0), axis=1
+            )
+
+    if MODE == 0:  # p = 2
+        distance = tl.sqrt(reduce_acc)
+    elif MODE == 2 or MODE == 4:
+        distance = reduce_acc
+    elif MODE == 3:  # general p
+        distance = tl.where(reduce_acc > 0.0, tl.exp(tl.log(reduce_acc) / p_val), 0.0)
+    else:
+        distance = reduce_acc
+
+    # Packed pdist layout: i*N - i*(i+1)/2 pairs precede row i, with in-row offset
+    # j-i-1
+    out_offset = (
+        row_index * N - (row_index * (row_index + 1)) // 2 + (col_index - row_index - 1)
+    )
+    tl.store(out_ptr + out_offset, distance.to(out_ptr.dtype.element_ty), mask=col_mask)
+
+
+@libentry()
+@triton.jit
+def _pdist_pair_kernel(
+    x_ptr,
+    out_ptr,
+    N,
+    M,
+    p_val,
+    stride_x,
+    MODE: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+):
+    """Per-pair implementation: one program per pair, suited to small inputs with
+    few pairs."""
     pid = tle.program_id(0)
-
     num_pairs = N * (N - 1) // 2
-
     if pid >= num_pairs:
         return
 
+    # Binary search for the row i owning this pair: the smallest i with
+    # i*N - i*(i+1)/2 > pid
     lo = 0
     hi = N - 1
     while lo < hi:
@@ -241,41 +143,68 @@ def _pdist_forward_general_kernel(
             lo = mid + 1
         else:
             hi = mid
-
-    i = lo - 1 if lo > 0 else 0
-    pairs_before_i = i * N - (i * (i + 1)) // 2
-    j = pid - pairs_before_i + i + 1
-
-    if i >= N or j >= N:
+    row_index = lo - 1 if lo > 0 else 0
+    pairs_before_row = row_index * N - (row_index * (row_index + 1)) // 2
+    col_index = pid - pairs_before_row + row_index + 1
+    if row_index >= N or col_index >= N:
         return
 
-    i_offset = i * stride_x
-    j_offset = j * stride_x
+    row_ptr_offset = row_index * stride_x
+    col_ptr_offset = col_index * stride_x
 
-    m_offsets = tl.arange(0, BLOCK_M)
-    m_mask = m_offsets < M
+    reduce_acc = tl.zeros([1], dtype=tl.float32)
+    for m_start in range(0, M, BLOCK_M):
+        feature_offsets = m_start + tl.arange(0, BLOCK_M)
+        feature_mask = feature_offsets < M
+        row_vals = tl.load(
+            x_ptr + row_ptr_offset + feature_offsets, mask=feature_mask, other=0.0
+        ).to(tl.float32)
+        other_vals = tl.load(
+            x_ptr + col_ptr_offset + feature_offsets, mask=feature_mask, other=0.0
+        ).to(tl.float32)
+        diff = row_vals - other_vals
+        if MODE == 0:  # p = 2
+            reduce_acc += tl.sum(diff * diff, axis=0, keep_dims=True)
+        elif MODE == 1:  # p = 1
+            reduce_acc += tl.sum(tl.abs(diff), axis=0, keep_dims=True)
+        elif MODE == 2:  # p = inf
+            reduce_acc = tl.maximum(
+                reduce_acc, tl.max(tl.abs(diff), axis=0, keep_dims=True)
+            )
+        elif MODE == 4:  # p = 0, count non-zero differences
+            reduce_acc += tl.sum(
+                tl.where(diff != 0.0, 1.0, 0.0), axis=0, keep_dims=True
+            )
+        else:
+            abs_diff = tl.abs(diff)
+            reduce_acc += tl.sum(
+                tl.where(abs_diff > 0.0, tl.exp(p_val * tl.log(abs_diff)), 0.0),
+                axis=0,
+                keep_dims=True,
+            )
 
-    xi_vals = tl.load(x_ptr + i_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-    xj_vals = tl.load(x_ptr + j_offset + m_offsets, mask=m_mask, other=0.0).to(
-        tl.float32
-    )
-
-    # Compute p-norm distance
-    diff = tl.abs(xi_vals - xj_vals)
-
-    # For p=0 (Hamming-like), count non-zero elements
-    if p_val == 0.0:
-        dist = tl.sum(tl.where(diff != 0.0, 1.0, 0.0), axis=0)
+    if MODE == 0:  # p = 2
+        distance = tl.sqrt(reduce_acc)
+    elif MODE == 2 or MODE == 4:
+        distance = reduce_acc
+    elif MODE == 3:  # general p
+        distance = tl.where(reduce_acc > 0.0, tl.exp(tl.log(reduce_acc) / p_val), 0.0)
     else:
-        # General case: (sum(|diff|^p))^(1/p)
-        powered = tl.where(diff > 0.0, tl.exp(p_val * tl.log(diff)), 0.0)
-        sum_powered = tl.sum(powered, axis=0)
-        dist = tl.where(sum_powered > 0.0, tl.exp(tl.log(sum_powered) / p_val), 0.0)
+        distance = reduce_acc
 
-    out_idx = pid * stride_out
-    tl.store(out_ptr + out_idx, dist.to(out_ptr.dtype.element_ty))
+    tl.store(out_ptr + pid, tl.sum(distance, axis=0).to(out_ptr.dtype.element_ty))
+
+
+def _mode_of(p):
+    if p == 2.0:
+        return _MODE_P2
+    if p == 1.0:
+        return _MODE_P1
+    if math.isinf(p):
+        return _MODE_INF
+    if p == 0.0:
+        return _MODE_COUNT
+    return _MODE_GENERAL
 
 
 def pdist(x, p=2.0):
@@ -288,7 +217,7 @@ def pdist(x, p=2.0):
     Returns:
         Tensor of shape (N*(N-1)//2,) containing pairwise distances
     """
-    logger.debug("GEMS_ENFLAME_GCU400 PDIST")
+    logger.debug("GEMS_ENFLAME PDIST")
 
     assert x.ndim == 2, "pdist only supports 2D input"
     if x.dtype != torch.float32:
@@ -304,50 +233,33 @@ def pdist(x, p=2.0):
     x = x.contiguous()
     num_pairs = N * (N - 1) // 2
     out = torch.empty(num_pairs, dtype=x.dtype, device=x.device)
-
-    BLOCK_M = min(triton.next_power_of_2(M), 1024)
+    mode = _mode_of(p)
+    p_val = 0.0 if mode in (_MODE_INF, _MODE_COUNT) else float(p)
 
     with torch_device_fn.device(x.device):
-        if p == 2.0:
-            _pdist_forward_p2_kernel[(num_pairs,)](
+        if num_pairs >= _PAIR_TILE_MIN_PAIRS:
+            _pdist_tiled_kernel[(N - 1, triton.cdiv(N - 1, _TILE_BLOCK_J))](
                 x,
                 out,
                 N,
                 M,
+                p_val,
                 x.stride(0),
-                out.stride(0),
-                BLOCK_M=BLOCK_M,
-            )
-        elif p == 1.0:
-            _pdist_forward_p1_kernel[(num_pairs,)](
-                x,
-                out,
-                N,
-                M,
-                x.stride(0),
-                out.stride(0),
-                BLOCK_M=BLOCK_M,
-            )
-        elif math.isinf(p):
-            _pdist_forward_inf_kernel[(num_pairs,)](
-                x,
-                out,
-                N,
-                M,
-                x.stride(0),
-                out.stride(0),
-                BLOCK_M=BLOCK_M,
+                MODE=mode,
+                BLOCK_J=_TILE_BLOCK_J,
+                BLOCK_M=_TILE_BLOCK_M,
             )
         else:
-            _pdist_forward_general_kernel[(num_pairs,)](
+            block_m = min(triton.next_power_of_2(M), _PAIR_BLOCK_M_MAX)
+            _pdist_pair_kernel[(num_pairs,)](
                 x,
                 out,
                 N,
                 M,
-                p,
+                p_val,
                 x.stride(0),
-                out.stride(0),
-                BLOCK_M=BLOCK_M,
+                MODE=mode,
+                BLOCK_M=block_m,
             )
 
     return out

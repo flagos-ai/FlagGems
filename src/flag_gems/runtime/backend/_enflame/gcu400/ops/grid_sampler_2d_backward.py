@@ -399,7 +399,7 @@ def grid_sampler_2d_backward(
     Returns:
         Tuple of (grad_input, grad_grid) based on output_mask
     """
-    logger.debug("GEMS_ENFLAME_GCU400 grid_sampler_2d_backward")
+    logger.debug("GEMS_ENFLAME grid_sampler_2d_backward")
 
     if interpolation_mode == 2:
         raise NotImplementedError(

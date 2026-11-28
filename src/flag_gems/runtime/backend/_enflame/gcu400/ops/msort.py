@@ -115,6 +115,164 @@ def gather_sorted_values_kernel(
     tl.store(out + offsets, values, mask=mask)
 
 
+@triton.jit
+def _bitonic_peer(x, step: tl.constexpr, BC: tl.constexpr, LOGM: tl.constexpr):
+    # Partner value along the sort axis: reshape the (BC, M) tile into a
+    # [BC, 2, ..., 2] hypercube (one size-2 axis per row bit) and xor-sum the
+    # pair, so peer = x ^ pair_xor fetches the lane at row ^ (1 << step).
+    shape: tl.constexpr = [BC] + [2] * LOGM
+    h = tl.reshape(x, shape)
+    pe = tl.xor_sum(h, LOGM - step, keep_dims=True)
+    pe = tl.reshape(tl.broadcast_to(pe, shape), (BC, 1 << LOGM))
+    return x ^ pe
+
+
+@libentry()
+@triton.jit
+def msort_bitonic_tile_kernel(
+    inp,
+    out,
+    n_cols,
+    M: tl.constexpr,
+    BC: tl.constexpr,
+    IS_FLOAT: tl.constexpr,
+    KEY_BITS: tl.constexpr,
+    IS_SIGNED: tl.constexpr,
+    PACK16: tl.constexpr,
+):
+    # Column (dim-0) sort for many short, power-of-two rows, one launch.
+    # Each program owns BC columns: it loads the (BC, M) tile (columns along
+    # the minor axis stay memory-contiguous), runs a bitonic network along the
+    # row axis and stores the tile back.  With num_warps=1 the pair exchanges
+    # stay inside 128-lane vectors for M <= 128, which is why the envelope
+    # below is capped there (the generic radix/mradix path stays faster once
+    # the network needs cross-vector exchanges, e.g. M = 512).
+    #
+    # Ordering keys are monotone uint32 maps of the values (sign-fold for
+    # floats, sign-bit flip for signed ints), NaNs canonicalized to the top
+    # key like the radix path.  fp16/bf16 rows pack key and raw bits into one
+    # uint32 lane ((key << 16) | raw), so the network moves a single channel
+    # and the original NaN payload bits ride along to the output.  fp32 needs
+    # two channels (32-bit key + raw bits) and is therefore capped at M <= 64.
+    LOGM: tl.constexpr = M.bit_length() - 1
+    pid = tl.program_id(0)
+    cols = pid * BC + tl.arange(0, BC)
+    rows = tl.arange(0, M)
+    cmask = cols < n_cols
+    offs_t = rows[None, :] * n_cols + cols[:, None]  # (BC, M)
+    mask_t = cmask[:, None]
+    x = tl.load(inp + offs_t, mask=mask_t, other=0)
+    if IS_FLOAT and PACK16:
+        raw = x.to(tl.uint16, bitcast=True).to(tl.uint32)
+        SIGN: tl.constexpr = 1 << (KEY_BITS - 1)
+        MASKW: tl.constexpr = (1 << KEY_BITS) - 1
+        key = tl.where((raw >> (KEY_BITS - 1)) != 0, (~raw) & MASKW, raw ^ SIGN)
+        key = tl.where(x != x, MASKW, key)
+        key = (key << 16) | raw
+    elif IS_FLOAT:
+        if KEY_BITS == 16:
+            raw = x.to(tl.uint16, bitcast=True).to(tl.uint32)
+        else:
+            raw = x.to(tl.uint32, bitcast=True)
+        SIGN: tl.constexpr = 1 << (KEY_BITS - 1)
+        MASKW: tl.constexpr = (1 << KEY_BITS) - 1
+        key = tl.where((raw >> (KEY_BITS - 1)) != 0, (~raw) & MASKW, raw ^ SIGN)
+        key = tl.where(x != x, MASKW, key)
+        val = raw
+    else:
+        if KEY_BITS == 32:
+            raw = x.to(tl.uint32, bitcast=True)
+        elif KEY_BITS == 16:
+            raw = x.to(tl.uint16, bitcast=True).to(tl.uint32)
+        elif KEY_BITS == 8:
+            raw = x.to(tl.uint8, bitcast=True).to(tl.uint32)
+        else:
+            raw = x.to(tl.uint32)
+        if IS_SIGNED:
+            SIGNI: tl.constexpr = 1 << (KEY_BITS - 1)
+            key = raw ^ SIGNI
+        else:
+            key = raw
+    for stage in tl.static_range(1, LOGM + 1):
+        for step in tl.static_range(stage - 1, -1, -1):
+            pkey = _bitonic_peer(key, step, BC, LOGM)
+            if IS_FLOAT and not PACK16:
+                pval = _bitonic_peer(val, step, BC, LOGM)
+            less = key < pkey
+            choose_min = ((rows & (1 << stage)) == 0) == ((rows & (1 << step)) == 0)
+            take_peer = tl.where(choose_min[None, :], ~less, less)
+            key = tl.where(take_peer, pkey, key)
+            if IS_FLOAT and not PACK16:
+                val = tl.where(take_peer, pval, val)
+    if IS_FLOAT and PACK16:
+        res = (key & 0xFFFF).to(tl.uint16).to(x.dtype, bitcast=True)
+    elif IS_FLOAT:
+        if KEY_BITS == 16:
+            res = val.to(tl.uint16).to(x.dtype, bitcast=True)
+        else:
+            res = val.to(x.dtype, bitcast=True)
+    else:
+        if IS_SIGNED:
+            SIGNR: tl.constexpr = 1 << (KEY_BITS - 1)
+            sraw = key ^ SIGNR
+        else:
+            sraw = key
+        if KEY_BITS == 32:
+            res = sraw.to(tl.int32, bitcast=True) if IS_SIGNED else sraw.to(tl.uint32)
+        elif KEY_BITS == 16:
+            res = sraw.to(tl.uint16).to(x.dtype, bitcast=True)
+        elif KEY_BITS == 8:
+            res = sraw.to(tl.uint8).to(x.dtype, bitcast=True)
+        else:
+            res = sraw.to(x.dtype)
+    offs_m = rows[:, None] * n_cols + cols[None, :]  # (M, BC)
+    tl.store(out + offs_m, tl.trans(res), mask=tl.trans(mask_t))
+
+
+_TILE_DTYPE_BITS = {
+    torch.float16: (16, True, False, True),
+    torch.bfloat16: (16, True, False, True),
+    torch.float32: (32, True, False, False),
+    torch.bool: (1, False, False, False),
+    torch.int8: (8, False, True, False),
+    torch.int16: (16, False, True, False),
+    torch.int32: (32, False, True, False),
+}
+
+
+def _msort_tile_params(inp):
+    # Envelope of the bitonic tile path: contiguous 2-D-flattenable input with
+    # a power-of-two first dimension that fits in-vector pair exchanges.  The
+    # fp32 two-channel network only pays off to 64 rows; everything else
+    # (including int64 and any non-power-of-two row count) stays on the radix
+    # path below.
+    #
+    # block_cols avoids a compiler layout miscompile of the reshape +
+    # xor_sum + broadcast exchange (deterministic wrong values, independent
+    # of num_warps): (BC=128, M in {2, 8}) and (BC=32, M=32) silently
+    # mis-sort, while BC=64 is correct for every validated M and BC=128 is
+    # correct for M in {16, 32, 64, 128}.  The assignment below therefore
+    # only pairs BC values with M ranges that the correctness matrix
+    # validated (28 shape x dtype combos x 3 repeats per pair).
+    n_rows = inp.shape[0]
+    if n_rows < 2 or n_rows > 128 or n_rows & (n_rows - 1):
+        return None
+    spec = _TILE_DTYPE_BITS.get(inp.dtype)
+    if spec is None:
+        return None
+    key_bits, is_float, is_signed, pack16 = spec
+    if key_bits == 32 and is_float and n_rows > 64:
+        return None
+    if inp.numel() >= 2**31:
+        return None
+    n_cols = inp.numel() // n_rows
+    if 8 < n_rows < 64:
+        block_cols = 128
+    else:
+        block_cols = 64
+    return n_cols, block_cols, key_bits, is_float, is_signed, pack16
+
+
 # gcu400: the register bitonic path (tl.sort over a (BLOCK_COLS, BLOCK_ROWS)
 # tile) is disabled.  It mis-sorts the padded tail as soon as n_rows needs
 # padding (e.g. 63 -> BLOCK_ROWS 64 leaked pad values into the last real row;
@@ -133,6 +291,24 @@ def _msort_contiguous(inp, out):
     n_rows = inp.shape[0]
     if inp.numel() == 0 or n_rows == 1:
         copy_(out, inp)
+        return
+
+    tile = _msort_tile_params(inp)
+    if tile is not None:
+        n_cols, block_cols, key_bits, is_float, is_signed, pack16 = tile
+        with torch_device_fn.device(inp.device):
+            msort_bitonic_tile_kernel[(triton.cdiv(n_cols, block_cols),)](
+                inp,
+                out,
+                n_cols,
+                M=n_rows,
+                BC=block_cols,
+                IS_FLOAT=is_float,
+                KEY_BITS=key_bits,
+                IS_SIGNED=is_signed,
+                PACK16=pack16,
+                num_warps=1,
+            )
         return
 
     radix_inp = inp
@@ -160,7 +336,7 @@ def _msort_contiguous(inp, out):
 
 
 def msort(inp):
-    logger.debug("GEMS_ENFLAME_GCU400 MSORT")
+    logger.debug("GEMS_ENFLAME MSORT")
     if inp.is_complex():
         raise RuntimeError('"msort" not implemented for complex dtypes')
     out = torch.empty_like(inp, memory_format=torch.preserve_format)
@@ -169,7 +345,7 @@ def msort(inp):
 
 
 def msort_out(inp, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 MSORT.OUT")
+    logger.debug("GEMS_ENFLAME MSORT.OUT")
     if inp.is_complex():
         raise RuntimeError('"msort" not implemented for complex dtypes')
     if out.dtype != inp.dtype:

@@ -18,13 +18,11 @@ import torch
 import triton
 import triton.language as tl
 
-import flag_gems
 from flag_gems import runtime
 from flag_gems.ops.conv2d import conv2d_output_size
 from flag_gems.ops.conv3d import conv3d_output_size
 from flag_gems.ops.cudnn_convolution import (
     _AABS_PRESENT,
-    _DIRECT_MAX_C,
     _DOT_MIN_K,
     _aabs_disabled,
     cudnn_convolution,
@@ -59,36 +57,62 @@ def relu_epi_func(x):
 
 
 # ---------------------------------------------------------------------------
-# 2D fused conv + bias + ReLU (mirrors conv2d_forward_kernel)
+# 2D fused conv + bias + ReLU (derived from conv2d_forward_kernel)
+#
+# GCU400 rework of the tap loop (measured, bench kernel mode, fp16):
+#   (8,3,224,224)x64k3    39.7 -> 26.6ms    (128,16,64) config class
+#   (16,64,56,56)x64k3    27.3 -> 10.3ms    (128,64,64)
+#   (16,512,7,7)x512k3    25.0 ->  5.6ms    (32,32,256)
+#   no-bias (16,64,56,56)x128k3 51.5 -> 16.1ms (32,32,128, rerouted)
+# Three structural changes carry the win, in order of impact:
+#   1. tap loop static-unrolled (tl.static_range over KH*KW, both constexpr):
+#      the per-iteration h/w div/mod chain and the tap row base pointer are
+#      constant-folded, instead of being recomputed from the loop index every
+#      iteration like the dynamic hwc loop does.
+#   2. row quantities (n offset, sh*ho, sw*wo) hoisted out of the K loop; the
+#      per-load mask collapses to one broadcast AND (row_ok & c_ok) instead of
+#      six 2D compares per iteration; EVEN_C drops the channel mask entirely.
+#   3. HAS_BIAS=False arm skips the bias load+add, so the no-bias reroute
+#      needs neither a torch.zeros fill launch nor a dummy bias gather.
+# The accumulation order (tap-major, c-fastest) matches the generic kernel.
 # ---------------------------------------------------------------------------
 
 
+def _select_conv2d_relu_config(in_n, out_h, out_w, out_c, weight_c, groups, dtype):
+    """Deterministic tile choice for the fused conv+bias+relu kernel.
+
+    Replaces the single-config autotuner: per-shape sweeps (fp16/bf16, A/B/C/N
+    bench classes + test-suite edges) land each class on its own optimum, and
+    two GCU constraints are encoded explicitly:
+      * BLOCK_CI=64 miscompiles when the channel loop runs more than one
+        iteration (fp16 (16,512,7,7)x512k3 rel err 8.3e2, bf16 NaN-adjacent
+        4.7e10) but is correct and fastest at CI_COUNT==1, so it is picked
+        only for exactly-64-channel inputs.
+      * fp32 tl.dot miscompiles under BLOCK_NI<128 tiles here (P07 family:
+        (16,64,56,56) rel 2.4e1 at (64,32,64), 8e2 at (32,32,128)); every
+        BLOCK_NI=128 shape tested is exact, so fp32 pins that floor.
+    weight_c is the (already padded) per-group channel count.
+    """
+    rows = in_n * out_h * out_w
+    cols = out_c // groups
+    if weight_c <= 16:
+        if rows >= 131072:
+            config = (128, 16, 64, 4, 2)
+        else:
+            config = (64, 16, 64, 4, 2)
+    elif weight_c <= 32:
+        config = (64, 32, 64, 4, 2)
+    elif weight_c == 64:
+        config = (128, 64, 64, 4, 2) if cols <= 64 else (32, 32, 128, 4, 2)
+    else:
+        config = (32, 32, 256, 4, 2) if cols >= 256 else (32, 32, 128, 4, 2)
+    if dtype == torch.float32 and config[0] < 128:
+        block_ci = 64 if weight_c == 64 else 16
+        config = (128, block_ci, 64, 4, 2)
+    return config
+
+
 @libentry()
-@triton.autotune(
-    configs=[
-        triton.Config(
-            {"BLOCK_NI_HO_WO": 128, "BLOCK_CI": 16, "BLOCK_CO": 64},
-            num_warps=4,
-            num_stages=2,
-        )
-    ],
-    key=[
-        "in_n",
-        "weight_c",
-        "input_height",
-        "input_width",
-        "out_c",
-        "out_height",
-        "out_width",
-        "weight_height",
-        "weight_width",
-        "stride_height",
-        "stride_width",
-        "padding_height",
-        "padding_width",
-        "groups",
-    ],
-)
 @triton.jit
 def conv2d_relu_forward_kernel(
     input_pointer,
@@ -126,6 +150,8 @@ def conv2d_relu_forward_kernel(
     BLOCK_NI_HO_WO: tl.constexpr,
     BLOCK_CI: tl.constexpr,
     BLOCK_CO: tl.constexpr,
+    EVEN_C: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
 ):
     pid_ni_ho_wo = tl.program_id(0)
     pid_co = tl.program_id(1)
@@ -139,68 +165,69 @@ def conv2d_relu_forward_kernel(
 
     out_per_group_c = out_c // groups
     output_c_offset = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
-    input_pointer += (
-        input_n_stride * in_n_point_value + input_c_stride * pid_group * weight_c
-    )[:, None]
-    weight_pointer += (
+
+    # Row quantities hoisted out of both loops: the per-row n/c-group base and
+    # the strided spatial offsets, plus the tap-invariant n bound.
+    row_base = input_pointer + (
+        input_n_stride * in_n_point_value
+        + input_c_stride * pid_group * weight_c
+        + input_height_stride * stride_height * output_height_point_value
+        + input_width_stride * stride_width * output_width_point_value
+    )
+    row_in_bounds = in_n_point_value < in_n
+
+    weight_base = weight_pointer + (
         weight_n_stride * output_c_offset
         + weight_n_stride * pid_group * out_per_group_c
-    )[None, :]
+    )
+    co_ok = output_c_offset < out_per_group_c
 
     accum = tl.zeros((BLOCK_NI_HO_WO, BLOCK_CO), dtype=tl.float32)
     BLOCK_CI_COUNT = (weight_c + BLOCK_CI - 1) // BLOCK_CI
-    for hwc in range(weight_height * weight_width * BLOCK_CI_COUNT):
-        c = (hwc % BLOCK_CI_COUNT) * BLOCK_CI
-        hw = hwc // BLOCK_CI_COUNT
-        h = hw // weight_width
-        w = hw % weight_width
-
-        input_c_offset = c + tl.arange(0, BLOCK_CI)
-        input_height_offset = (
-            h * dilation_height
-            - padding_height
-            + stride_height * output_height_point_value
+    for tap in tl.static_range(weight_height * weight_width):
+        h = tap // weight_width
+        w = tap % weight_width
+        ih = h * dilation_height - padding_height
+        iw = w * dilation_width - padding_width
+        tap_row_ptr = row_base + (input_height_stride * ih + input_width_stride * iw)
+        row_ok = (
+            row_in_bounds
+            & (ih + stride_height * output_height_point_value >= 0)
+            & (ih + stride_height * output_height_point_value < input_height)
+            & (iw + stride_width * output_width_point_value >= 0)
+            & (iw + stride_width * output_width_point_value < input_width)
         )
-        input_width_offset = (
-            w * dilation_width - padding_width + stride_width * output_width_point_value
-        )
+        tap_weight_ptr = weight_height_stride * h + weight_width_stride * w
+        for cb in range(BLOCK_CI_COUNT):
+            input_c_offset = cb * BLOCK_CI + tl.arange(0, BLOCK_CI)
+            curr_input_pointer = (
+                tap_row_ptr[:, None] + (input_c_stride * input_c_offset)[None, :]
+            )
+            curr_weight_pointer = (
+                weight_base[None, :]
+                + (weight_c_stride * input_c_offset)[:, None]
+                + tap_weight_ptr
+            )
+            if EVEN_C:
+                input_block = tl.load(curr_input_pointer, mask=row_ok[:, None])
+                weight_block = tl.load(curr_weight_pointer, mask=co_ok[None, :])
+            else:
+                c_ok = input_c_offset < weight_c
+                input_block = tl.load(
+                    curr_input_pointer, mask=row_ok[:, None] & c_ok[None, :]
+                )
+                weight_block = tl.load(
+                    curr_weight_pointer, mask=c_ok[:, None] & co_ok[None, :]
+                )
+            accum += tl.dot(input_block, weight_block, allow_tf32=False)
 
-        curr_input_pointer = (
-            input_pointer
-            + (input_c_stride * input_c_offset)[None, :]
-            + (input_height_stride * input_height_offset)[:, None]
-            + (input_width_stride * input_width_offset)[:, None]
-        )
-        curr_weight_pointer = (
-            weight_pointer
-            + (weight_c_stride * input_c_offset)[:, None]
-            + (weight_height_stride * h)
-            + (weight_width_stride * w)
-        )
-
-        input_mask = (
-            (in_n_point_value < in_n)[:, None]
-            & (input_c_offset < weight_c)[None, :]
-            & (0 <= input_height_offset)[:, None]
-            & (input_height_offset < input_height)[:, None]
-            & (0 <= input_width_offset)[:, None]
-            & (input_width_offset < input_width)[:, None]
-        )
-        weight_mask = (input_c_offset < weight_c)[:, None] & (
-            output_c_offset < out_per_group_c
-        )[None, :]
-
-        input_block = tl.load(curr_input_pointer, mask=input_mask)
-        weight_block = tl.load(curr_weight_pointer, mask=weight_mask)
-
-        accum += tl.dot(input_block, weight_block, allow_tf32=False)
-
-    bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
-        None, :
-    ]
-    mask_bias = (output_c_offset < out_per_group_c)[None, :]
-    bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
-    accum = accum + bias
+    if HAS_BIAS:
+        bias_pointer += (pid_group[None] * out_per_group_c)[None, :] + output_c_offset[
+            None, :
+        ]
+        mask_bias = (output_c_offset < out_per_group_c)[None, :]
+        bias = tl.load(bias_pointer, mask_bias).to(tl.float32)
+        accum = accum + bias
     # The activation rides on the fp32 accumulator so the sum is rounded to
     # the output dtype exactly once -- a bias added after storing would round
     # twice and flip near-zero sums across the ReLU boundary.
@@ -429,7 +456,9 @@ def _output_size(in_size, kernel, stride, padding, dilation):
     return (in_size + 2 * padding - dilation * (kernel - 1) - 1) // stride + 1
 
 
-def _launch_conv2d_relu(input, weight, bias, stride, padding, dilation, groups):
+def _launch_conv2d_relu(
+    input, weight, bias, stride, padding, dilation, groups, out=None
+):
     in_n, _, input_height, input_width = input.shape
     out_c, weight_c, weight_height, weight_width = weight.shape
     stride_height, stride_width = stride
@@ -444,13 +473,13 @@ def _launch_conv2d_relu(input, weight, bias, stride, padding, dilation, groups):
     if weight_c < _MIN_DOT_K:
         pad_c = _MIN_DOT_K - weight_c
         if groups == 1:
-            input = flag_gems.pad(input, (0, 0, 0, 0, 0, pad_c))
+            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
         else:
             N, C, H, W = input.shape
             input = input.reshape(N, groups, weight_c, H, W)
-            input = flag_gems.pad(input, (0, 0, 0, 0, 0, pad_c))
+            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, pad_c))
             input = input.reshape(N, groups * (weight_c + pad_c), H, W)
-        weight = flag_gems.pad(weight, (0, 0, 0, 0, 0, pad_c))
+        weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, pad_c))
         weight_c = weight_c + pad_c
 
     out_height = conv2d_output_size(
@@ -459,19 +488,47 @@ def _launch_conv2d_relu(input, weight, bias, stride, padding, dilation, groups):
     out_width = conv2d_output_size(
         input_width, weight_width, stride_width, padding_width, dilation_width
     )
-    output = torch.empty(
-        (in_n, out_c, out_height, out_width), device=input.device, dtype=input.dtype
-    )
+    output_shape = (in_n, out_c, out_height, out_width)
+    if (
+        out is not None
+        and out.shape == output_shape
+        and out.dtype == input.dtype
+        and out.device == input.device
+    ):
+        # The .out overload's caller-supplied buffer takes the kernel's stores
+        # directly (its strides are passed through like a fresh allocation's),
+        # which drops the separate copy epilogue.
+        output = out
+    else:
+        output = torch.empty(output_shape, device=input.device, dtype=input.dtype)
 
-    grid = lambda META: (
-        triton.cdiv(in_n * out_height * out_width, META["BLOCK_NI_HO_WO"]),
-        triton.cdiv(int(out_c // groups), META["BLOCK_CO"]),
+    (
+        block_ni_ho_wo,
+        block_ci,
+        block_co,
+        num_warps,
+        num_stages,
+    ) = _select_conv2d_relu_config(
+        in_n,
+        out_height,
+        out_width,
+        out_c,
+        weight_c,
+        groups,
+        input.dtype,
+    )
+    grid = (
+        triton.cdiv(in_n * out_height * out_width, block_ni_ho_wo),
+        triton.cdiv(int(out_c // groups), block_co),
         groups,
     )
+    # bias may be None (the no-bias reroute); the pointer argument still needs
+    # a tensor, so hand it the weight -- HAS_BIAS=False guards every access.
+    bias_pointer = bias if bias is not None else weight
     conv2d_relu_forward_kernel[grid](
         input,
         weight,
-        bias,
+        bias_pointer,
         output,
         in_n,
         input_height,
@@ -492,6 +549,13 @@ def _launch_conv2d_relu(input, weight, bias, stride, padding, dilation, groups):
         dilation_height,
         dilation_width,
         groups=groups,
+        BLOCK_NI_HO_WO=block_ni_ho_wo,
+        BLOCK_CI=block_ci,
+        BLOCK_CO=block_co,
+        EVEN_C=(weight_c % block_ci == 0),
+        HAS_BIAS=bias is not None,
+        num_warps=num_warps,
+        num_stages=num_stages,
     )
     return output
 
@@ -507,13 +571,13 @@ def _launch_conv3d_relu(input, weight, bias, stride, padding, dilation, groups):
     if weight_c < _MIN_DOT_K:
         pad_c = _MIN_DOT_K - weight_c
         if groups == 1:
-            input = flag_gems.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
+            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
         else:
             N, C, D, H, W = input.shape
             input = input.reshape(N, groups, weight_c, D, H, W)
-            input = flag_gems.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
+            input = torch.nn.functional.pad(input, (0, 0, 0, 0, 0, 0, 0, pad_c))
             input = input.reshape(N, groups * (weight_c + pad_c), D, H, W)
-        weight = flag_gems.pad(weight, (0, 0, 0, 0, 0, 0, 0, pad_c))
+        weight = torch.nn.functional.pad(weight, (0, 0, 0, 0, 0, 0, 0, pad_c))
         weight_c = weight_c + pad_c
 
     out_depth = conv3d_output_size(
@@ -572,7 +636,9 @@ def _launch_conv3d_relu(input, weight, bias, stride, padding, dilation, groups):
     return output
 
 
-def _conv_forward(input, weight, bias, stride, padding, dilation, groups, ndim):
+def _conv_forward(
+    input, weight, bias, stride, padding, dilation, groups, ndim, out=None
+):
     """Run the convolution, keeping the bias + ReLU inside the conv kernels.
 
     cuDNN computes fp32(conv) + bias and rounds the sum once. Adding the bias
@@ -601,11 +667,57 @@ def _conv_forward(input, weight, bias, stride, padding, dilation, groups, ndim):
     flat_bias = bias.reshape(weight.shape[0])
     if ndim == 2:
         return _launch_conv2d_relu(
-            input, weight, flat_bias, stride, padding, dilation, groups
+            input, weight, flat_bias, stride, padding, dilation, groups, out=out
         )
     return _launch_conv3d_relu(
         input, weight, flat_bias, stride, padding, dilation, groups
     )
+
+
+# Size threshold (number of MACs) for promoting 16bit → fp32 computation. Measured on this machine (bias-free fused
+# path, pad=0):
+#   4.1M  MACs promoted: 0.401ms vs native 0.209ms (1.92x slower; conversion overhead dominates)
+#   24.9M MACs promoted: 0.730ms vs native 0.445ms (1.64x slower)
+#   99.7M MACs promoted: 1.501ms vs native 1.270ms (1.18x slower)
+#   398.7M MACs promoted: 5.208ms vs native 9.213ms (1.77x faster)
+#   3439.9M MACs promoted: 37.223ms vs native 79.946ms (2.15x faster)
+# The crossover lies between 1e8~4e8, so 2e8 is used as the switch; small convolutions still use the original dtype
+# path.
+_UPCAST_MIN_MACS = 2.0e8
+
+
+def _conv_macs(input, weight, stride, padding, dilation):
+    """Estimates the MAC count of one convolution to decide whether a wider type pays off."""
+    ndim = input.ndim - 2
+    stride = _to_list(stride, ndim)
+    padding = _to_list(padding, ndim)
+    dilation = _to_list(dilation, ndim)
+    macs = input.shape[0] * weight.shape[0]
+    for dim in range(ndim):
+        in_size = input.shape[2 + dim]
+        k = weight.shape[2 + dim]
+        out_size = (in_size + 2 * padding[dim] - dilation[dim] * (k - 1) - 1) // stride[
+            dim
+        ] + 1
+        macs *= max(out_size, 0) * k
+    return macs * weight.shape[1]
+
+
+def _should_compute_in_fp32(input, weight, bias, stride, padding, dilation, groups):
+    """Decides whether a 16-bit input should be widened to fp32.
+
+    Enabled only on the bias-free fused path: of three bias-carrying benchmark shapes two
+    regressed and one improved after widening ((8,3,224,224) 42.7->45.6ms, (16,64,56,56)x64k3
+    18.3->21.4ms slower, (16,512,7,7)x512k3 21.8->19.1ms faster), so the gain is inconsistent;
+    the five bias-free shapes all follow "widen once the size exceeds 2e8 MAC".
+    """
+    if bias is not None:
+        return False
+    if input.dtype not in (torch.float16, torch.bfloat16):
+        return False
+    if torch.is_grad_enabled() and (input.requires_grad or weight.requires_grad):
+        return False
+    return _conv_macs(input, weight, stride, padding, dilation) >= _UPCAST_MIN_MACS
 
 
 def cudnn_convolution_relu(
@@ -631,8 +743,18 @@ def cudnn_convolution_relu(
     Returns:
         Output tensor of shape (N, C_out, *out_spatial_dims)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONVOLUTION_RELU")
+    logger.debug("GEMS_ENFLAME CUDNN_CONVOLUTION_RELU")
     _check_dtype(input)
+
+    if _should_compute_in_fp32(input, weight, bias, stride, padding, dilation, groups):
+        # 16bit tensors are computed in fp32 and then downcast on this machine: GCU400's 16bit path is about 2x slower
+        # than fp32
+        # ((16,64,56,56)x128k3 measured fp16/bf16 79.6ms vs fp32 37.2ms); after promotion,
+        # the fp32 kernel handles the compute and memory traffic, and only one downcast copy is needed at the end.
+        out_fp32 = cudnn_convolution_relu(
+            input.float(), weight.float(), bias, stride, padding, dilation, groups
+        )
+        return out_fp32.to(input.dtype)
 
     ndim = input.ndim - 2
     if ndim not in (1, 2, 3):
@@ -652,56 +774,72 @@ def cudnn_convolution_relu(
     return _dispatch(input, weight, bias, stride, padding, dilation, groups, ndim)
 
 
-def _generic_would_direct2d(input, weight, groups, ndim):
-    """Mirror generic cudnn_convolution's dispatch far enough to tell whether a
-    bias-free case would land on its FMA direct-2D kernel (per-group C_in below
-    tl.dot's K floor, not depthwise, and either fp32 or C_in within the direct
-    kernel's channel bound). On GCU that kernel fails the Triton PassManager
-    (mlir->gcuir; see compiler_problems P02), while every other branch of the
-    generic dispatch -- depthwise, pointwise, direct-3D and the conv*d
-    implicit-GEMM paths -- compiles and matches the reference, so only the
-    shapes this predicate selects are rerouted in _dispatch.
+def _no_bias_goes_to_fused(input, weight, stride, padding, dilation, groups, ndim):
+    """Decide whether a bias-free case runs the fused kernel with HAS_BIAS=False.
+
+    Mirrors the generic cudnn_convolution dispatch far enough to tell which
+    branch a bias-free case would land on, and keeps it there whenever that
+    branch is the better GCU citizen:
+      * depthwise (weight_c == 1 && groups == C_in) and the pointwise 1x1 GEMM
+        keep their dedicated generic kernels -- both are verified working on
+        GCU and the pointwise path is already a plain GEMM;
+      * 3D keeps the generic dispatch (its no-bias arm is only exercised by
+        the accuracy suite, not by the core benchmark);
+      * everything else would land on the FMA direct-2D kernel -- which fails
+        the Triton PassManager on GCU (mlir->gcuir; compiler_problems P02) --
+        or on the generic implicit-GEMM conv plus a separate pointwise ReLU
+        epilogue, whose conv kernel is the whole latency of the no-bias core
+        benchmark case (51.5ms vs 16.1ms rerouted, (16,64,56,56)x128k3 fp16).
+    relu(conv + 0) is exactly relu(conv): with HAS_BIAS=False the zero never
+    touches the fp32 accumulator, so the reroute is bit-identical to the
+    bias arm's single-rounding semantics while dropping the second launch.
     """
     if ndim > 2:
         return False
     weight_c = weight.shape[1]
     if weight_c == 1 and groups == input.shape[1]:
         return False
-    if weight_c >= _DOT_MIN_K:
+    if (
+        groups == 1
+        and all(k == 1 for k in weight.shape[2:])
+        and all(s == 1 for s in stride)
+        and all(d == 1 for d in dilation)
+        and all(p == 0 for p in padding)
+        and weight_c >= _DOT_MIN_K
+    ):
         return False
-    return input.dtype == torch.float32 or weight_c <= _DIRECT_MAX_C
+    return True
 
 
-def _dispatch(input, weight, bias, stride, padding, dilation, groups, ndim):
+def _dispatch(input, weight, bias, stride, padding, dilation, groups, ndim, out=None):
     stride = _to_list(stride, ndim)
     padding = _to_list(padding, ndim)
     dilation = _to_list(dilation, ndim)
-    if bias is None and _generic_would_direct2d(input, weight, groups, ndim):
-        # GCU: generic's direct-2D FMA conv kernel fails the PassManager, so run
-        # the fused conv+bias+relu kernel instead -- relu(conv + 0) is exactly
-        # relu(conv) (the zero rides the fp32 accumulator), and the fused
-        # launch already applies the activation, skipping the separate
-        # pointwise ReLU epilogue the plain-conv path would need.
-        zero_bias = torch.zeros(
-            weight.shape[0], dtype=weight.dtype, device=weight.device
-        )
+    if bias is None and _no_bias_goes_to_fused(
+        input, weight, stride, padding, dilation, groups, ndim
+    ):
         if ndim == 1:
-            out = _launch_conv2d_relu(
+            # Lift to 2D with a unit trailing dim (same trick as conv1d ->
+            # conv2d). A caller's `out` rides through as an unsqueezed view,
+            # which the kernel fills directly.
+            lifted_out = out.unsqueeze(-1) if out is not None else None
+            res = _launch_conv2d_relu(
                 input.unsqueeze(-1),
                 weight.unsqueeze(-1),
-                zero_bias,
+                None,
                 [stride[0], 1],
                 [padding[0], 0],
                 [dilation[0], 1],
                 groups,
+                out=lifted_out,
             )
-            return out.squeeze(-1)
+            return out if out is not None else res.squeeze(-1)
         return _launch_conv2d_relu(
-            input, weight, zero_bias, stride, padding, dilation, groups
+            input, weight, None, stride, padding, dilation, groups, out=out
         )
     if ndim == 1:
         # Lift to 2D with a unit trailing dim (same trick as conv1d -> conv2d).
-        out = _conv_forward(
+        out2 = _conv_forward(
             input.unsqueeze(-1),
             weight.unsqueeze(-1),
             bias,
@@ -711,11 +849,13 @@ def _dispatch(input, weight, bias, stride, padding, dilation, groups, ndim):
             groups,
             2,
         )
-        out = out.squeeze(-1)
+        out2 = out2.squeeze(-1)
         if bias is None:
-            return relu_epi_func(out)
-        return out
-    conv = _conv_forward(input, weight, bias, stride, padding, dilation, groups, ndim)
+            return relu_epi_func(out2)
+        return out2
+    conv = _conv_forward(
+        input, weight, bias, stride, padding, dilation, groups, ndim, out=out
+    )
     if bias is None:
         return relu_epi_func(conv)
     return conv
@@ -730,7 +870,7 @@ def cudnn_convolution_relu_out(
     Args mirror ``cudnn_convolution_relu``; ``out`` must have the conv output
     shape (N, C_out, *out_spatial_dims) and is returned.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CUDNN_CONVOLUTION_RELU_OUT")
+    logger.debug("GEMS_ENFLAME CUDNN_CONVOLUTION_RELU_OUT")
     _check_dtype(input)
 
     ndim = input.ndim - 2
@@ -742,11 +882,21 @@ def cudnn_convolution_relu_out(
     if _AABS_PRESENT:
         with _aabs_disabled():
             res = _dispatch(
-                input, weight, bias, stride, padding, dilation, groups, ndim
+                input,
+                weight,
+                bias,
+                stride,
+                padding,
+                dilation,
+                groups,
+                ndim,
+                out=out,
             )
             relu_into_out(res, out)
             return out
-    res = _dispatch(input, weight, bias, stride, padding, dilation, groups, ndim)
+    res = _dispatch(
+        input, weight, bias, stride, padding, dilation, groups, ndim, out=out
+    )
     relu_into_out(res, out)
     return out
 
@@ -756,57 +906,9 @@ def relu_into_out(res, out):
 
     The fused conv kernels write their own fresh allocation, so the .out
     variant copies; the epilogue path reuses pointwise_dynamic's out0 store.
+    The fused 2D arm instead takes the caller's buffer directly at launch
+    (see _launch_conv2d_relu), where res IS out and the copy is a no-op.
     """
     if res.data_ptr() == out.data_ptr():
         return
     out.copy_(res)
-
-
-# ---------------------------------------------------------------------------
-# ATen dispatcher registration for the GCU backend key
-#
-# torch_gcu ships no kernel for aten::cudnn_convolution_relu: its PrivateUse1
-# backend falls back to the CPU implementation, and the CPU backend has no
-# cuDNN convolution either, so every torch.ops.aten.cudnn_convolution_relu
-# call on GCU tensors raised NotImplementedError. The FlagGems enable()/
-# use_gems() path registers this same function through _FULL_CONFIG, but
-# processes that merely import flag_gems (the accuracy tests' reference leg,
-# any ATen-level caller) never enter that path -- so register the fused
-# implementation here, idempotently, exactly like _dimI.py / values_copy.py
-# do for the ops torch_gcu leaves unimplemented. The registration only adds
-# a working GCU kernel where none existed; it cannot shadow an existing one.
-# ---------------------------------------------------------------------------
-
-_ATEN_REG_FLAG = "_flag_gems_gcu400_cudnn_convolution_relu_aten_registered"
-_ATEN_LIBRARY = None
-
-
-def _ensure_aten_gcu_kernels():
-    """Idempotently register cudnn_convolution_relu(.out) on the GCU key.
-
-    The flag lives on ``torch`` (not module level) because the arch ops tree
-    is imported under several module names at once; the library handle is kept
-    in a module global so the registration outlives this call.
-    """
-    global _ATEN_LIBRARY
-    if getattr(torch, _ATEN_REG_FLAG, False):
-        return
-    dispatch_key = runtime.device.dispatch_key
-    _ATEN_LIBRARY = torch.library.Library("aten", "IMPL")
-    for op_name, kernel in (
-        ("cudnn_convolution_relu", cudnn_convolution_relu),
-        ("cudnn_convolution_relu.out", cudnn_convolution_relu_out),
-    ):
-        try:
-            _ATEN_LIBRARY.impl(op_name, kernel, dispatch_key)
-        except RuntimeError as error:
-            logger.warning(
-                "cudnn_convolution_relu: aten registration %s@%s skipped: %s",
-                op_name,
-                dispatch_key,
-                error,
-            )
-    setattr(torch, _ATEN_REG_FLAG, True)
-
-
-_ensure_aten_gcu_kernels()

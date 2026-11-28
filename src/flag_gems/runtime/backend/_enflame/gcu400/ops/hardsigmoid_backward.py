@@ -176,7 +176,7 @@ def _grid_for(n, block):
 
 
 def hardsigmoid_backward(grad_output, self):
-    logger.debug("GEMS_ENFLAME_GCU400 HARDSIGMOID_BACKWARD")
+    logger.debug("GEMS_ENFLAME HARDSIGMOID_BACKWARD")
     if (
         grad_output.shape == self.shape
         and grad_output.dtype is self.dtype

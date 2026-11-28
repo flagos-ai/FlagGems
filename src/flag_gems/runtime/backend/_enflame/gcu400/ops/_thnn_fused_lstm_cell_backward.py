@@ -28,6 +28,28 @@ logger = logging.getLogger(__name__)
 # Expose the main backward kernel's warp count explicitly for GCU400 tuning sweeps.
 NUM_WARPS_LSTM_BWD = 8
 
+# Fused single-launch paths: the legacy form runs a flat elementwise kernel
+# (per-element runtime div/mod addressing) plus a second per-column bias
+# reduction kernel whose grid of 4*hidden_size tiny programs pays the CTA
+# issue serial tax and dominates end-to-end latency. Each fused path below
+# produces all outputs in one launch. Launch parameters are tuned per
+# optimization round (GCU400/L600, do_bench median w1000/r100); semantics
+# are unchanged.
+# Row-grid path (no bias): forward-style per-row scalar bases + 1D affine
+# offsets, ROWS_PER_PROG rows unrolled per program.
+FUSED_ROWGRID_NUM_WARPS = 2
+FUSED_ROWGRID_MAX_BLOCK_H = 1024
+# Column-tile path (with bias): one program owns every batch row of its
+# hidden-column block, so the four bias gradients are register reductions.
+FUSED_TILE_MIN_B = 32
+FUSED_TILE_MAX_B = 512
+# GCU400 2D affine masked loads are bit-exact only up to 8192 lanes per tile
+# (>=16384 lanes silently corrupt, see knowledge/perf_playbook.md), so the
+# per-load lane budget BLOCK_B * BLOCK_H stays within this bound.
+FUSED_TILE_MAX_LANES = 8192
+FUSED_TILE_NUM_WARPS = 4
+FUSED_TILE_WIDE_NUM_WARPS = 2
+
 
 @libentry()
 @triton.jit
@@ -186,6 +208,181 @@ def _fused_lstm_bias_backward_kernel(
     tl.store(grad_bias + gate_offset, tl.sum(accumulator, axis=0))
 
 
+@libentry()
+@triton.jit(do_not_specialize=["B", "H"])
+def _fused_lstm_cell_backward_rowgrid_kernel(
+    grad_hy_ptr,
+    grad_cy_ptr,
+    cx_ptr,
+    cy_ptr,
+    workspace_ptr,
+    grad_gates_ptr,
+    grad_cx_ptr,
+    B,
+    H,
+    HAS_GRAD_HY: tl.constexpr,
+    HAS_GRAD_CY: tl.constexpr,
+    ROWS_PER_PROG: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+):
+    # Row-grid layout (no bias): each program covers ROWS_PER_PROG batch rows
+    # of one hidden-column block using per-row scalar bases plus 1D affine
+    # offsets, which lowers to the fast affine path on GCU400, unlike 2D
+    # computed address vectors.
+    pid_r = tl.program_id(0)
+    cols = tl.program_id(1) * BLOCK_H + tl.arange(0, BLOCK_H)
+    col_mask = cols < H
+    for r in tl.static_range(ROWS_PER_PROG):
+        row = pid_r * ROWS_PER_PROG + r
+        mask = col_mask & (row < B)
+        hidden_base = row * H
+        gate_base = row * 4 * H
+        cx_v = tl.load(cx_ptr + hidden_base + cols, mask=mask, other=0.0).to(tl.float32)
+        cy_v = tl.load(cy_ptr + hidden_base + cols, mask=mask, other=0.0).to(tl.float32)
+        i_gate = tl.load(workspace_ptr + gate_base + cols, mask=mask, other=0.0).to(
+            tl.float32
+        )
+        f_gate = tl.load(workspace_ptr + gate_base + H + cols, mask=mask, other=0.0).to(
+            tl.float32
+        )
+        g_gate = tl.load(
+            workspace_ptr + gate_base + 2 * H + cols, mask=mask, other=0.0
+        ).to(tl.float32)
+        o_gate = tl.load(
+            workspace_ptr + gate_base + 3 * H + cols, mask=mask, other=0.0
+        ).to(tl.float32)
+        if HAS_GRAD_HY:
+            grad_hy = tl.load(
+                grad_hy_ptr + hidden_base + cols, mask=mask, other=0.0
+            ).to(tl.float32)
+        else:
+            grad_hy = tl.zeros((BLOCK_H,), dtype=tl.float32)
+        if HAS_GRAD_CY:
+            grad_cy = tl.load(
+                grad_cy_ptr + hidden_base + cols, mask=mask, other=0.0
+            ).to(tl.float32)
+        else:
+            grad_cy = tl.zeros((BLOCK_H,), dtype=tl.float32)
+
+        tanh_cy = tl_extra_shim.tanh(cy_v)
+        grad_cell = grad_hy * o_gate * (1.0 - tanh_cy * tanh_cy) + grad_cy
+        grad_i = grad_cell * g_gate * i_gate * (1.0 - i_gate)
+        grad_f = grad_cell * cx_v * f_gate * (1.0 - f_gate)
+        grad_g = grad_cell * i_gate * (1.0 - g_gate * g_gate)
+        grad_o = grad_hy * tanh_cy * o_gate * (1.0 - o_gate)
+
+        out_ty = grad_gates_ptr.dtype.element_ty
+        tl.store(grad_gates_ptr + gate_base + cols, grad_i.to(out_ty), mask=mask)
+        tl.store(grad_gates_ptr + gate_base + H + cols, grad_f.to(out_ty), mask=mask)
+        tl.store(
+            grad_gates_ptr + gate_base + 2 * H + cols, grad_g.to(out_ty), mask=mask
+        )
+        tl.store(
+            grad_gates_ptr + gate_base + 3 * H + cols, grad_o.to(out_ty), mask=mask
+        )
+        tl.store(
+            grad_cx_ptr + hidden_base + cols,
+            (grad_cell * f_gate).to(out_ty),
+            mask=mask,
+        )
+
+
+@libentry()
+@triton.jit(do_not_specialize=["B", "H"])
+def _fused_lstm_cell_backward_tiled_kernel(
+    grad_hy_ptr,
+    grad_cy_ptr,
+    cx_ptr,
+    cy_ptr,
+    workspace_ptr,
+    grad_gates_ptr,
+    grad_cx_ptr,
+    grad_bias_ptr,
+    B,
+    H,
+    HAS_GRAD_HY: tl.constexpr,
+    HAS_GRAD_CY: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+    BLOCK_H: tl.constexpr,
+):
+    # 2D tile over (batch rows, hidden columns): affine row-major addressing
+    # with no per-element div/mod, unlike the legacy flat kernel.
+    rows = tl.program_id(1) * BLOCK_B + tl.arange(0, BLOCK_B)
+    cols = tl.program_id(0) * BLOCK_H + tl.arange(0, BLOCK_H)
+    valid = (rows[:, None] < B) & (cols[None, :] < H)
+
+    hidden_offset = rows[:, None] * H + cols[None, :]
+    gate_offset = rows[:, None] * (4 * H) + cols[None, :]
+
+    # Every load is issued before any activation so the sigmoid/tanh latency
+    # chains below stay independent and overlap (same layout as the optimized
+    # fused-cell forward kernel).
+    cx_v = tl.load(cx_ptr + hidden_offset, mask=valid, other=0.0).to(tl.float32)
+    cy_v = tl.load(cy_ptr + hidden_offset, mask=valid, other=0.0).to(tl.float32)
+    i_gate = tl.load(workspace_ptr + gate_offset, mask=valid, other=0.0).to(tl.float32)
+    f_gate = tl.load(workspace_ptr + gate_offset + H, mask=valid, other=0.0).to(
+        tl.float32
+    )
+    g_gate = tl.load(workspace_ptr + gate_offset + 2 * H, mask=valid, other=0.0).to(
+        tl.float32
+    )
+    o_gate = tl.load(workspace_ptr + gate_offset + 3 * H, mask=valid, other=0.0).to(
+        tl.float32
+    )
+    if HAS_GRAD_HY:
+        grad_hy = tl.load(grad_hy_ptr + hidden_offset, mask=valid, other=0.0).to(
+            tl.float32
+        )
+    else:
+        grad_hy = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+    if HAS_GRAD_CY:
+        grad_cy = tl.load(grad_cy_ptr + hidden_offset, mask=valid, other=0.0).to(
+            tl.float32
+        )
+    else:
+        grad_cy = tl.zeros((BLOCK_B, BLOCK_H), dtype=tl.float32)
+
+    tanh_cy = tl_extra_shim.tanh(cy_v)
+    grad_cell = grad_hy * o_gate * (1.0 - tanh_cy * tanh_cy) + grad_cy
+    grad_i = grad_cell * g_gate * i_gate * (1.0 - i_gate)
+    grad_f = grad_cell * cx_v * f_gate * (1.0 - f_gate)
+    grad_g = grad_cell * i_gate * (1.0 - g_gate * g_gate)
+    grad_o = grad_hy * tanh_cy * o_gate * (1.0 - o_gate)
+    next_grad_cx = grad_cell * f_gate
+
+    out_ty = grad_gates_ptr.dtype.element_ty
+    tl.store(grad_gates_ptr + gate_offset, grad_i.to(out_ty), mask=valid)
+    tl.store(grad_gates_ptr + gate_offset + H, grad_f.to(out_ty), mask=valid)
+    tl.store(grad_gates_ptr + gate_offset + 2 * H, grad_g.to(out_ty), mask=valid)
+    tl.store(grad_gates_ptr + gate_offset + 3 * H, grad_o.to(out_ty), mask=valid)
+    tl.store(grad_cx_ptr + hidden_offset, next_grad_cx.to(out_ty), mask=valid)
+
+    # With HAS_BIAS the host guarantees this program already owns every batch
+    # row of its column block (grid dim 1 covers the batch exactly once), so
+    # the column sums are the full bias gradients: no atomics, no second
+    # launch. Masked lanes contribute exact zeros to every gradient above.
+    if HAS_BIAS:
+        bias_mask = cols < H
+        bias_ty = grad_bias_ptr.dtype.element_ty
+        tl.store(
+            grad_bias_ptr + cols, tl.sum(grad_i, axis=0).to(bias_ty), mask=bias_mask
+        )
+        tl.store(
+            grad_bias_ptr + H + cols, tl.sum(grad_f, axis=0).to(bias_ty), mask=bias_mask
+        )
+        tl.store(
+            grad_bias_ptr + 2 * H + cols,
+            tl.sum(grad_g, axis=0).to(bias_ty),
+            mask=bias_mask,
+        )
+        tl.store(
+            grad_bias_ptr + 3 * H + cols,
+            tl.sum(grad_o, axis=0).to(bias_ty),
+            mask=bias_mask,
+        )
+
+
 def _validate_inputs(grad_hy, grad_cy, cx, cy, workspace):
     if any(tensor.ndim != 2 for tensor in (cx, cy, workspace)):
         raise RuntimeError("fused LSTM cell backward expects 2-D tensors")
@@ -212,9 +409,88 @@ def _validate_inputs(grad_hy, grad_cy, cx, cy, workspace):
             raise RuntimeError(f"{name} and workspace must have the same dtype")
 
 
+def _fused_tile_plan(grad_hy, grad_cy, cx, cy, workspace, has_bias):
+    """Plan a fused single-launch kernel, or return None for the legacy path.
+
+    Returns (kind, block_a, block_h, num_warps, grid) where kind is "row"
+    (row-grid elementwise kernel, no bias) or "tile" (column-ownership tile
+    kernel with in-kernel bias reduction).
+
+    Both fused kernels assume the canonical contiguous layout (workspace is
+    (B, 4H) row-major, the four gates at column offsets 0/H/2H/3H) and an
+    int32-safe byte span, so anything else (fp64, strided or reshaped inputs,
+    empty shapes, batches beyond the tile cap, oversized grids) keeps the
+    legacy two-kernel path with its stride-general addressing.
+
+    Configs were tuned on GCU400/L600 with do_bench median w1000/r100 across
+    the core (B, H) matrix; see the module constants for the swept knobs.
+    """
+    if workspace.dtype not in (torch.float16, torch.bfloat16, torch.float32):
+        return None
+    batch_size, hidden_size = cx.shape
+    if batch_size == 0 or hidden_size == 0:
+        return None
+    if workspace.shape != (batch_size, 4 * hidden_size):
+        return None
+    if not (cx.is_contiguous() and cy.is_contiguous() and workspace.is_contiguous()):
+        return None
+    if grad_hy is not None and not grad_hy.is_contiguous():
+        return None
+    if grad_cy is not None and not grad_cy.is_contiguous():
+        return None
+    if workspace.numel() * workspace.element_size() >= 2**31:
+        return None
+
+    if not has_bias:
+        # Row-grid path: keep roughly 32-64 programs in flight and give each
+        # one a few whole rows, balancing the per-CTA issue tax against the
+        # per-row serial latency inside a program.
+        if batch_size <= 32:
+            rows_per_prog = 1
+        elif batch_size <= 64:
+            rows_per_prog = 2
+        elif batch_size <= 1024:
+            rows_per_prog = 4
+        else:
+            rows_per_prog = 8
+        block_h = min(triton.next_power_of_2(hidden_size), FUSED_ROWGRID_MAX_BLOCK_H)
+        grid = (
+            triton.cdiv(batch_size, rows_per_prog),
+            triton.cdiv(hidden_size, block_h),
+        )
+        if grid[0] > 65535 or grid[1] > 65535:
+            return None
+        return ("row", rows_per_prog, block_h, FUSED_ROWGRID_NUM_WARPS, grid)
+
+    # Column-tile path: the in-kernel bias reduction is only exact when a
+    # single program owns every batch row of its column block, so BLOCK_B
+    # covers the whole batch and the row grid collapses to one block.
+    block_b = max(FUSED_TILE_MIN_B, triton.next_power_of_2(batch_size))
+    if block_b > FUSED_TILE_MAX_B:
+        return None
+    if block_b <= 128:
+        block_h = min(
+            32,
+            triton.next_power_of_2(hidden_size),
+            FUSED_TILE_MAX_LANES // block_b,
+        )
+        num_warps = FUSED_TILE_NUM_WARPS
+    else:
+        # Wide-batch tiles: halve the tile width to stay under the 2D masked
+        # load lane bound; nw2 measured fastest for the 4096-lane shape.
+        block_h = max(FUSED_TILE_MAX_LANES // block_b // 2, 8)
+        num_warps = FUSED_TILE_WIDE_NUM_WARPS
+    if block_h < 1:
+        return None
+    grid = (triton.cdiv(hidden_size, block_h), 1)
+    if grid[0] > 65535:
+        return None
+    return ("tile", block_b, block_h, num_warps, grid)
+
+
 def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias):
     """Compute ATen's five-output fused LSTM-cell backward wrapper."""
-    logger.debug("GEMS_ENFLAME_GCU400 _THNN_FUSED_LSTM_CELL_BACKWARD")
+    logger.debug("GEMS_ENFLAME _THNN_FUSED_LSTM_CELL_BACKWARD")
 
     if torch.is_grad_enabled():
         raise RuntimeError(
@@ -234,6 +510,70 @@ def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias
     batch_size, hidden_size = cx.shape
     grad_gates = torch.empty_like(workspace, memory_format=torch.contiguous_format)
     grad_cx = torch.empty_like(cx, memory_format=torch.contiguous_format)
+
+    plan = _fused_tile_plan(grad_hy, grad_cy, cx, cy, workspace, has_bias)
+    if plan is not None:
+        kind, block_a, block_h, num_warps, grid = plan
+        grad_hy_arg = grad_hy if grad_hy is not None else cx
+        grad_cy_arg = grad_cy if grad_cy is not None else cx
+        if kind == "row":
+            with torch_device_fn.device(workspace.device):
+                _fused_lstm_cell_backward_rowgrid_kernel[grid](
+                    grad_hy_arg,
+                    grad_cy_arg,
+                    cx,
+                    cy,
+                    workspace,
+                    grad_gates,
+                    grad_cx,
+                    batch_size,
+                    hidden_size,
+                    HAS_GRAD_HY=grad_hy is not None,
+                    HAS_GRAD_CY=grad_cy is not None,
+                    ROWS_PER_PROG=block_a,
+                    BLOCK_H=block_h,
+                    num_warps=num_warps,
+                )
+            # ATen contract: with has_bias=False both bias grads are empty
+            # tensors (not None), because upstream unpacks them as Tensors.
+            empty_bias_grad = torch.empty(
+                0, dtype=workspace.dtype, device=workspace.device
+            )
+            return grad_gates, grad_gates, grad_cx, empty_bias_grad, empty_bias_grad
+        if has_bias:
+            grad_bias = torch.empty(
+                (4 * hidden_size,), dtype=workspace.dtype, device=workspace.device
+            )
+            bias_arg = grad_bias
+        else:
+            # Unused placeholder pointer; HAS_BIAS is False so the kernel
+            # never dereferences it.
+            bias_arg = grad_gates
+        with torch_device_fn.device(workspace.device):
+            _fused_lstm_cell_backward_tiled_kernel[grid](
+                grad_hy_arg,
+                grad_cy_arg,
+                cx,
+                cy,
+                workspace,
+                grad_gates,
+                grad_cx,
+                bias_arg,
+                batch_size,
+                hidden_size,
+                HAS_GRAD_HY=grad_hy is not None,
+                HAS_GRAD_CY=grad_cy is not None,
+                HAS_BIAS=bool(has_bias),
+                BLOCK_B=block_a,
+                BLOCK_H=block_h,
+                num_warps=num_warps,
+            )
+        if not has_bias:
+            empty_bias_grad = torch.empty(
+                0, dtype=workspace.dtype, device=workspace.device
+            )
+            return grad_gates, grad_gates, grad_cx, empty_bias_grad, empty_bias_grad
+        return grad_gates, grad_gates, grad_cx, grad_bias, grad_bias
 
     n_elements = batch_size * hidden_size
     if n_elements != 0:
@@ -270,7 +610,10 @@ def _thnn_fused_lstm_cell_backward(grad_hy, grad_cy, cx, cy, workspace, has_bias
             )
 
     if not has_bias:
-        return grad_gates, grad_gates, grad_cx, None, None
+        # ATen contract: with has_bias=False both bias grads are empty tensors (not
+        # None), because upstream unpacks them as Tensors and None would fail there.
+        empty_bias_grad = torch.empty(0, dtype=workspace.dtype, device=workspace.device)
+        return grad_gates, grad_gates, grad_cx, empty_bias_grad, empty_bias_grad
 
     bias_batch_size, bias_gate_size = workspace.shape
     grad_bias = torch.empty(

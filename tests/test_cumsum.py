@@ -37,6 +37,15 @@ random.seed(time.time() // 100)
 @pytest.mark.parametrize("shape", CUMSUM_SHAPES)
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES + utils.INT_DTYPES)
 def test_cumsum(shape, dtype):
+    if flag_gems.vendor_name == "enflame" and dtype == torch.int16:
+        # the torch_gcu aten reference implementation fails an assertion for int16 at op_aten_cumsum.cc:144 and
+        # aborts ("output tensor's data type must match the input tensor's"),
+        # a process-level crash would swallow all subsequent test_cumsum cases as well as test_cumsum_empty/out.
+        # flag_gems.cumsum itself returns correctly for int16; this is a missing reference capability in the backend.
+        pytest.skip(
+            "enflame: torch_gcu aten cumsum does not support int16 (op_aten_cumsum.cc:144 "
+            "asserts and then aborts), so no reference result can be obtained"
+        )
     if flag_gems.vendor_name == "kunlunxin":
         torch.manual_seed(0)
         torch.cuda.manual_seed_all(0)

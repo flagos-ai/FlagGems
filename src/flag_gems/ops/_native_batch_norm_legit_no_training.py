@@ -125,6 +125,79 @@ def batch_norm_legit_no_training_kernel(
             )
 
 
+class _NativeBatchNormLegitNoTraining(torch.autograd.Function):
+    """Differentiable wrapper for the inference-only batch normalization.
+
+    ``aten::_native_batch_norm_legit_no_training`` has no independent backward
+    schema: the engine derives it from ``aten::native_batch_norm_backward`` with
+    ``train=False`` and empty saved statistics, so the running estimates are the
+    normalisation statistics and the gradients are
+
+        grad_input  = grad_output * weight * rsqrt(running_var + eps)
+        grad_weight = sum_{B,S} grad_output * (input - running_mean) * invstd
+        grad_bias   = sum_{B,S} grad_output
+
+    The forward body is executed under ``no_grad`` so the inner call returns the
+    plain Triton result instead of re-entering this wrapper.
+    """
+
+    @staticmethod
+    def forward(ctx, input, weight, bias, running_mean, running_var, momentum, eps):
+        with torch.no_grad():
+            output, save_mean, save_var = _native_batch_norm_legit_no_training(
+                input, weight, bias, running_mean, running_var, momentum, eps
+            )
+        # Only the differentiable operand has to survive to the backward: the
+        # running statistics are constants and are kept as plain attributes, which
+        # avoids four SavedVariable version-counter registrations per call (that
+        # bookkeeping dominates the latency of the small shapes).
+        ctx.save_for_backward(input)
+        ctx.weight = weight
+        ctx.running_mean = running_mean
+        ctx.running_var = running_var
+        ctx.has_weight = weight is not None
+        ctx.eps = eps
+        ctx.mark_non_differentiable(save_mean, save_var)
+        return output, save_mean, save_var
+
+    @staticmethod
+    def backward(ctx, grad_output, grad_save_mean, grad_save_var):
+        (input,) = ctx.saved_tensors
+        weight = ctx.weight
+        running_mean = ctx.running_mean
+        running_var = ctx.running_var
+        needs = ctx.needs_input_grad
+        output_mask = [
+            bool(needs[0]),
+            bool(ctx.has_weight and needs[1]),
+            bool(ctx.has_weight and needs[2]),
+        ]
+        # Imported lazily: ``flag_gems.ops.batch_norm`` imports this module's
+        # sibling registrations and a top-level import would be circular.
+        from flag_gems.ops.batch_norm import _batch_norm_backward_eval
+
+        grad_input, grad_weight, grad_bias = _batch_norm_backward_eval(
+            input,
+            input if input.dim() == 3 else make_3d_for_bn(input),
+            make_3d_for_bn(grad_output),
+            weight,
+            running_mean,
+            running_var,
+            False,
+            output_mask,
+            ctx.eps,
+        )
+        return (
+            grad_input,
+            grad_weight,
+            grad_bias,
+            None,
+            None,
+            None,
+            None,
+        )
+
+
 def _native_batch_norm_legit_no_training(
     input: Tensor,
     weight=None,
@@ -141,13 +214,37 @@ def _native_batch_norm_legit_no_training(
     are computed. The op returns the normalized ``output`` together with two
     empty ``save_mean``/``save_var`` tensors, matching the schema which has no
     saved statistics in this mode.
+
+    The running estimates are not differentiable inputs, but ``input``,
+    ``weight`` and ``bias`` are, so the call is wrapped in an autograd Function
+    whenever one of them requires a gradient. That keeps the flag_gems entry and
+    the ATen dispatch path differentiable with the same Triton backward.
     """
     logger.debug("GEMS _NATIVE_BATCH_NORM_LEGIT_NO_TRAINING")
+
+    if torch.is_grad_enabled() and (
+        input.requires_grad
+        or (weight is not None and weight.requires_grad)
+        or (bias is not None and bias.requires_grad)
+    ):
+        return _NativeBatchNormLegitNoTraining.apply(
+            input, weight, bias, running_mean, running_var, momentum, eps
+        )
 
     input_3d = make_3d_for_bn(input)
 
     batch_dim, feat_dim, spatial_dim = input_3d.shape
     output = torch.empty_like(input_3d)
+
+    if batch_dim == 0:
+        # An empty batch has nothing to normalise and ATen rejects the shape at
+        # its reshape step; raising here also avoids a kernel launch whose
+        # BLOCK_M heuristic divides by batch_dim.
+        raise RuntimeError(
+            "cannot reshape tensor of 0 elements into shape "
+            f"[{batch_dim}, {feat_dim}, -1] because the unspecified dimension "
+            "size -1 can be any value and is ambiguous"
+        )
 
     if running_mean is not None:
         assert running_mean.shape[0] == feat_dim, (
@@ -185,4 +282,41 @@ def _native_batch_norm_legit_no_training(
     save_mean = torch.empty((0,), dtype=input.dtype, device=input.device)
     save_var = torch.empty((0,), dtype=input.dtype, device=input.device)
 
+    # The saved statistics must carry ATen's accumulation dtype (float32 for
+    # fp16/bf16 input, the input dtype for fp32/fp64): the engine's generated
+    # node validates that dtype before dispatching native_batch_norm_backward, so
+    # leaving the input dtype here failed the fp16/bf16 backward with
+    # "Expected save_mean to have type Float but got Half".
+    save_dtype = (
+        input.dtype if input.dtype in (torch.float32, torch.float64) else torch.float32
+    )
+    if save_dtype != input.dtype:
+        save_mean = save_mean.to(save_dtype)
+        save_var = save_var.to(save_dtype)
+
     return output.view_as(input), save_mean, save_var
+
+
+def native_batch_norm_legit_no_training_backward(
+    grad_output,
+    input,
+    weight,
+    running_mean,
+    running_var,
+    eps,
+    output_mask=(True, True, True),
+):
+    """Return selected input, weight and bias gradients using running statistics."""
+    from flag_gems.ops.batch_norm import _batch_norm_backward_eval
+
+    return _batch_norm_backward_eval(
+        input,
+        input if input.dim() == 3 else make_3d_for_bn(input),
+        make_3d_for_bn(grad_output),
+        weight,
+        running_mean,
+        running_var,
+        False,
+        output_mask,
+        eps,
+    )

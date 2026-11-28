@@ -20,6 +20,10 @@ import flag_gems
 from . import base, consts
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.fused_rms_norm
 def test_fused_rms_norm():
     """Benchmark for _fused_rms_norm which returns (output, inv_rms)."""
@@ -51,6 +55,10 @@ def test_fused_rms_norm():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.fused_rms_norm_backward
 def test_fused_rms_norm_backward():
     """Benchmark for aten._fused_rms_norm_backward which returns (dx, dw)."""

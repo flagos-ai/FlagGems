@@ -556,10 +556,10 @@ def _dispatch(x, n, out=None):
 
 
 def special_laguerre_polynomial_l(x, n):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LAGUERRE_POLYNOMIAL_L")
+    logger.debug("GEMS_ENFLAME SPECIAL_LAGUERRE_POLYNOMIAL_L")
     return _dispatch(x, n)
 
 
 def special_laguerre_polynomial_l_out(x, n, out):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LAGUERRE_POLYNOMIAL_L_OUT")
+    logger.debug("GEMS_ENFLAME SPECIAL_LAGUERRE_POLYNOMIAL_L_OUT")
     return _dispatch(x, n, out=out)

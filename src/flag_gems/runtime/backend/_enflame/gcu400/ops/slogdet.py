@@ -447,7 +447,7 @@ def slogdet(A):
         modulus complex number for complex input); ``logabsdet`` is real. For an
         exactly singular matrix, ``sign = 0`` and ``logabsdet = -inf``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SLOGDET")
+    logger.debug("GEMS_ENFLAME SLOGDET")
     if torch.is_grad_enabled() and A.requires_grad:
         return _Slogdet.apply(A)
     return _slogdet_forward(A)

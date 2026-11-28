@@ -307,6 +307,13 @@ def test_nnz_dense_raises():
 
 @pytest.mark.nnz
 @pytest.mark.underscore_nnz
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::_nnz"
+    ),
+)
 def test_nnz_dispatch_stability():
     # The registration is on the Sparse/SparseCsr dispatch keys; exercise the
     # dispatcher-routed paths repeatedly (a recursion bug or stale state would

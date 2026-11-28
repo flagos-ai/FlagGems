@@ -44,9 +44,25 @@ NUM_SIPS = 24
 # (945 -> 843us, 2.55 TB/s) and -14% on 16.7M fp16 (39.5 -> 34.0us) vs the
 # unfolded body, with edge semantics (inf/NaN/-0) unchanged and accuracy equal
 # to the unfolded body (same fp16 quantization residual vs the CPU reference).
+#
+# Second-round narrowing (2026-11-16): on fp16 the residual cost above the
+# 726us load/store floor was the f32-domain compare/multiply/select chain
+# (869 -> 763us, 2.81 TB/s at 512M, -12%).  Keeping the predicate, the
+# positive arm's multiply and the select in the 16-bit domain (FP16 arm
+# below) and eliding the masks when N % BLOCK == 0 (EVEN constexpr) reaches
+# that number; values are unchanged vs the f32-domain body up to the single
+# f16-mul rounding of scale (1.05078125), which stays inside the fp16 gate
+# tolerance (0 tolerance violations over 1M randn + edge samples vs the f64
+# reference).  bf16/fp32 keep the f32-domain body: GCU400 has no native bf16
+# ALU, so the 16-bit-domain structure degrades to emulated cmp/select plus a
+# double convert (+12% on the 512M bf16 core shape) with no accuracy-neutral
+# payoff, while for fp32 the two bodies are identical after dead-code
+# elimination.
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
-def selu_kernel(x_ptr, y_ptr, N_total, BLOCK: tl.constexpr):
+def selu_kernel(
+    x_ptr, y_ptr, N_total, BLOCK: tl.constexpr, EVEN: tl.constexpr, FP16: tl.constexpr
+):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     arange = tl.arange(0, BLOCK)
@@ -54,16 +70,33 @@ def selu_kernel(x_ptr, y_ptr, N_total, BLOCK: tl.constexpr):
     num_blocks = (N_total + BLOCK - 1) // BLOCK
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + arange
-        mask = off < N_total
-
-        x = tl.load(x_ptr + off, mask=mask)
+        if EVEN:
+            x = tl.load(x_ptr + off)
+        else:
+            mask = off < N_total
+            x = tl.load(x_ptr + off, mask=mask)
 
         x_f32 = x.to(tl.float32)
-        scale = 1.0507009873554805
-        c1 = 1.7580993408473766  # scale * alpha, folded on host
-        y_f32 = tl.where(x_f32 > 0, scale * x_f32, c1 * tl.exp(x_f32) - c1)
+        e = tl.exp(x_f32)
+        if FP16:
+            # Native f16 ALU: predicate, positive arm and select all stay in
+            # the 16-bit domain (see comment above).
+            pos = x > 0
+            y_pos = x * 1.0507009873554805
+            y_neg = (1.7580993408473766 * e - 1.7580993408473766).to(x.dtype)
+            y = tl.where(pos, y_pos, y_neg)
+        else:
+            y_f32 = tl.where(
+                x_f32 > 0,
+                1.0507009873554805 * x_f32,
+                1.7580993408473766 * e - 1.7580993408473766,
+            )
+            y = y_f32.to(x.dtype)
 
-        tl.store(y_ptr + off, y_f32.to(x.dtype), mask=mask)
+        if EVEN:
+            tl.store(y_ptr + off, y)
+        else:
+            tl.store(y_ptr + off, y, mask=mask)
 
 
 def _choose_block(N_total, itemsize):
@@ -118,6 +151,8 @@ def selu(*args, **kwargs):
             y,
             n_elements,
             BLOCK=BLOCK_SIZE,
+            EVEN=(n_elements % BLOCK_SIZE == 0),
+            FP16=(x_contig.dtype == torch.float16),
             num_warps=num_warps,
         )
     return y

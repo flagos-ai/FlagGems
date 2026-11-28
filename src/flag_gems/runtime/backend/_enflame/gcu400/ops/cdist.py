@@ -13,6 +13,7 @@
 # limitations under the License.
 
 import logging
+import math
 
 import torch
 import triton
@@ -20,7 +21,7 @@ import triton.language as tl
 
 import flag_gems
 from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.utils import libentry, tl_extra_shim
 from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
@@ -122,7 +123,7 @@ def _cdist_forward(
         This implementation only supports p=2.0 (L2 norm). For other p values,
         the function falls back to torch.cdist.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CDIST_FORWARD")
+    logger.debug("GEMS_ENFLAME CDIST_FORWARD")
 
     assert x1.dtype in (
         torch.float32,
@@ -130,9 +131,7 @@ def _cdist_forward(
 
     # Only support p=2.0 for now
     if p != 2.0:
-        logger.debug(
-            "GEMS_ENFLAME_GCU400 CDIST_FORWARD falling back to torch (p != 2.0)"
-        )
+        logger.debug("GEMS_ENFLAME CDIST_FORWARD falling back to torch (p != 2.0)")
         return flag_gems.cdist(x1, x2, p=p, compute_mode=compute_mode)
 
     # Handle broadcasting - get shapes
@@ -212,6 +211,7 @@ def _cdist_backward_kernel(
     n2,
     dim,
     p,
+    MODE: tl.constexpr,
     BLOCK_N2: tl.constexpr,
     BLOCK_DIM: tl.constexpr,
 ):
@@ -266,12 +266,39 @@ def _cdist_backward_kernel(
         # x1 is [BLOCK_DIM], x2 is [BLOCK_N2, BLOCK_DIM]
         # Need to broadcast x1 across n2 dimension
         diff = x1[None, :] - x2  # [BLOCK_N2, BLOCK_DIM]
+        abs_diff = tl.abs(diff)
+        sign_diff = tl.where(diff > 0.0, 1.0, tl.where(diff < 0.0, -1.0, 0.0))
+        dist = cdist[:, None]
 
-        # For p=2, gradient contribution: grad * diff / cdist
-        # grad is [BLOCK_N2], cdist is [BLOCK_N2]
-        # Need to broadcast grad across dim dimension
-        eps = 1e-12
-        contrib = grad[:, None] * diff / (cdist[:, None] + eps)  # [BLOCK_N2, BLOCK_DIM]
+        # MODE mirrors the ATen `_cdist_backward` dispatch (same formulas as
+        # the generic op): the gradient of the p-norm distance is
+        #   p == 1  -> grad * sign(diff)
+        #   p == 2  -> grad * diff / dist
+        #   p == inf-> grad * sign(diff) * (|diff| == dist)
+        #   general -> sign(diff) * |diff|^(p-1) * grad / dist^(p-1)
+        # The previous version implemented only the p == 2 branch and ignored
+        # p for every other order.
+        if MODE == 1:
+            contrib = grad[:, None] * sign_diff
+        elif MODE == 2:
+            contrib = tl.where(dist == 0.0, 0.0, grad[:, None] * diff / dist)
+        elif MODE == 3:
+            is_max = tl.where(abs_diff == dist, 1.0, 0.0)
+            contrib = grad[:, None] * sign_diff * is_max
+        else:
+            # ATen returns 0 for dist == 0 and for diff == 0; replacing the
+            # guarded lanes with 1.0 keeps pow() finite and is masked out.
+            guard = (abs_diff == 0.0) | (dist == 0.0)
+            abs_safe = tl.where(guard, 1.0, abs_diff)
+            dist_safe = tl.where(guard, 1.0, dist)
+            p_m1 = p - 1.0
+            numerator = sign_diff * tl_extra_shim.pow(abs_safe, p_m1) * grad[:, None]
+            denominator = tl_extra_shim.pow(dist_safe, p_m1)
+            contrib = tl.where(guard, 0.0, numerator / denominator)
+
+        # Padded lanes load grad=0 and cdist=1; zero them so an inf*0 cannot
+        # poison the accumulated gradient for p > 2.
+        contrib = tl.where(mask_n2[:, None], contrib, 0.0)
 
         # Sum over n2 dimension
         grad_x1_acc += tl.sum(contrib, axis=0)
@@ -282,7 +309,7 @@ def _cdist_backward_kernel(
 
 
 def _cdist_backward(grad, x1, x2, p, cdist):
-    logger.debug("GEMS_ENFLAME_GCU400 _cdist_backward")
+    logger.debug("GEMS_ENFLAME _cdist_backward")
     assert x1.device == x2.device == grad.device == cdist.device
     assert x1.shape[0] == x2.shape[0] == grad.shape[0] == cdist.shape[0]
     assert x1.shape[2] == x2.shape[2]  # feature dim must match
@@ -294,6 +321,20 @@ def _cdist_backward(grad, x1, x2, p, cdist):
 
     batch_size, n1, dim = x1.shape
     _, n2, _ = x2.shape
+
+    # Mirror ATen: the zero-norm (p == 0) gradient is identically zero.
+    if p == 0.0:
+        return torch.zeros_like(x1)
+
+    # Mirror ATen's p-specific backward dispatch.
+    if p == 1.0:
+        mode = 1
+    elif p == 2.0:
+        mode = 2
+    elif math.isinf(p):
+        mode = 3
+    else:
+        mode = 0
 
     # Ensure contiguity
     grad = grad.contiguous()
@@ -330,6 +371,7 @@ def _cdist_backward(grad, x1, x2, p, cdist):
             n2,
             dim,
             float(p),
+            MODE=mode,
             BLOCK_N2=BLOCK_N2,
             BLOCK_DIM=BLOCK_DIM,
         )
@@ -356,5 +398,5 @@ def cdist(x1: torch.Tensor, x2: torch.Tensor, p: float = 2.0, compute_mode=None)
     Returns:
         Tensor of shape (..., P, R) containing pairwise distances
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CDIST")
+    logger.debug("GEMS_ENFLAME CDIST")
     return _cdist_forward(x1, x2, p, compute_mode)

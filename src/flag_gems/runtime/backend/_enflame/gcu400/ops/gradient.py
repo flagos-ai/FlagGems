@@ -1278,7 +1278,7 @@ def gradient(self, *, spacing=None, dim=None, edge_order=1):
     Returns:
         List[Tensor]: one gradient per requested dim, ordered like ``dim``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 GRADIENT")
+    logger.debug("GEMS_ENFLAME GRADIENT")
 
     if self.dtype == torch.uint8:
         raise RuntimeError("torch.gradient does not support uint8 input.")
