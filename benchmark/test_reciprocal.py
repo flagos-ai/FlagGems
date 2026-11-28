@@ -31,6 +31,18 @@ def test_reciprocal():
     bench.run()
 
 
+@pytest.mark.reciprocal_backward
+def test_reciprocal_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="reciprocal_backward",
+        torch_op=torch.reciprocal,
+        gems_op=flag_gems.reciprocal,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
+
+
 @pytest.mark.reciprocal_
 @pytest.mark.skipif(
     flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"

@@ -2195,7 +2195,12 @@ _FULL_CONFIG = (
             (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
         ),
     ),
-    ("reciprocal", reciprocal),
+    (
+        "reciprocal",
+        reciprocal,
+        None,
+        (AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),
+    ),
     ("reciprocal_", reciprocal_),
     ("reflection_pad1d", reflection_pad1d),
     ("reflection_pad1d.out", reflection_pad1d_out),
