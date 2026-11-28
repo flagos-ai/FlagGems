@@ -342,7 +342,7 @@ def amin_(inp, dim=None, keepdim=False):
                 block_size,
             )
             amin_kernel_2[(1, 1)](mid, out, mid_size, block_mid)
-        inp.copy_(out.reshape(inp.shape) if keepdim else out)
+        inp.copy_(out.expand(inp.shape) if keepdim else out)
         return inp
     else:
         result = amin(inp, dim=dim, keepdim=True)
