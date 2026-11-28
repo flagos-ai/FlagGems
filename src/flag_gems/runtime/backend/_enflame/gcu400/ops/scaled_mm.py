@@ -18,8 +18,10 @@ import torch
 import triton
 
 from flag_gems import runtime
-from flag_gems.fused.cutlass_scaled_mm import _scaled_mm_fp8_kernel as scaled_mm_kernel
-from flag_gems.fused.cutlass_scaled_mm import cutlass_scaled_mm_fp8 as _csmm
+from flag_gems.deprecated.cutlass_scaled_mm import (
+    _scaled_mm_fp8_kernel as scaled_mm_kernel,
+)
+from flag_gems.deprecated.cutlass_scaled_mm import cutlass_scaled_mm_fp8 as _csmm
 from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
@@ -208,7 +210,7 @@ def scaled_mm(
     out_dtype=None,
     use_fast_accum=False,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_MM")
+    logger.debug("GEMS_ENFLAME SCALED_MM")
     # Match ATen GPU semantics: scale_result and the fast accumulation hint
     # do not change the mathematical result in this implementation.
     return _scaled_mm_impl(
@@ -228,7 +230,7 @@ def scaled_mm_out(
     *,
     out,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SCALED_MM_OUT")
+    logger.debug("GEMS_ENFLAME SCALED_MM_OUT")
     return _scaled_mm_impl(
         self, mat2, scale_a, scale_b, bias, scale_result, out_dtype, out
     )

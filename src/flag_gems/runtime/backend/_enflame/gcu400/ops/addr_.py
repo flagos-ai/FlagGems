@@ -56,7 +56,7 @@ def addr_inplace_kernel(
 
 
 def addr_(input, vec1, vec2, *, beta=1, alpha=1):
-    logger.debug("GEMS_ENFLAME_GCU400 ADDR_")
+    logger.debug("GEMS_ENFLAME ADDR_")
     assert input.dtype in (
         torch.float16,
         torch.bfloat16,

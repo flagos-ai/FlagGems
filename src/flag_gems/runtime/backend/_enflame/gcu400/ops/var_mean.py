@@ -25,6 +25,19 @@ from ..utils.config_utils import MAX_GRID_DIM
 
 logger = logging.getLogger(__name__)
 
+# Launch geometry for the dim-reduction path.
+#   * The program tile is kept at 32768 elements: larger tiles spill and much
+#     larger tiles fail to compile, smaller tiles leave the vector units idle.
+#   * BLOCK_N bounds the number of accumulation steps per lane (N / BLOCK_N) and
+#     BLOCK_M = 32768 / BLOCK_N therefore trades row parallelism for column
+#     width. Measured on GCU400 the best split moves towards wider row tiles for
+#     short reductions and towards wider column tiles for long reductions.
+_DIM_PATH_ELEMS_PER_TILE = 32768
+_DIM_PATH_BLOCK_M_CAP = 128
+_DIM_PATH_MIN_BLOCK_N = 256
+_DIM_PATH_MAX_BLOCK_N = 1024
+_DIM_PATH_NUM_WARPS = 4
+
 
 @libentry()
 @triton.jit(do_not_specialize=["correction"])
@@ -117,6 +130,28 @@ def var_mean_global_kernel_2(
     tl.store(Var, var)
 
 
+def _dim_path_geometry(reduction_len):
+    """Pick (BLOCK_N, BLOCK_M) for a reduction of length ``reduction_len``.
+
+    Short reductions are covered by a single column tile so that no accumulate
+    loop is entered at all. For longer ones the column tile is widened up to
+    ``_DIM_PATH_MAX_BLOCK_N``, which cuts the per-lane accumulate depth to about
+    1/16 of the reduction length, and BLOCK_M absorbs the remaining tile budget.
+    """
+    if reduction_len <= _DIM_PATH_MIN_BLOCK_N:
+        block_n = triton.next_power_of_2(reduction_len)
+    else:
+        block_n = min(
+            _DIM_PATH_MAX_BLOCK_N,
+            max(_DIM_PATH_MIN_BLOCK_N, triton.next_power_of_2(reduction_len) // 16),
+        )
+    block_m = max(
+        1,
+        min(_DIM_PATH_BLOCK_M_CAP, _DIM_PATH_ELEMS_PER_TILE // block_n),
+    )
+    return block_n, block_m
+
+
 def var_mean(x, dim=None, *, correction=None, keepdim=False):
     logger.debug("GEMS_ENFLAME VAR_MEAN")
     if correction is None:
@@ -181,8 +216,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
         var = torch.empty(shape, dtype=x.dtype, device=x.device)
         mean = torch.empty(shape, dtype=x.dtype, device=x.device)
 
-        BLOCK_N = min(triton.next_power_of_2(N), 2048)
-        BLOCK_M = max(1, min(128, 32768 // BLOCK_N))
+        BLOCK_N, BLOCK_M = _dim_path_geometry(N)
 
         num_stages = 1
 
@@ -199,7 +233,7 @@ def var_mean(x, dim=None, *, correction=None, keepdim=False):
                 BLOCK_M=BLOCK_M,
                 BLOCK_N=BLOCK_N,
                 num_stages=num_stages,
-                num_warps=1,
+                num_warps=_DIM_PATH_NUM_WARPS,
             )
 
     if not keepdim:

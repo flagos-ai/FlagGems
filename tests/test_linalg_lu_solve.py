@@ -49,14 +49,36 @@ if utils.fp64_is_supported:
     LU_SOLVE_DTYPES.append(torch.float64)
 
 
+def _reference_lu_solve(lu, pivots, rhs):
+    if (
+        flag_gems.vendor_name == "mthreads"
+        and lu.device.type == "cpu"
+        and not torch._C.has_lapack
+    ):
+        import numpy as np
+
+        lower = torch.tril(lu, diagonal=-1) + torch.eye(lu.shape[-1], dtype=lu.dtype)
+        matrix = lower @ torch.triu(lu)
+        # Undo LAPACK's sequential row swaps to recover the factored matrix.
+        flat = matrix.reshape(-1, matrix.shape[-2], matrix.shape[-1])
+        for batch, swaps in zip(flat, pivots.reshape(-1, pivots.shape[-1])):
+            for i in reversed(range(swaps.numel())):
+                j = int(swaps[i]) - 1
+                batch[[i, j]] = batch[[j, i]]
+        return torch.from_numpy(np.linalg.solve(matrix.numpy(), rhs.numpy()))
+    return torch.linalg.lu_solve(lu, pivots, rhs)
+
+
 def _make_lu_inputs(batch_shape, n, k, dtype, device):
     """Create a well-conditioned matrix and compute its LU factorization."""
-    A = torch.randn(*batch_shape, n, n, dtype=dtype, device=device)
+    # PPU device-side lu_factor aborts; factor the same recipe on CPU instead.
+    factory_device = "cpu" if flag_gems.vendor_name == "thead" else device
+    A = torch.randn(*batch_shape, n, n, dtype=dtype, device=factory_device)
     # Make A well-conditioned by adding n * I
-    A = A @ A.mT + torch.eye(n, dtype=dtype, device=device) * n
-    B = torch.randn(*batch_shape, n, k, dtype=dtype, device=device)
+    A = A @ A.mT + torch.eye(n, dtype=dtype, device=factory_device) * n
+    B = torch.randn(*batch_shape, n, k, dtype=dtype, device=factory_device)
     LU, pivots = torch.linalg.lu_factor(A)
-    return LU, pivots, B
+    return tuple(value.to(device) for value in (LU, pivots, B))
 
 
 @pytest.mark.linalg_lu_solve
@@ -69,7 +91,7 @@ def test_linalg_lu_solve(shape, dtype):
     ref_LU = utils.to_reference(LU)
     ref_pivots = utils.to_reference(pivots)
     ref_B = utils.to_reference(B)
-    ref_out = torch.linalg.lu_solve(ref_LU, ref_pivots, ref_B)
+    ref_out = _reference_lu_solve(ref_LU, ref_pivots, ref_B)
 
     res_out = flag_gems.linalg_lu_solve(LU, pivots, B)
 
@@ -87,7 +109,7 @@ def test_linalg_lu_solve_batched(shape, dtype):
     ref_LU = utils.to_reference(LU)
     ref_pivots = utils.to_reference(pivots)
     ref_B = utils.to_reference(B)
-    ref_out = torch.linalg.lu_solve(ref_LU, ref_pivots, ref_B)
+    ref_out = _reference_lu_solve(ref_LU, ref_pivots, ref_B)
 
     res_out = flag_gems.linalg_lu_solve(LU, pivots, B)
 

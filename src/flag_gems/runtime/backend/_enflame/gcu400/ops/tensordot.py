@@ -234,6 +234,81 @@ _TENSORDOT_GEMM_CONFIGS = [
 
 _INT32_ELEMENT_LIMIT = 2**31
 
+# ---------------------------------------------------------------------------
+# Native-kernel delegation (capture + call_boxed), same pattern as the local
+# mm / bmm vendor ops. The aten::mm.out kernel is captured at import time -
+# before any use_gems() registration replaces the PrivateUse1 entry - so
+# call_boxed runs the original device kernel with zero dispatch overhead
+# (mm/bmm precedent: verified 1.000-1.006x vs plain torch.mm). tensordot
+# folds its operands down to a 2D (M, K) x (K, N) GEMM before launching, so
+# the native GEMM kernel is a drop-in core for the segments where the Triton
+# tile loses structurally (bench kernel mode, do_bench median w1000/r100,
+# L600):
+#   - 16-bit tiny-MN x long-K (M*N <= 2^16, work >= 2^22): the Triton launch
+#     floor sits flat at ~9.0-9.7us (<=16 programs starve the 48 SPCs) while
+#     the native library stays at its ~6.4-9.0us floor; split-K is vetoed
+#     (30-240x worse plus partial wrong values, perf_playbook).
+#   - bf16 mid/large (work >= 2^26): the native bf16 library runs ~15% ahead
+#     of the Triton tile, which computes bf16 exactly like fp16.
+#   - 16-bit / fp32 saturated (fp16 work >= 2^30, fp32 work >= 2^29): the
+#     native primo++ pipeline is structurally ahead there (mm anchors:
+#     1024^3 native wins, 384^3/512^3 Triton wins; the tensordot fp32 line
+#     sits higher because (512, 512, 1024) = 2^28 still measures 1.44x).
+#   - int32-overflow operands (any linear offset >= 2^31): the native kernel
+#     addresses with int64, so delegation replaces the software-emulated
+#     int64 legacy kernel for float16/32/bfloat16.
+# The out= kernel always writes into an explicit result tensor - freshly
+# allocated host-side for the functional path, the caller's storage for out=.
+# That both skips the ~1.5-3us temp+copy the native tensordot.out composite
+# pays and avoids the ~2us exposed pipeline stall of the boxed *allocating*
+# mm.default on launch-bound shapes (measured: torch.empty + boxed mm.out
+# lands on the native floor, the boxed allocating mm.default sits 2us above
+# it). Non-contiguous out layouts keep the Triton constexpr-stride
+# direct-write path (the native kernel rejects non-standard layouts,
+# cuBLAS-style).
+# ---------------------------------------------------------------------------
+_CAN_CAPTURE_NATIVE_KERNEL = hasattr(torch.library, "get_kernel")
+_NATIVE_MM_OUT = None
+if _CAN_CAPTURE_NATIVE_KERNEL:
+    try:
+        _NATIVE_MM_OUT = torch.library.get_kernel(
+            torch.ops.aten.mm.out, runtime.device.dispatch_key
+        )
+    except Exception:  # noqa: B902
+        _NATIVE_MM_OUT = None
+
+_DEVICE_KEYSET = torch._C.DispatchKeySet(
+    getattr(torch._C.DispatchKey, runtime.device.dispatch_key)
+)
+
+# Dispatch lines: 16-bit tiny-MN arm, per-dtype saturation arms (see above).
+_DELEGATE_TINY_MN_LIMIT = 1 << 16
+_DELEGATE_TINY_MN_WORK = 1 << 22
+_DELEGATE_BF16_WORK = 1 << 26
+_DELEGATE_FP16_WORK = 1 << 30
+_DELEGATE_FP32_WORK = 1 << 29
+_DELEGATE_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+
+
+def _should_delegate_to_native(a, b, M, N, K):
+    if _NATIVE_MM_OUT is None:
+        return False
+    if a.device.type != runtime.device.name:
+        return False
+    if a.dtype != b.dtype or a.dtype not in _DELEGATE_DTYPES:
+        return False
+    work = M * N * K
+    if a.dtype is torch.bfloat16:
+        return work >= _DELEGATE_BF16_WORK or (
+            M * N <= _DELEGATE_TINY_MN_LIMIT and work >= _DELEGATE_TINY_MN_WORK
+        )
+    if a.dtype is torch.float16:
+        return work >= _DELEGATE_FP16_WORK or (
+            M * N <= _DELEGATE_TINY_MN_LIMIT and work >= _DELEGATE_TINY_MN_WORK
+        )
+    # float32: only the saturated segment; Triton wins the whole mid range.
+    return work >= _DELEGATE_FP32_WORK
+
 
 def _tensordot_heur_even_k(args):
     return args["K"] % args["BLOCK_K"] == 0
@@ -341,21 +416,50 @@ def _matmul_2d(a, b, out=None):
     M, K = a.shape
     _, N = b.shape
     c_dtype = get_higher_dtype(a.dtype, b.dtype)
-    if out is None:
-        out = torch.empty((M, N), device=a.device, dtype=c_dtype)
 
     if M == 0 or N == 0:
         # Empty result: nothing to compute, no kernel launch.
+        if out is None:
+            out = torch.empty((M, N), device=a.device, dtype=c_dtype)
         return out
     if K == 0:
         # Empty contraction: the result is all zeros (ATen semantics). Fill
         # host-side - a zero-iteration device loop clobbers the carried
         # accumulator on GCU400.
+        if out is None:
+            out = torch.empty((M, N), device=a.device, dtype=c_dtype)
         if tuple(out.shape) == (M, N):
             out.zero_()
         else:
             out.copy_(torch.zeros((M, N), device=a.device, dtype=c_dtype))
         return out
+
+    if _should_delegate_to_native(a, b, M, N, K) and (
+        out is None or out.dtype == a.dtype
+    ):
+        # Native GEMM core: bit-compatible with the aten production path. This
+        # segment covers the shapes where every swept Triton tile loses to
+        # the vendor library, and every int32-overflow operand (the native
+        # kernel addresses in int64, replacing the emulated legacy kernel).
+        # The out= kernel writes straight into the caller's (or the freshly
+        # allocated) result tensor: measured to sit at the native-kernel
+        # floor, while the boxed *allocating* mm.default pays ~2us of exposed
+        # pipeline stall per call on launch-bound shapes (the safe-boxed
+        # output allocation blocks on the in-flight kernel; a host-side
+        # torch.empty hides inside the pipeline instead). Non-contiguous out
+        # layouts fall through to the Triton constexpr-stride direct-write
+        # kernel below (the captured native out= kernel cannot take them,
+        # cuBLAS-style layout constraints).
+        if out is None:
+            out = torch.empty((M, N), device=a.device, dtype=c_dtype)
+        if out.is_contiguous() and tuple(out.shape) == (M, N):
+            # Direct write: also skips the temp+copy the native tensordot.out
+            # composite pays on these shapes.
+            _NATIVE_MM_OUT.call_boxed(_DEVICE_KEYSET, a, b, out=out)
+            return out
+
+    if out is None:
+        out = torch.empty((M, N), device=a.device, dtype=c_dtype)
 
     grid = lambda META: (
         triton.cdiv(M, META["BLOCK_M"]) * triton.cdiv(N, META["BLOCK_N"]),
@@ -368,8 +472,8 @@ def _matmul_2d(a, b, out=None):
             or M * N >= _INT32_ELEMENT_LIMIT
         ):
             # fp64 (on devices that enable it) or an operand whose linear
-            # offsets exceed the int32 domain: stay on the upstream int64
-            # kernel.
+            # offsets exceed the int32 domain and could not be delegated:
+            # stay on the upstream int64 kernel.
             tensordot_mm_kernel[grid](
                 a,
                 b,
@@ -596,7 +700,7 @@ def _tensordot_impl(self, other, dims_self, dims_other, out=None):
 class TensordotFunction(torch.autograd.Function):
     @staticmethod
     def forward(ctx, self, other, dims_self, dims_other):
-        logger.debug("GEMS_ENFLAME_GCU400 TENSORDOT_FORWARD")
+        logger.debug("GEMS_ENFLAME TENSORDOT_FORWARD")
 
         # Save the raw inputs and their original contracted-dim sizes so the
         # backward pass can broadcast for the matmul and then reduce the
@@ -612,7 +716,7 @@ class TensordotFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(ctx, grad_output):
-        logger.debug("GEMS_ENFLAME_GCU400 TENSORDOT_BACKWARD")
+        logger.debug("GEMS_ENFLAME TENSORDOT_BACKWARD")
 
         self, other = ctx.saved_tensors
         dims_self = ctx.dims_self
@@ -670,11 +774,20 @@ class TensordotFunction(torch.autograd.Function):
 
 
 def tensordot(self, other, dims_self, dims_other):
-    logger.debug("GEMS_ENFLAME_GCU400 TENSORDOT")
-    return TensordotFunction.apply(self, other, dims_self, dims_other)
+    logger.debug("GEMS_ENFLAMETENSORDOT")
+    # The autograd Function only serves direct python calls with grad-requiring
+    # operands (a dispatched call with grad takes the composite decomposition
+    # instead and never reaches this kernel). Every other caller - inference,
+    # no-grad contexts, non-grad operands - skips the Function.apply
+    # machinery: its host-side cost is ~2us of exposed launch latency on the
+    # launch-bound shapes (measured: same GEMM through the out= path, which
+    # has no wrapper, sits at the native kernel floor).
+    if torch.is_grad_enabled() and (self.requires_grad or other.requires_grad):
+        return TensordotFunction.apply(self, other, dims_self, dims_other)
+    return _tensordot_impl(self, other, dims_self, dims_other)
 
 
 def tensordot_out(self, other, dims_self, dims_other, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 TENSORDOT_OUT")
+    logger.debug("GEMS_ENFLAME TENSORDOT_OUT")
     _tensordot_impl(self, other, dims_self, dims_other, out=out)
     return out

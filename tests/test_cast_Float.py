@@ -17,6 +17,20 @@ import torch
 
 import flag_gems
 
+from . import accuracy_utils as utils
+
+# ``assert_cast`` always calls the device-side ``aten::_cast_Float`` reference,
+# even under ``--ref=cpu``, and on enflame that leg aborts the whole process on
+# complex input (topsatenCopy has no Complex -> Float path). Complex semantics
+# therefore cannot be validated through the aten reference on this backend.
+# Every other vendor keeps the original condition (device-reference mode only).
+_SKIP_COMPLEX_ON_DEVICE = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame"
+    or (flag_gems.vendor_name == "kunlunxin" and not utils.TO_CPU),
+    reason="device aten _cast_Float aborts on complex input",
+)
+
+
 DTYPES = [
     torch.bool,
     torch.uint8,
@@ -120,7 +134,14 @@ def test_cast_Float_integer_limits(dtype):
 
 
 @pytest.mark.cast_Float
-@pytest.mark.parametrize("dtype", [torch.float32, torch.float64, torch.complex64])
+@pytest.mark.parametrize(
+    "dtype",
+    [
+        torch.float32,
+        torch.float64,
+        pytest.param(torch.complex64, marks=_SKIP_COMPLEX_ON_DEVICE),
+    ],
+)
 @pytest.mark.parametrize("non_blocking", [False, True])
 def test_cast_Float_autograd(dtype, non_blocking):
     x = torch.randn(17, device=flag_gems.device, dtype=dtype, requires_grad=True)
@@ -137,6 +158,7 @@ def test_cast_Float_autograd(dtype, non_blocking):
 
 
 @pytest.mark.cast_Float
+@_SKIP_COMPLEX_ON_DEVICE
 @pytest.mark.parametrize("dtype", [torch.complex64, torch.complex128])
 def test_cast_Float_complex(dtype):
     assert_cast(torch.randn(17, device=flag_gems.device, dtype=dtype).conj())

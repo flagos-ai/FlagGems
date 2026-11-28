@@ -5,6 +5,17 @@ import flag_gems
 
 from .accuracy_utils import gems_assert_close
 
+# The ltm input is built with device-side int64 torch.tril, which aborts on
+# enflame GCU (TOPSATEN_STATUS_BAD_PARAM) before the kernel is reached, so the
+# whole module is skipped on that backend only.
+pytestmark = pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "aten int64 tril aborts on GCU (TOPSATEN_STATUS_BAD_PARAM); the ltm "
+        "input cannot be built on the device"
+    ),
+)
+
 
 # The registry id is ``underscore_sobol_engine_scramble_`` (the aten name starts
 # with an underscore, naming Rule 2). CI derives the pytest marker from the

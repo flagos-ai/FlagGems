@@ -322,7 +322,7 @@ def _eig_kernel(A, LR, LI, VR, VI, N, MAXIT, BLOCK: tl.constexpr):
 
 
 def linalg_eig(A):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIG")
+    logger.debug("GEMS_ENFLAME LINALG_EIG")
     if _NATIVE_EIG is not None:
         return _NATIVE_EIG.call_boxed(_DEVICE_KEYSET, A)
 

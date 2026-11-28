@@ -33,6 +33,7 @@ class vendors(Enum):
     THEAD = 14
     ARM = 15
     BIREN = 16
+    INTELLIFUSION = 17
 
     @classmethod
     def get_all_vendors(cls) -> dict:

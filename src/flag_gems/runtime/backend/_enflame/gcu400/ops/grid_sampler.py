@@ -739,7 +739,7 @@ def grid_sampler(
         padding_mode: 0=Zeros, 1=Border, 2=Reflection.
         align_corners: If True, extrema (-1, 1) refer to the corner pixel centers.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 GRID_SAMPLER")
+    logger.debug("GEMS_ENFLAME GRID_SAMPLER")
 
     if input.ndim not in (4, 5):
         raise ValueError(
@@ -821,10 +821,10 @@ def grid_sampler(
             interpolation_mode,
             padding_mode,
             align_corners,
-            # Volumetric 5D data is far more memory-bound; a smaller block
-            # (256) keeps 8-corner gather latency pipelines full without
-            # blowing the register budget (matches grid_sampler_3d).
-            BLOCK_SIZE=64,
+            # Volumetric 5D data is far more memory-bound, so the block stays smaller than the 4D one, but it must
+            # cover the 128 lanes of a 4-warp program: BLOCK_SIZE=64 left half of every program idle (0.58x of aten
+            # on (1, 8, 16, 16, 16) vs 0.79x for fp32, i.e. the idle lanes, not the gathers, set the rate).
+            BLOCK_SIZE=256,
         )
 
     return output

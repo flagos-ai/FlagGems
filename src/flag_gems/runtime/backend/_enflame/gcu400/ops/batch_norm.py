@@ -355,7 +355,7 @@ def batch_norm(
     momentum=0.1,
     eps=1e-05,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 BATCHNORM_FORWARD")
+    logger.debug("GEMS_ENFLAME BATCHNORM_FORWARD")
 
     input_3d = make_3d_for_bn(input)
 
@@ -403,7 +403,7 @@ def batch_norm_backward(
     eps=1e-05,
     output_mask=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 BATCHNORM_BACKWARD")
+    logger.debug("GEMS_ENFLAME BATCHNORM_BACKWARD")
     input_3d = make_3d_for_bn(input)
     output_grad_3d = make_3d_for_bn(grad_out)
 

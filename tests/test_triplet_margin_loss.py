@@ -117,6 +117,10 @@ def test_triplet_margin_loss_extremal_p(p, swap, reduction):
     ref_anchor = utils.to_reference(anchor, upcast=True)
     ref_positive = utils.to_reference(positive, upcast=True)
     ref_negative = utils.to_reference(negative, upcast=True)
+    if flag_gems.vendor_name == "kunlunxin":
+        ref_anchor = ref_anchor.cpu().double()
+        ref_positive = ref_positive.cpu().double()
+        ref_negative = ref_negative.cpu().double()
 
     ref_out = torch.ops.aten.triplet_margin_loss(
         ref_anchor, ref_positive, ref_negative, 1.0, p, 1e-6, swap, reduction
@@ -157,6 +161,15 @@ def test_triplet_margin_loss_empty_feature_dim(margin, reduction):
 
 
 @pytest.mark.triplet_margin_loss
+@pytest.mark.skipif(
+    not utils.fp64_is_supported, reason="float64 not supported on this device"
+)
+@pytest.mark.xfail(
+    flag_gems.vendor_name == "iluvatar" and utils.fp64_is_supported,
+    raises=AssertionError,
+    strict=True,
+    reason="Iluvatar candidate computes incorrect loss after FP64 promotion",
+)
 def test_triplet_margin_loss_broadcast_and_promotion():
     # ATen accepts same-rank broadcastable shapes and promotes mixed dtypes.
     dtype_a = torch.float32
@@ -167,9 +180,15 @@ def test_triplet_margin_loss_broadcast_and_promotion():
 
     # to_reference places the reference on cpu/device per TO_CPU and upcasts to
     # fp64, matching the promoted output dtype without a manual .to(device).
-    ref_anchor = utils.to_reference(anchor, upcast=True)
-    ref_positive = utils.to_reference(positive, upcast=True)
-    ref_negative = utils.to_reference(negative, upcast=True)
+    if flag_gems.vendor_name == "iluvatar":
+        ref_anchor, ref_positive, ref_negative = (
+            t.to(device="cpu", dtype=torch.float64)
+            for t in (anchor, positive, negative)
+        )
+    else:
+        ref_anchor = utils.to_reference(anchor, upcast=True)
+        ref_positive = utils.to_reference(positive, upcast=True)
+        ref_negative = utils.to_reference(negative, upcast=True)
 
     ref_out = torch.ops.aten.triplet_margin_loss(
         ref_anchor, ref_positive, ref_negative, 1.0, 2.0, 1e-6, False, 1
@@ -177,6 +196,9 @@ def test_triplet_margin_loss_broadcast_and_promotion():
     res_out = flag_gems.triplet_margin_loss(
         anchor, positive, negative, 1.0, 2.0, 1e-6, False, 1
     )
+    if flag_gems.vendor_name == "iluvatar":
+        assert res_out.device == anchor.device
     # Output follows type promotion -> float64.
     assert res_out.dtype == torch.float64
+    assert res_out.device == anchor.device
     utils.gems_assert_close(res_out, ref_out, torch.float64, atol=1e-6)

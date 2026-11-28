@@ -70,6 +70,11 @@ def batch_norm_gather_stats_input_fn(shape, dtype, device):
     yield input_t, mean, invstd, running_mean, running_var, 0.1, 1e-5, count
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="aten::batch_norm_gather_stats has no device or CPU kernel in the "
+    "torch build behind enflame GCU, so there is no native baseline",
+)
 @pytest.mark.batch_norm_gather_stats
 def test_batch_norm_gather_stats():
     bench = NormBenchmark(

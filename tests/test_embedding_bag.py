@@ -54,7 +54,48 @@ FORWARD_OPS = [
 ]
 ASCEND_ABI = flag_gems.vendor_name == "ascend"
 _LEGACY_ASCEND = ASCEND_ABI and version.parse(triton.__version__) < version.parse("3.5")
+# enflame (torch_gcu) native _embedding_bag / _embedding_bag_forward_only only guarantees that output
+# is correct; the four auxiliary outputs do not follow the ATen contract: in mode 0/1 offset2bag returns an empty
+# tensor, bag_size
+# is uninitialized (all zeros), max_indices degenerates to a [num_bags] tensor of zeros, and max_indices of empty bags
+# is set to 0
+# rather than -1. This implementation therefore cannot serve as an ABI reference baseline (it directly conflicts
+# with the mathematical-contract assertions of _check_forward), so native cross-checking is skipped for this backend;
+# the ABI of the auxiliary outputs is covered by the contract assertions of _check_forward.
+_NATIVE_AUX_ABI = flag_gems.vendor_name != "enflame"
 _ERROR_CHILD = "FLAGGEMS_EMBEDDING_BAG_ERROR_CHILD"
+
+
+def _gpu_is_exclusive_process():
+    """True when the current GPU refuses a second CUDA context.
+
+    The isolated error tests below start a fresh Python process whose first act
+    is to move a tensor to the device.  Under ``EXCLUSIVE_PROCESS`` the driver
+    rejects that second context with ``cudaErrorDevicesUnavailable``, so the
+    child dies before it can exercise anything; on a ``Default`` device the same
+    tests pass.  Detect the mode so those cases skip instead of failing.
+    """
+    try:
+        proc = subprocess.run(
+            ["nvidia-smi", "--query-gpu=compute_mode", "--format=csv,noheader"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return "Exclusive_Process" in proc.stdout
+
+
+_ISOLATED_ERRORS_SKIP = (
+    flag_gems.vendor_name in ("nvidia", "hygon", "mthreads", "ascend")
+    and _gpu_is_exclusive_process()
+)
+_EXCLUSIVE_REASON = (
+    "GPU runs in EXCLUSIVE_PROCESS mode, so the isolated child process cannot "
+    "create a CUDA context; run this suite on a Default-mode device"
+)
+
 CASES = [
     pytest.param([1, 2, 0, 1, 4, 7, 2], [0, 0, 2, 2, 5], False, 0, id="ragged"),
     pytest.param([1, 2, 0, 1, 4, 7, 2], [0, 0, 2, 2, 5, 7], True, 0, id="terminal"),
@@ -327,6 +368,10 @@ def test_embedding_bag_mixed_indices_negative_padding(op, index_dtype, offset_dt
     assert all(t.dtype == torch.int64 for t in out[1:])
 
 
+@pytest.mark.skipif(
+    not _NATIVE_AUX_ABI,
+    reason="enflame native auxiliary outputs (offset2bag/bag_size/max_indices) undefined",
+)
 @pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("include_last", [False, True])
 @pytest.mark.parametrize("mode", [0, 1, 2])
@@ -494,6 +539,10 @@ def test_embedding_bag_mthreads_launch(
     )
 
 
+@pytest.mark.skipif(
+    not _NATIVE_AUX_ABI,
+    reason="enflame native auxiliary outputs (offset2bag/bag_size/max_indices) undefined",
+)
 @pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("weighted", [False, True])
 def test_embedding_bag_nonfinite_and_ties(op, weighted):
@@ -541,6 +590,7 @@ def test_embedding_bag_empty_table(op, mode, dim, num_bags):
         )
 
 
+@pytest.mark.skipif(_ISOLATED_ERRORS_SKIP, reason=_EXCLUSIVE_REASON)
 @pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize(
     "values,starts,last",
@@ -590,6 +640,7 @@ def test_embedding_bag_invalid_values(op, values, starts, last):
         flag_gems.runtime.torch_device_fn.synchronize()
 
 
+@pytest.mark.skipif(_ISOLATED_ERRORS_SKIP, reason=_EXCLUSIVE_REASON)
 @pytest.mark.parametrize("op", FORWARD_OPS)
 @pytest.mark.parametrize("mode", [1, 2])
 def test_embedding_bag_invalid_after_warmup(op, mode):

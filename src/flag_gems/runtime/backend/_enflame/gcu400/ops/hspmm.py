@@ -24,6 +24,18 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# Each program processes several nonzero rows and a tile of columns per iteration;
+# a fixed grid cap avoids grid=(nnz,) at large nnz (>65535), which would directly
+# trigger a GCU grid.x out-of-bounds error. 48 equals the GCU400 SP count, so the
+# fixed grid keeps every SP busy (measured ~2x over a 24-CTA grid at large nnz).
+MAX_BLOCK_ROWS = 32
+MAX_GRID = 48
+# Target element count per tile: measurements show N=128 -> 32 rows and N=256 -> 16
+# rows are optimal, both 4096 elements, i.e. "back-computing the row count from 4096
+# elements" is the consistent optimum across shapes.
+TILE_ELEMS = 4096
+BLOCK_N_CAP = 1024
+
 
 @libentry()
 @triton.jit
@@ -36,44 +48,53 @@ def hspmm_kernel(
     N,
     mat2_stride_0,
     mat2_stride_1,
+    BLOCK_ROWS: tl.constexpr,
     BLOCK_N: tl.constexpr,
+    NUM_ROW_TILES: tl.constexpr,
+    NUM_COL_TILES: tl.constexpr,
+    NUM_PROGRAMS: tl.constexpr,
 ):
-    """Mixed sparse-dense matrix multiply: one program per nnz entry.
+    """Hybrid sparse-dense matmul: out_values[i, :] = val[i] * mat2[col[i], :].
 
-    Row pid of output values equals val[pid] * mat2[col[pid], :], later accumulated into a dense result by
-    PyTorch's sparse tensor according to row_indices. The row index is used only on the host
-    when constructing output indices, so it is no longer passed as a kernel pointer argument (on GCU a sparse
-    COO's _indices() may live on CPU, and passing it triggers launcher pointer validation failure).
+    Rather than one program per nnz, this tiles the [nnz, N] output into
+    (BLOCK_ROWS x BLOCK_N) tiles and pins the grid to NUM_PROGRAMS, covering the
+    remaining row tiles with a stride loop:
+    - grid.x stays <= MAX_GRID, so nnz can grow arbitrarily without overflow;
+    - the output [nnz, N] is row-major contiguous: adjacent columns join up, so one
+      tl.store writes a large contiguous block; mat2 rows gathered by col are
+      contiguous in-row;
+    - the column tile loop is required for correctness whenever N > BLOCK_N: without
+      it only the first BLOCK_N output columns would be written.
+
+    Row indices are only used on the host to build the output index, never as a kernel
+    argument: on GCU the COO ``_indices()`` may live on CPU, which trips the launcher
+    check.
     """
+    row_offsets = tl.arange(0, BLOCK_ROWS)
+    col_offsets = tl.arange(0, BLOCK_N)
     pid = tl.program_id(0)
-    if pid >= nnz:
-        return
 
-    # Scalar values and column indices have already been moved to the GCU device on the host
-    val_scalar = tl.load(val_ptr + pid)
-    col_idx = tl.load(col_ptr + pid)
-
-    # Compute the base pointer for mat2[col_idx, :]
-    mat2_row_ptr = mat2_ptr + col_idx * mat2_stride_0
-
-    # Process N in blocks of BLOCK_N
-    for n_start in range(0, N, BLOCK_N):
-        n_offsets = n_start + tl.arange(0, BLOCK_N)
-        mask = n_offsets < N
-
-        # Load mat2[col_idx, n_start:n_start+BLOCK_N]
-        mat2_vals = tl.load(
-            mat2_row_ptr + n_offsets * mat2_stride_1,
-            mask=mask,
-            other=0.0,
-        )
-
-        # Compute val_scalar * mat2_vals
-        result = val_scalar * mat2_vals
-
-        # Store to out_val[pid, n_start:n_start+BLOCK_N]
-        out_ptr = out_val_ptr + pid * N + n_offsets
-        tl.store(out_ptr, result, mask=mask)
+    for row_tile in tl.range(pid, NUM_ROW_TILES, NUM_PROGRAMS):
+        rows = row_tile * BLOCK_ROWS + row_offsets
+        row_mask = rows < nnz
+        # Read only BLOCK_ROWS scalars per iteration: column indices and nonzero values
+        sparse_cols = tl.load(col_ptr + rows, mask=row_mask, other=0)
+        sparse_vals = tl.load(val_ptr + rows, mask=row_mask, other=0.0)
+        for col_tile in tl.range(0, NUM_COL_TILES):
+            cols = col_tile * BLOCK_N + col_offsets
+            block_mask = row_mask[:, None] & (cols < N)[None, :]
+            # mat2 gathered by row: src = col[i] * stride_0 + n * stride_1
+            src_offsets = sparse_cols[:, None] * mat2_stride_0 + (
+                cols[None, :] * mat2_stride_1
+            )
+            gathered = tl.load(mat2_ptr + src_offsets, mask=block_mask, other=0.0)
+            # The start of output row i is fixed at i * N, contiguous within the row
+            dst_offsets = rows[:, None] * N + cols[None, :]
+            tl.store(
+                out_val_ptr + dst_offsets,
+                gathered * sparse_vals[:, None],
+                mask=block_mask,
+            )
 
 
 def hspmm(mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
@@ -87,7 +108,7 @@ def hspmm(mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
     Returns:
         Sparse COO tensor of shape (M, N), uncoalesced (one entry per input nnz)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 HSPMM")
+    logger.debug("GEMS_ENFLAME HSPMM")
 
     if mat1.layout != torch.sparse_coo:
         raise ValueError(f"hspmm: mat1 must be sparse COO, got {mat1.layout}")
@@ -99,44 +120,51 @@ def hspmm(mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
     if K != K2:
         raise ValueError(f"hspmm: mat1.shape[1]={K} must match mat2.shape[0]={K2}")
 
-    # Extract COO components. Note: current torch_gcu's torch.sparse_coo_tensor places the sparse tensor
-    # on CPU even when device=gcu is given (mat1.device == "cpu"),
-    # so the column indices / values the kernel must read have to be moved explicitly to the dense operand mat2's
-    # device,
-    # otherwise the launcher raises "cannot be accessed from Kurama (cpu tensor?)".
+    # Extract COO components. Note: current torch_gcu's torch.sparse_coo_tensor places
+    # the sparse tensor on CPU even when device=gcu is given (mat1.device == "cpu"),
+    # so the column indices / values the kernel must read have to be moved explicitly
+    # to the dense operand mat2's device, otherwise the launcher raises
+    # "cannot be accessed from Kurama (cpu tensor?)".
     indices = mat1._indices()
     values = mat1._values()
     nnz = mat1._nnz()
     compute_device = mat2.device
 
     if nnz == 0:
-        # Empty sparse tensor: indices/values are all placed on the compute device so to_dense() also lands on device
+        # Empty sparse tensor: indices/values are all placed on the compute device so
+        # to_dense() also lands on device
         out_indices = torch.zeros((1, 0), dtype=torch.long, device=compute_device)
         out_values = torch.zeros((0, N), dtype=mat2.dtype, device=compute_device)
         return torch.sparse_coo_tensor(
             out_indices, out_values, (M, N), dtype=mat2.dtype, device=compute_device
         )
 
-    # For COO, indices has shape (2, nnz) or (ndim, nnz)
-    # Row indices are used only to build the output sparse tensor (kept on CPU); column indices and values move to the
-    # compute device
+    # COO indices are stored as one contiguous (2, nnz) buffer, so both rows are
+    # already long/contiguous views: only the device transfer is needed, and `.to`
+    # returns the tensor itself when dtype/device already match.
     if indices.dim() == 1:
         # 1D sparse tensor edge case
         row_indices = torch.zeros(nnz, dtype=torch.long)
-        col_indices = indices.to(torch.long).contiguous().to(compute_device)
+        col_indices = indices.to(device=compute_device, dtype=torch.long)
     else:
-        row_indices = indices[0].to(torch.long).contiguous()
-        col_indices = indices[1].to(torch.long).contiguous().to(compute_device)
+        row_indices = indices[0]
+        col_indices = indices[1].to(device=compute_device, dtype=torch.long)
     values = values.to(compute_device)
 
     # Allocate output values: shape (nnz, N)
-    out_values = torch.empty((nnz, N), dtype=mat2.dtype, device=mat2.device)
+    out_values = torch.empty((nnz, N), dtype=mat2.dtype, device=compute_device)
 
-    # Launch kernel: one program per nnz entry
-    BLOCK_N = min(triton.next_power_of_2(N), 1024)
-    grid = (nnz,)
+    BLOCK_N = min(triton.next_power_of_2(N), BLOCK_N_CAP)
+    # Back-compute the row block size from the target tile element count, clamped to
+    # [1, MAX_BLOCK_ROWS]
+    block_rows = max(1, min(MAX_BLOCK_ROWS, TILE_ELEMS // BLOCK_N))
+    num_row_tiles = triton.cdiv(nnz, block_rows)
+    num_col_tiles = triton.cdiv(N, BLOCK_N)
+    num_programs = min(num_row_tiles, MAX_GRID)
 
-    hspmm_kernel[grid](
+    # Fixed grid + row-tile stride loop: grid.x does not grow with nnz. num_warps=4
+    # measured fastest for the wide (N>=1024) tiles on GCU400.
+    hspmm_kernel[(num_programs,)](
         col_indices,
         values,
         mat2,
@@ -145,11 +173,18 @@ def hspmm(mat1: torch.Tensor, mat2: torch.Tensor) -> torch.Tensor:
         N,
         mat2.stride(0),
         mat2.stride(1),
+        BLOCK_ROWS=block_rows,
         BLOCK_N=BLOCK_N,
+        NUM_ROW_TILES=num_row_tiles,
+        NUM_COL_TILES=num_col_tiles,
+        NUM_PROGRAMS=num_programs,
+        num_warps=4,
     )
 
-    # Output sparse COO: indices and values are all on the compute device so to_dense() also lands on device,
-    # easing comparison with the device-side reference (torch_gcu's sparse tensor device field may still show cpu).
+    # Output sparse COO: both indices and values are placed on the compute device, so
+    # the to_dense() result also lands on the device side, making it easy to compare
+    # against the device-side reference implementation (torch_gcu's sparse tensor
+    # device field may still show cpu).
     out_indices = row_indices.to(compute_device).unsqueeze(0)
 
     return torch.sparse_coo_tensor(

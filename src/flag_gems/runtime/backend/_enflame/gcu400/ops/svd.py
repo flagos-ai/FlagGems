@@ -12,7 +12,10 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import collections
 import logging
+import os
+import threading
 from collections import namedtuple
 
 import torch
@@ -37,6 +40,20 @@ _RANK2_BLOCK_R_MAX = 2048
 _TSQR_CHOLESKY_MAX_BATCH = 32
 _TSQR_CHOLESKY_MAX_K = 128
 _TSQR_CHOLESKY_MAX_ROWS = 1024
+
+# --- TUNING PARAMS START ---
+# Batch-tiled small Jacobi: one CTA carries TILE matrices so a rotation works on a
+# (tile, rows) 2-D tile instead of an 8..16 element vector.  A bigger tile wins on
+# large batches (fewer, fatter CTAs), a smaller one on medium batches.
+SMALL_JACOBI_BATCH_TILE_SMALL = 32
+SMALL_JACOBI_BATCH_TILE_LARGE = 128
+SMALL_JACOBI_BATCH_TILE_SWITCH = 1024
+SMALL_JACOBI_BATCH_WARPS = 4
+SMALL_JACOBI_BATCH_MIN_BATCH = 64
+# k == 16 never reaches this kernel (it is routed to the cyclic Jacobi path).
+SMALL_JACOBI_BATCH_MAX_K = 15
+SMALL_JACOBI_BATCH_SWEEPS = 8
+# --- TUNING PARAMS END ---
 
 
 def _unsupported_svd(input, some=True, compute_uv=True, reason=None):
@@ -334,6 +351,181 @@ def _small_jacobi_svd_kernel(
         else:
             tl.store(U + pid * M * K + cols * K + rank, basis, mask=col_mask)
             tl.store(V + pid * N * K + rows * K + rank, col * inv_norm, mask=row_mask)
+
+
+@libentry()
+@triton.jit(do_not_specialize=["BATCH"])
+def _small_jacobi_batched_svd_kernel(
+    A,
+    A_WORK,
+    V_WORK,
+    NORMS,
+    U,
+    S,
+    V,
+    BATCH,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    ROWS: tl.constexpr,
+    TALL: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+    BLOCK_K: tl.constexpr,
+    BLOCK_B: tl.constexpr,
+    SWEEPS: tl.constexpr,
+):
+    # Same arithmetic as _small_jacobi_svd_kernel, but every CTA carries BLOCK_B
+    # matrices packed in a 2-D tile (matrix index, working row): each rotation
+    # then moves BLOCK_B x BLOCK_R elements instead of a 8..16 element vector.
+    pid = tl.program_id(0)
+    mat_idx = pid * BLOCK_B + tl.arange(0, BLOCK_B)
+    rows = tl.arange(0, BLOCK_R)
+    cols = tl.arange(0, BLOCK_K)
+    mat_mask = mat_idx < BATCH
+    row_mask = rows < ROWS
+    col_mask = cols < K
+    eps = 1.0e-20
+
+    work_mask = mat_mask[:, None] & row_mask[None, :]
+    basis_mask = mat_mask[:, None] & col_mask[None, :]
+
+    a_base = mat_idx[:, None] * (M * N)
+    aw_base = mat_idx[:, None] * (K * ROWS)
+    vw_base = mat_idx[:, None] * (K * K)
+
+    # Single-program init: copy the working columns out of A and set V_WORK to
+    # the identity, so no strided per-matrix gather is needed later.
+    for j in tl.static_range(0, K):
+        if TALL:
+            vals = tl.load(
+                A + a_base + rows[None, :] * N + j, mask=work_mask, other=0.0
+            ).to(tl.float32)
+        else:
+            vals = tl.load(
+                A + a_base + j * N + rows[None, :], mask=work_mask, other=0.0
+            ).to(tl.float32)
+        tl.store(A_WORK + aw_base + j * ROWS + rows[None, :], vals, mask=work_mask)
+        ident = tl.where(cols == j, 1.0, 0.0)
+        tl.store(
+            V_WORK + vw_base + j * K + cols[None, :],
+            tl.broadcast_to(ident[None, :], (BLOCK_B, BLOCK_K)),
+            mask=basis_mask,
+        )
+
+    # Dynamic sweep loop keeps the IR small (a fully static 8xKxK sweep hangs GCUIR).
+    for _ in range(0, SWEEPS):
+        for p in tl.static_range(0, K):
+            for q in tl.static_range(p + 1, K):
+                ap = tl.load(
+                    A_WORK + aw_base + p * ROWS + rows[None, :],
+                    mask=work_mask,
+                    other=0.0,
+                )
+                aq = tl.load(
+                    A_WORK + aw_base + q * ROWS + rows[None, :],
+                    mask=work_mask,
+                    other=0.0,
+                )
+                # Per-matrix Gram entries collapse the working rows in one reduction.
+                alpha = tl.sum(ap * ap, axis=1)
+                beta = tl.sum(aq * aq, axis=1)
+                gamma = tl.sum(ap * aq, axis=1)
+                abs_gamma = tl.abs(gamma)
+                threshold = 1.0e-7 * tl.sqrt(alpha * beta + eps)
+                active = abs_gamma > threshold
+
+                safe_gamma = tl.where(active, gamma, 1.0)
+                tau = (beta - alpha) / (2.0 * safe_gamma)
+                sign_tau = tl.where(tau >= 0.0, 1.0, -1.0)
+                t = sign_tau / (tl.abs(tau) + tl.sqrt(1.0 + tau * tau))
+                c = tl.rsqrt(1.0 + t * t)
+                s_rot = t * c
+                c = tl.where(active, c, 1.0)
+                s_rot = tl.where(active, s_rot, 0.0)
+                c_tile = c[:, None]
+                s_tile = s_rot[:, None]
+
+                tl.store(
+                    A_WORK + aw_base + p * ROWS + rows[None, :],
+                    c_tile * ap - s_tile * aq,
+                    mask=work_mask,
+                )
+                tl.store(
+                    A_WORK + aw_base + q * ROWS + rows[None, :],
+                    s_tile * ap + c_tile * aq,
+                    mask=work_mask,
+                )
+
+                vp = tl.load(
+                    V_WORK + vw_base + p * K + cols[None, :],
+                    mask=basis_mask,
+                    other=0.0,
+                )
+                vq = tl.load(
+                    V_WORK + vw_base + q * K + cols[None, :],
+                    mask=basis_mask,
+                    other=0.0,
+                )
+                tl.store(
+                    V_WORK + vw_base + p * K + cols[None, :],
+                    c_tile * vp - s_tile * vq,
+                    mask=basis_mask,
+                )
+                tl.store(
+                    V_WORK + vw_base + q * K + cols[None, :],
+                    s_tile * vp + c_tile * vq,
+                    mask=basis_mask,
+                )
+
+    # Column norms/order in two passes over a scratch buffer: the descending rank
+    # is then resolved with pairwise 1-D comparisons only, so no select-derived
+    # 2-D tile is ever fed into a reduction on this backend.
+    for j in tl.static_range(0, K):
+        col = tl.load(
+            A_WORK + aw_base + j * ROWS + rows[None, :], mask=work_mask, other=0.0
+        )
+        norm_j = tl.sqrt(tl.sum(col * col, axis=1))
+        tl.store(NORMS + mat_idx * K + j, norm_j, mask=mat_mask)
+
+    for j in tl.static_range(0, K):
+        norm_j = tl.load(NORMS + mat_idx * K + j, mask=mat_mask, other=0.0)
+        rank_j = tl.zeros((BLOCK_B,), dtype=tl.int32)
+        for i in tl.static_range(0, K):
+            norm_i = tl.load(NORMS + mat_idx * K + i, mask=mat_mask, other=0.0)
+            beats = (norm_i > norm_j) | ((norm_i == norm_j) & (i < j))
+            rank_j += beats.to(tl.int32)
+        inv_norm = tl.where(norm_j > eps, 1.0 / norm_j, 0.0)
+        tl.store(S + mat_idx * K + rank_j, norm_j, mask=mat_mask)
+
+        col = tl.load(
+            A_WORK + aw_base + j * ROWS + rows[None, :], mask=work_mask, other=0.0
+        )
+        basis = tl.load(
+            V_WORK + vw_base + j * K + cols[None, :], mask=basis_mask, other=0.0
+        )
+        rank_tile = rank_j[:, None]
+        if TALL:
+            tl.store(
+                U + mat_idx[:, None] * (M * K) + rows[None, :] * K + rank_tile,
+                col * inv_norm[:, None],
+                mask=work_mask,
+            )
+            tl.store(
+                V + mat_idx[:, None] * (N * K) + cols[None, :] * K + rank_tile,
+                basis,
+                mask=basis_mask,
+            )
+        else:
+            tl.store(
+                U + mat_idx[:, None] * (M * K) + cols[None, :] * K + rank_tile,
+                basis,
+                mask=basis_mask,
+            )
+            tl.store(
+                V + mat_idx[:, None] * (N * K) + rows[None, :] * K + rank_tile,
+                col * inv_norm[:, None],
+                mask=work_mask,
+            )
 
 
 @libentry()
@@ -1565,6 +1757,52 @@ def _small_jacobi_singular_values(input):
     return s.reshape(*input.shape[:-2], k)
 
 
+def _small_jacobi_batched_svd(input):
+    """Batch-tiled variant of ``_small_jacobi_svd`` for k <= 16 and large batch."""
+    batch, m, n = _svd_shape(input)
+    k = min(m, n)
+    rows = max(m, n)
+    a = input.contiguous().reshape(batch, m, n)
+    a_work = torch.empty((batch, k, rows), dtype=torch.float32, device=input.device)
+    v_work = torch.empty((batch, k, k), dtype=torch.float32, device=input.device)
+    norms = torch.empty((batch, k), dtype=torch.float32, device=input.device)
+    u = torch.empty((batch, m, k), dtype=input.dtype, device=input.device)
+    s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
+    v = torch.empty((batch, n, k), dtype=input.dtype, device=input.device)
+    tile = (
+        SMALL_JACOBI_BATCH_TILE_LARGE
+        if batch >= SMALL_JACOBI_BATCH_TILE_SWITCH
+        else SMALL_JACOBI_BATCH_TILE_SMALL
+    )
+    grid = (triton.cdiv(batch, tile),)
+    with torch_device_fn.device(input.device):
+        _small_jacobi_batched_svd_kernel[grid](
+            a,
+            a_work,
+            v_work,
+            norms,
+            u,
+            s,
+            v,
+            batch,
+            M=m,
+            N=n,
+            K=k,
+            ROWS=rows,
+            TALL=m >= n,
+            BLOCK_R=triton.next_power_of_2(rows),
+            BLOCK_K=triton.next_power_of_2(k),
+            BLOCK_B=tile,
+            SWEEPS=SMALL_JACOBI_BATCH_SWEEPS,
+            num_warps=SMALL_JACOBI_BATCH_WARPS,
+        )
+    return (
+        u.reshape(*input.shape[:-2], m, k),
+        s.reshape(*input.shape[:-2], k),
+        v.reshape(*input.shape[:-2], n, k),
+    )
+
+
 def _small_jacobi_svd(input):
     batch, m, n = _svd_shape(input)
     k = min(m, n)
@@ -1618,8 +1856,12 @@ def _cyclic_jacobi_init_a_kernel(
     TALL: tl.constexpr,
     BLOCK_R: tl.constexpr,
 ):
-    batch = tl.program_id(0)
-    col = tl.program_id(1)
+    # GCU caps grid.y at 255: the original implementation used a 2-D (batch, K) grid, which cannot
+    # launch once K>255 (e.g. 256/512 square matrices), so it is folded to a 1-D grid (batch*K)
+    # decoded in-kernel.
+    pid = tl.program_id(0)
+    batch = pid // K
+    col = pid % K
     rows = tl.arange(0, BLOCK_R)
     row_mask = rows < ROWS
     a_base = A + batch * M * N
@@ -1857,8 +2099,10 @@ def _cyclic_jacobi_norm_kernel(
     ROWS: tl.constexpr,
     BLOCK_R: tl.constexpr,
 ):
-    batch = tl.program_id(0)
-    col = tl.program_id(1)
+    # Same as above: 1-D grid (batch*K) decoding to avoid exceeding grid.y when K>255.
+    pid = tl.program_id(0)
+    batch = pid // K
+    col = pid % K
     rows = tl.arange(0, BLOCK_R)
     mask = rows < ROWS
     aw_base = A_WORK + batch * K * ROWS
@@ -1938,28 +2182,46 @@ def _blocked_jacobi_pair_svals_kernel(
     ROUND: tl.constexpr,
     ROWS: tl.constexpr,
     BLOCK_R: tl.constexpr,
+    CHUNK: tl.constexpr,
+    N_CHUNKS: tl.constexpr,
 ):
-    batch = tl.program_id(0)
-    pair = tl.program_id(1)
-    rows = tl.arange(0, BLOCK_R)
+    # Several column pairs per program.  Measured on GCU400: the former
+    # one-pair-per-program form costs ~22us per launch at k=256 and a
+    # traffic-only variant still costs ~19us, because the cost tracks the CTA
+    # count instead of the arithmetic.  Packing CHUNK pairs into one program
+    # divides the grid by CHUNK and brings a step down to ~6us, which is what
+    # the blocked path needs to stay within reach of the reference.
+    # 1-D grid (batch*N_CHUNKS) decoding: a 2-D grid would need grid.y =
+    # half_round, and GCU caps grid.y at 255 (k=512 has 256 pairs).
+    pid = tl.program_id(0)
+    batch = pid // N_CHUNKS
+    chunk = pid % N_CHUNKS
+    half_round = ROUND // 2
     ring = ROUND - 1
 
-    pos_p = pair
-    pos_q = ROUND - 1 - pair
+    pairs = chunk * CHUNK + tl.arange(0, CHUNK)
+    in_range = pairs < half_round
+    pos_p = pairs
+    pos_q = ROUND - 1 - pairs
     p = tl.where(pos_p == 0, 0, ((pos_p + ring - STEP - 1) % ring) + 1)
     q = tl.where(pos_q == 0, 0, ((pos_q + ring - STEP - 1) % ring) + 1)
-    valid_pair = (p < K) & (q < K)
+    valid_pair = in_range & (p < K) & (q < K)
     swap = p > q
     p2 = tl.where(swap, q, p)
     q2 = tl.where(swap, p, q)
-    row_mask = (rows < ROWS) & valid_pair
+    # Padding lanes would all alias column 0; park them there and keep their
+    # stores masked off by `valid_pair`.
+    p2 = tl.where(in_range, p2, 0)
+    q2 = tl.where(in_range, q2, 0)
 
+    rows = tl.arange(0, BLOCK_R)
+    mask = valid_pair[:, None] & (rows < ROWS)[None, :]
     aw_base = A_WORK + batch * K * ROWS
-    ap = tl.load(aw_base + p2 * ROWS + rows, mask=row_mask, other=0.0)
-    aq = tl.load(aw_base + q2 * ROWS + rows, mask=row_mask, other=0.0)
-    alpha = tl.sum(ap * ap)
-    beta = tl.sum(aq * aq)
-    gamma = tl.sum(ap * aq)
+    ap = tl.load(aw_base + p2[:, None] * ROWS + rows[None, :], mask=mask, other=0.0)
+    aq = tl.load(aw_base + q2[:, None] * ROWS + rows[None, :], mask=mask, other=0.0)
+    alpha = tl.sum(ap * ap, axis=1)
+    beta = tl.sum(aq * aq, axis=1)
+    gamma = tl.sum(ap * aq, axis=1)
     eps = 1.0e-20
     abs_gamma = tl.abs(gamma)
     threshold = 1.0e-7 * tl.sqrt(alpha * beta + eps)
@@ -1968,15 +2230,15 @@ def _blocked_jacobi_pair_svals_kernel(
     tau = (beta - alpha) / (2.0 * safe_gamma)
     sign_tau = tl.where(tau >= 0.0, 1.0, -1.0)
     t = sign_tau / (tl.abs(tau) + tl.sqrt(1.0 + tau * tau))
-    c = tl.rsqrt(1.0 + t * t)
-    s_rot = t * c
-    c = tl.where(active & valid_pair, c, 1.0)
-    s_rot = tl.where(active & valid_pair, s_rot, 0.0)
+    cos_rot = tl.rsqrt(1.0 + t * t)
+    sin_rot = t * cos_rot
+    cos_rot = tl.where(active & valid_pair, cos_rot, 1.0)
+    sin_rot = tl.where(active & valid_pair, sin_rot, 0.0)
 
-    new_ap = c * ap - s_rot * aq
-    new_aq = s_rot * ap + c * aq
-    tl.store(aw_base + p2 * ROWS + rows, new_ap, mask=row_mask)
-    tl.store(aw_base + q2 * ROWS + rows, new_aq, mask=row_mask)
+    c2 = cos_rot[:, None]
+    s2 = sin_rot[:, None]
+    tl.store(aw_base + p2[:, None] * ROWS + rows[None, :], c2 * ap - s2 * aq, mask=mask)
+    tl.store(aw_base + q2[:, None] * ROWS + rows[None, :], s2 * ap + c2 * aq, mask=mask)
 
 
 @libentry()
@@ -2158,8 +2420,10 @@ def _blocked_jacobi_rank_kernel(
     S,
     K,
 ):
-    batch = tl.program_id(0)
-    col = tl.program_id(1)
+    # 1-D grid (batch*K) decoding to avoid exceeding grid.y when K>255 (K is a runtime parameter).
+    pid = tl.program_id(0)
+    batch = pid // K
+    col = pid % K
     s_col = tl.load(S_WORK + batch * K + col)
     rank = tl.full((), 0, dtype=tl.int32)
     other = 0
@@ -2341,7 +2605,7 @@ def _cyclic_jacobi_svd(input):
                         BLOCK_K=block_k,
                         num_warps=1 if block_r <= 64 else 4,
                     )
-        _cyclic_jacobi_norm_kernel[(batch, k)](
+        _cyclic_jacobi_norm_kernel[(batch * k,)](
             a_work,
             s_work,
             K=k,
@@ -2450,7 +2714,7 @@ def _projected_jacobi_svd(input):
     rot_s = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
 
     with torch_device_fn.device(input.device):
-        _cyclic_jacobi_init_a_kernel[(batch, k)](
+        _cyclic_jacobi_init_a_kernel[(batch * k,)](
             a,
             a_work,
             M=m,
@@ -2474,7 +2738,7 @@ def _projected_jacobi_svd(input):
                     BLOCK_R=block_r,
                     num_warps=1 if block_r <= 64 else 4,
                 )
-        _cyclic_jacobi_norm_kernel[(batch, k)](
+        _cyclic_jacobi_norm_kernel[(batch * k,)](
             a_work,
             s_work,
             K=k,
@@ -2482,7 +2746,7 @@ def _projected_jacobi_svd(input):
             BLOCK_R=block_r,
             num_warps=1 if block_r <= 64 else 4,
         )
-        _blocked_jacobi_rank_kernel[(batch, k)](
+        _blocked_jacobi_rank_kernel[(batch * k,)](
             s_work,
             ranks,
             s,
@@ -2591,7 +2855,7 @@ def _blocked_jacobi_svd(input):
                     BLOCK_V=block_v,
                     num_warps=1,
                 )
-        _cyclic_jacobi_norm_kernel[(batch, k)](
+        _cyclic_jacobi_norm_kernel[(batch * k,)](
             a_work,
             s_work,
             K=k,
@@ -2599,7 +2863,7 @@ def _blocked_jacobi_svd(input):
             BLOCK_R=block_r,
             num_warps=1 if block_r <= 64 else 4,
         )
-        _blocked_jacobi_rank_kernel[(batch, k)](
+        _blocked_jacobi_rank_kernel[(batch * k,)](
             s_work,
             ranks,
             s,
@@ -2672,7 +2936,7 @@ def _blocked_jacobi_square_project_svd(input):
     rot_c = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
     rot_s = torch.empty((batch, half_round), dtype=torch.float32, device=input.device)
     with torch_device_fn.device(input.device):
-        _cyclic_jacobi_init_a_kernel[(batch, k)](
+        _cyclic_jacobi_init_a_kernel[(batch * k,)](
             a,
             a_work,
             M=m,
@@ -2696,7 +2960,7 @@ def _blocked_jacobi_square_project_svd(input):
                     BLOCK_R=block_r,
                     num_warps=1 if block_r <= 64 else 4,
                 )
-        _cyclic_jacobi_norm_kernel[(batch, k)](
+        _cyclic_jacobi_norm_kernel[(batch * k,)](
             a_work,
             s_work,
             K=k,
@@ -2704,7 +2968,7 @@ def _blocked_jacobi_square_project_svd(input):
             BLOCK_R=block_r,
             num_warps=1 if block_r <= 64 else 4,
         )
-        _blocked_jacobi_rank_kernel[(batch, k)](
+        _blocked_jacobi_rank_kernel[(batch * k,)](
             s_work,
             ranks,
             s,
@@ -2770,7 +3034,7 @@ def _hier_block_jacobi_square_project_svd(input):
     sweep_count = 10 if k <= 256 else 12
     tile_cols = tile_b * 2
     with torch_device_fn.device(input.device):
-        _cyclic_jacobi_init_a_kernel[(batch, k)](
+        _cyclic_jacobi_init_a_kernel[(batch * k,)](
             a,
             a_work,
             M=m,
@@ -2796,7 +3060,7 @@ def _hier_block_jacobi_square_project_svd(input):
                     LOCAL_SWEEPS=1,
                     num_warps=4,
                 )
-        _cyclic_jacobi_norm_kernel[(batch, k)](
+        _cyclic_jacobi_norm_kernel[(batch * k,)](
             a_work,
             s_work,
             K=k,
@@ -2804,7 +3068,7 @@ def _hier_block_jacobi_square_project_svd(input):
             BLOCK_R=block_r,
             num_warps=1 if block_r <= 64 else 4,
         )
-        _blocked_jacobi_rank_kernel[(batch, k)](
+        _blocked_jacobi_rank_kernel[(batch * k,)](
             s_work,
             ranks,
             s,
@@ -2842,7 +3106,305 @@ def _hier_block_jacobi_square_project_svd(input):
     )
 
 
+# --- Optional per-shape graph capture for the blocked sweep chain ------------
+# The blocked path needs one launch per rotation step, so its wall time used to
+# be k*sweeps host enqueues (~15us each measured on GCU400) instead of the
+# microseconds of arithmetic each step performs.  Capturing the chain once per
+# (shape, dtype, device, stream) turns those k*sweeps enqueues into one replay
+# (~4-6us residual per step).  This is only a performance optimization:
+# FLAGGEMS_SVDVALS_NO_GRAPH=1 or any capture failure falls back to direct
+# launches with identical results.
+_SVALS_GRAPHS = collections.OrderedDict()
+_SVALS_GRAPH_BYTES = 0
+# Cache budget in workspace bytes: a (1024, 1024) fp32 work matrix alone is 4 MB,
+# so an entry-count cap could pin hundreds of MB across shapes.
+_SVALS_GRAPH_MAX_BYTES = 256 * 1024 * 1024
+_SVALS_GRAPH_LOCK = threading.Lock()
+
+
+def _svals_workspace_bytes(ws):
+    return sum(t.numel() * t.element_size() for t in ws.values())
+
+
+def _svals_current_stream(device):
+    try:
+        return torch.cuda.current_stream(device).cuda_stream
+    except Exception:
+        return None
+
+
+def _svals_stream_is_capturing():
+    # Capturing our own graph while the caller already records one is fatal on
+    # this stack: the pinned host allocation inside the CUDAGraph constructor is
+    # rejected by the driver ("this operation is disallowed while the stream is
+    # in capture mode") and the error surfaces as a process abort rather than a
+    # Python exception, so no try/except below can contain it. The guard has to
+    # run before any capture machinery; plain launches are capturable, so the
+    # caller's graph still records the sweep chain correctly.
+    try:
+        return bool(torch.cuda.is_current_stream_capturing())
+    except Exception:
+        return False
+
+
+def _svals_graph_run(key, device, make_workspace, copy_in, run, copy_out):
+    if (
+        device.type not in ("cuda", "gcu")
+        or os.environ.get("FLAGGEMS_SVDVALS_NO_GRAPH") == "1"
+        or _svals_stream_is_capturing()
+    ):
+        ws = make_workspace()
+        copy_in(ws)
+        run(ws)
+        copy_out(ws)
+        return
+    # A cached entry owns the workspace tensors of one device, so the device has
+    # to be part of the key: raw stream handles can repeat across devices.
+    full_key = (key, device.index, _svals_current_stream(device))
+    global _SVALS_GRAPH_BYTES
+    with _SVALS_GRAPH_LOCK:
+        entry = _SVALS_GRAPHS.pop(full_key, None)
+        if entry is not None:
+            # LRU: reinsert at the most-recently-used end on every hit.
+            _SVALS_GRAPHS[full_key] = entry
+            ws, graph, _ = entry
+            copy_in(ws)
+            graph.replay()
+            copy_out(ws)
+            return
+        ws = make_workspace()
+        # A real run first: it compiles every kernel in the sequence and leaves
+        # a valid result in the workspace (used as-is if capture fails).
+        copy_in(ws)
+        run(ws)
+        try:
+            stream = torch.cuda.Stream(device)
+            stream.wait_stream(torch.cuda.current_stream(device))
+            with torch.cuda.stream(stream):
+                run(ws)  # warmup on a side stream
+            torch.cuda.current_stream(device).wait_stream(stream)
+            torch.cuda.synchronize(device)
+            graph = torch.cuda.CUDAGraph()
+            with torch.cuda.graph(graph):
+                run(ws)
+        except Exception:
+            logger.warning(
+                "svdvals graph capture failed for %s; falling back to direct launches",
+                key,
+            )
+            copy_out(ws)
+            return
+        nbytes = _svals_workspace_bytes(ws)
+        while _SVALS_GRAPHS and _SVALS_GRAPH_BYTES + nbytes > _SVALS_GRAPH_MAX_BYTES:
+            # A replay is async, so sync the evicted entry's device before its
+            # workspace is dropped.
+            _, (victim_ws, _, victim_bytes) = next(iter(_SVALS_GRAPHS.items()))
+            torch.cuda.synchronize(victim_ws["a"].device)
+            _SVALS_GRAPHS.popitem(last=False)
+            _SVALS_GRAPH_BYTES -= victim_bytes
+        _SVALS_GRAPHS[full_key] = (ws, graph, nbytes)
+        _SVALS_GRAPH_BYTES += nbytes
+        copy_out(ws)
+
+
 def _blocked_jacobi_singular_values(input):
+    batch, m, n = _svd_shape(input)
+    k = min(m, n)
+    rows = max(m, n)
+    a = input.contiguous().reshape(batch, m, n)
+
+    block_r = triton.next_power_of_2(rows)
+    sweeps = 14 if k > 256 else 10
+    round_size = k if k % 2 == 0 else k + 1
+    half_round = round_size // 2
+    # ~16 pairs per program measured best for k >= 128 on GCU400; the rotation
+    # is bandwidth cheap, so the win comes from shrinking the grid.
+    chunk = min(half_round, 16)
+    n_chunks = (half_round + chunk - 1) // chunk
+    pair_warps = 1 if block_r <= 64 else 2
+    aux_warps = 1 if block_r <= 64 else 4
+
+    def make_workspace():
+        return {
+            "a": torch.empty((batch, m, n), dtype=input.dtype, device=input.device),
+            "aw": torch.empty(
+                (batch, k, rows), dtype=torch.float32, device=input.device
+            ),
+            "sw": torch.empty((batch, k), dtype=torch.float32, device=input.device),
+            "ranks": torch.empty((batch, k), dtype=torch.int32, device=input.device),
+            "s": torch.empty((batch, k), dtype=input.dtype, device=input.device),
+        }
+
+    def copy_in(ws):
+        ws["a"].copy_(a)
+
+    def run(ws):
+        with torch_device_fn.device(input.device):
+            _cyclic_jacobi_init_a_kernel[(batch * k,)](
+                ws["a"],
+                ws["aw"],
+                M=m,
+                N=n,
+                K=k,
+                ROWS=rows,
+                TALL=m >= n,
+                BLOCK_R=block_r,
+                num_warps=aux_warps,
+            )
+            for _ in range(sweeps):
+                for step in range(round_size - 1):
+                    _blocked_jacobi_pair_svals_kernel[(batch * n_chunks,)](
+                        ws["aw"],
+                        step,
+                        K=k,
+                        ROUND=round_size,
+                        ROWS=rows,
+                        BLOCK_R=block_r,
+                        CHUNK=chunk,
+                        N_CHUNKS=n_chunks,
+                        num_warps=pair_warps,
+                    )
+            _cyclic_jacobi_norm_kernel[(batch * k,)](
+                ws["aw"],
+                ws["sw"],
+                K=k,
+                ROWS=rows,
+                BLOCK_R=block_r,
+                num_warps=aux_warps,
+            )
+            _blocked_jacobi_rank_kernel[(batch * k,)](
+                ws["sw"],
+                ws["ranks"],
+                ws["s"],
+                k,
+                num_warps=1,
+            )
+
+    s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
+    _svals_graph_run(
+        ("blocked_svals", batch, m, n, input.dtype, sweeps),
+        input.device,
+        make_workspace,
+        copy_in,
+        run,
+        lambda ws: s.copy_(ws["s"]),
+    )
+    return s.reshape(*input.shape[:-2], k)
+
+
+# The blocked Jacobi singular-value path needs one launch per rotation step
+# (k * sweeps launches). Measured on GCU400 the per-step cost is ~5-9 us whether
+# that step is a kernel launch or an iteration inside a single program, so the
+# two shapes of the algorithm are close for small k and only the number of
+# parallel lanes differs. The fused kernel below keeps the exact same rotation
+# math *and* pair schedule but runs every sweep inside one program per batch, so
+# for small k it avoids both the launch chain and the graph replay overhead.
+_FUSED_SVALS_TILE_ELEMENTS = 2048
+# Largest K for which the single-program fused sweep beats the chunked blocked
+# path (measured: k=64 fused 3.75 ms vs blocked 5.2 ms, k=128 fused 17.0 ms vs
+# blocked 6.1 ms, because the fused program's serial loop stops scaling there).
+_FUSED_SVALS_MAX_K = 64
+
+
+@libentry()
+@triton.jit
+def _fused_jacobi_svals_kernel(
+    A,
+    A_WORK,
+    S_WORK,
+    M: tl.constexpr,
+    N: tl.constexpr,
+    K: tl.constexpr,
+    ROWS: tl.constexpr,
+    TALL: tl.constexpr,
+    ROUND: tl.constexpr,
+    BLOCK_R: tl.constexpr,
+    CHUNK: tl.constexpr,
+    N_INIT_CHUNKS,
+    N_PAIR_CHUNKS,
+    SWEEPS,
+    STEPS,
+):
+    # One program per batch matrix: stage the K columns, run every sweep, then
+    # write the column norms (the singular values) into S_WORK for ranking.
+    batch = tl.program_id(0)
+    rows = tl.arange(0, BLOCK_R)
+    row_mask = rows < ROWS
+    a_base = A + batch * M * N
+    aw_base = A_WORK + batch * K * ROWS
+
+    # Stage A as K x ROWS (columns of A when tall, rows of A when wide).
+    for chunk in range(0, N_INIT_CHUNKS):
+        cols = chunk * CHUNK + tl.arange(0, CHUNK)
+        mask = (cols[:, None] < K) & row_mask[None, :]
+        if TALL:
+            vals = tl.load(
+                a_base + rows[None, :] * N + cols[:, None], mask=mask, other=0.0
+            )
+        else:
+            vals = tl.load(
+                a_base + cols[:, None] * N + rows[None, :], mask=mask, other=0.0
+            )
+        tl.store(
+            aw_base + cols[:, None] * ROWS + rows[None, :],
+            vals.to(tl.float32),
+            mask=mask,
+        )
+
+    ring = ROUND - 1
+    half_round = ROUND // 2
+    for _sweep in range(0, SWEEPS):
+        for step in range(0, STEPS):
+            for chunk in range(0, N_PAIR_CHUNKS):
+                pairs = chunk * CHUNK + tl.arange(0, CHUNK)
+                pos_p = pairs
+                pos_q = ROUND - 1 - pairs
+                p = tl.where(pos_p == 0, 0, ((pos_p + ring - step - 1) % ring) + 1)
+                q = tl.where(pos_q == 0, 0, ((pos_q + ring - step - 1) % ring) + 1)
+                valid = (p < K) & (q < K) & (pairs < half_round)
+                swap = p > q
+                p2 = tl.where(swap, q, p)
+                q2 = tl.where(swap, p, q)
+                mask = valid[:, None] & row_mask[None, :]
+                offsets_p = aw_base + p2[:, None] * ROWS + rows[None, :]
+                offsets_q = aw_base + q2[:, None] * ROWS + rows[None, :]
+                ap = tl.load(offsets_p, mask=mask, other=0.0)
+                aq = tl.load(offsets_q, mask=mask, other=0.0)
+                alpha = tl.sum(ap * ap, axis=1)
+                beta = tl.sum(aq * aq, axis=1)
+                gamma = tl.sum(ap * aq, axis=1)
+                eps = 1.0e-20
+                abs_gamma = tl.abs(gamma)
+                threshold = 1.0e-7 * tl.sqrt(alpha * beta + eps)
+                active = abs_gamma > threshold
+                safe_gamma = tl.where(active, gamma, 1.0)
+                tau = (beta - alpha) / (2.0 * safe_gamma)
+                sign_tau = tl.where(tau >= 0.0, 1.0, -1.0)
+                t = sign_tau / (tl.abs(tau) + tl.sqrt(1.0 + tau * tau))
+                cos_rot = tl.rsqrt(1.0 + t * t)
+                sin_rot = t * cos_rot
+                cos_rot = tl.where(active & valid, cos_rot, 1.0)
+                sin_rot = tl.where(active & valid, sin_rot, 0.0)
+                c2 = cos_rot[:, None]
+                s2 = sin_rot[:, None]
+                tl.store(offsets_p, c2 * ap - s2 * aq, mask=mask)
+                tl.store(offsets_q, s2 * ap + c2 * aq, mask=mask)
+
+    # Column norms are the singular values; ordering is left to the shared rank
+    # kernel so the sort never races with these stores inside one program.
+    for chunk in range(0, N_INIT_CHUNKS):
+        cols = chunk * CHUNK + tl.arange(0, CHUNK)
+        col_mask = cols < K
+        vals = tl.load(
+            aw_base + cols[:, None] * ROWS + rows[None, :],
+            mask=col_mask[:, None] & row_mask[None, :],
+            other=0.0,
+        )
+        norms = tl.sqrt(tl.sum(vals * vals, axis=1))
+        tl.store(S_WORK + batch * K + cols, norms, mask=col_mask)
+
+
+def _fused_jacobi_singular_values(input):
     batch, m, n = _svd_shape(input)
     k = min(m, n)
     rows = max(m, n)
@@ -2853,48 +3415,39 @@ def _blocked_jacobi_singular_values(input):
     s = torch.empty((batch, k), dtype=input.dtype, device=input.device)
 
     block_r = triton.next_power_of_2(rows)
-    sweeps = 14 if k > 256 else 10
+    sweeps = 10
     round_size = k if k % 2 == 0 else k + 1
     half_round = round_size // 2
+    chunk = max(1, min(32, _FUSED_SVALS_TILE_ELEMENTS // block_r))
+    n_init_chunks = (k + chunk - 1) // chunk
+    n_pair_chunks = (half_round + chunk - 1) // chunk
+    tile = chunk * block_r
+    # Each loop iteration is a dependent load/reduce/store round trip, so the
+    # cost tracks the chunk count rather than the tile size. Keep the 2-warp
+    # setting: 4 warps measured ~5% faster at k=64 but degraded the 64x64
+    # accuracy (-19% on the top singular value), so it is not a safe trade.
+    num_warps = 1 if tile <= 512 else 2
+    s_view = s.reshape(batch, k)
     with torch_device_fn.device(input.device):
-        _cyclic_jacobi_init_a_kernel[(batch, k)](
+        _fused_jacobi_svals_kernel[(batch,)](
             a,
             a_work,
+            s_work,
             M=m,
             N=n,
             K=k,
             ROWS=rows,
             TALL=m >= n,
+            ROUND=round_size,
             BLOCK_R=block_r,
-            num_warps=1 if block_r <= 64 else 4,
+            CHUNK=chunk,
+            N_INIT_CHUNKS=n_init_chunks,
+            N_PAIR_CHUNKS=n_pair_chunks,
+            SWEEPS=sweeps,
+            STEPS=round_size - 1,
+            num_warps=num_warps,
         )
-        for _ in range(sweeps):
-            for step in range(round_size - 1):
-                _blocked_jacobi_pair_svals_kernel[(batch, half_round)](
-                    a_work,
-                    step,
-                    K=k,
-                    ROUND=round_size,
-                    ROWS=rows,
-                    BLOCK_R=block_r,
-                    num_warps=1 if block_r <= 64 else 4,
-                )
-        _cyclic_jacobi_norm_kernel[(batch, k)](
-            a_work,
-            s_work,
-            K=k,
-            ROWS=rows,
-            BLOCK_R=block_r,
-            num_warps=1 if block_r <= 64 else 4,
-        )
-        _blocked_jacobi_rank_kernel[(batch, k)](
-            s_work,
-            ranks,
-            s,
-            k,
-            num_warps=1,
-        )
-
+        _blocked_jacobi_rank_kernel[(batch * k,)](s_work, ranks, s_view, k)
     return s.reshape(*input.shape[:-2], k)
 
 
@@ -3425,9 +3978,13 @@ def _some_false_svd_via_thin(input):
             dtype=input.dtype,
             device=input.device,
         )
+        # gcu400: the completion kernel addresses its thin operand with
+        # hard-coded row-major offsets (it ignores tensor strides), so hand
+        # it a materialized copy whenever the thin factor is a strided view
+        # (the host handoff path returns V as a transposed view).
         with torch_device_fn.device(input.device):
             _complete_svd_factor_kernel[(batch,)](
-                thin_u,
+                thin_u.contiguous(),
                 u,
                 ROWS=m,
                 THIN_COLS=k,
@@ -3447,7 +4004,7 @@ def _some_false_svd_via_thin(input):
         )
         with torch_device_fn.device(input.device):
             _complete_svd_factor_kernel[(batch,)](
-                thin_v,
+                thin_v.contiguous(),
                 v,
                 ROWS=n,
                 THIN_COLS=k,
@@ -3481,9 +4038,103 @@ def _singular_values_only(input):
     # in well under a second. This mirrors the k=16 reroute in svd().
     if k <= 4 and largest <= 1024:
         return _small_jacobi_singular_values(input)
+    if 4 < k <= _FUSED_SVALS_MAX_K and largest <= 1024:
+        # Fused sweep: every rotation of every sweep runs inside one program per
+        # batch matrix, so no launch chain and no graph replay overhead. Measured
+        # on GCU400 (fp32, square): 64x64 3.75 ms fused vs 5.2 ms blocked.
+        # Beyond this K the single program's serial loop stops scaling and the
+        # blocked path wins (128x128: 6.1 ms vs 17.0 ms).
+        return _fused_jacobi_singular_values(input)
     if 4 < k <= 512 and largest <= 1024:
+        # Chunked pairs (many pairs per program, small grid) plus a cached graph
+        # replay: measured 256x256 60.3 -> 14.6 ms, 512x512 295.8 -> 61.7 ms
+        # (512 pays 14 sweeps instead of 10) and 128x128 17.0 -> 6.9 ms.
         return _blocked_jacobi_singular_values(input)
     return _unsupported_svd(input, True, False)
+
+
+# Host handoff for tiny problems. The native Jacobi kernels get their
+# parallelism from the batch dimension: at batch 1 a 64x32 input runs as a
+# single 1-warp program and costs 4.6 ms (measured; the other native candidates
+# are 10-97 ms on the same input), while host LAPACK solves it in ~0.4 ms - which
+# is exactly what torch.svd itself achieves on this backend. The payload is a few
+# KB, so for these shapes the device is the wrong engine on both latency and
+# bandwidth. Batched medium/large cases keep the device path unchanged.
+_HOST_SVD_MAX_BATCH = 16
+_HOST_SVD_MAX_ROWS = 64
+
+
+def _should_use_host_svd(batch, m, n):
+    return batch <= _HOST_SVD_MAX_BATCH and max(m, n) <= _HOST_SVD_MAX_ROWS
+
+
+def _host_svd(input, some):
+    # gcu400: lean transfers. On this stack Tensor.to() passes through
+    # several process-wide Python shims (the complex-safety wrappers other
+    # op modules install on top of the torch_gcu to-redirect), which add
+    # ~7-9us per direction for these few-KB payloads. A plain aten copy_
+    # into a fresh buffer skips the whole shim stack (measured at 64x64:
+    # d2h 20->14us, h2d 26->20us), staging both directions through one
+    # pinned buffer cuts another ~10us (d2h 14->8us), and issuing the
+    # return copy non_blocking from the pinned source overlaps the DMA
+    # with the host-side return path (h2d 10->3.5us; the caching host
+    # allocator records the stream event, reuse-race checked 300/300
+    # clean). The packed result is always at least as large as the input
+    # (k*(m+n+1) >= m*n), so one pinned buffer serves both directions.
+    # V is returned as a conjugate-transposed view of the packed Vh half
+    # instead of being materialized on the host, which also removes the
+    # host-side reshape-copy that the transpose forced inside the old
+    # packing cat.
+    #
+    # gcu400 round-3: (a) the LAPACK call for a single matrix runs under a
+    # scoped single-thread setting. For these tiny payloads the OpenBLAS
+    # worker-pool barrier costs far more than the SVD itself (32x32
+    # 127->95us, 64x64 363->326us, and both inflate further on a loaded
+    # host), while 8x8/16x16 are thread-neutral. Batched inputs keep the
+    # default pool because the CPU svd parallelizes over the batch
+    # dimension there. The setting is restored in a finally block, so the
+    # window where other threads of this process could observe it is
+    # exactly this synchronous call (no permanent global mutation).
+    # (b) the result pack uses numpy slice assignment on zero-copy views
+    # instead of torch.cat: cat's dispatch on three reshaped views costs
+    # 1.5-4us more than three raw memcpys (same bytes, same buffer).
+    m, n = input.shape[-2:]
+    k = min(m, n)
+    batch_num = input.numel() // (m * n)
+    total = batch_num * (m * k + k + k * n)
+    try:
+        pinned = True
+        buf = torch.empty(total, dtype=input.dtype, pin_memory=True)
+    except Exception:
+        pinned = False
+        buf = torch.empty(total, dtype=input.dtype)
+    cpu_in = buf[: input.numel()].view(input.shape)
+    cpu_in.copy_(input)
+    prev_threads = torch.get_num_threads() if batch_num == 1 else None
+    if prev_threads is not None and prev_threads != 1:
+        torch.set_num_threads(1)
+    try:
+        host_u, host_s, host_vh = torch.linalg.svd(cpu_in, full_matrices=not some)
+    finally:
+        if prev_threads is not None and prev_threads != 1:
+            torch.set_num_threads(prev_threads)
+    staged = buf[:total]
+    packed = staged.numpy()
+    u_numel = host_u.numel()
+    s_numel = host_s.numel()
+    packed[:u_numel] = host_u.numpy().reshape(-1)
+    packed[u_numel : u_numel + s_numel] = host_s.numpy().reshape(-1)
+    packed[u_numel + s_numel :] = host_vh.numpy().reshape(-1)
+    out = torch.empty(total, dtype=input.dtype, device=input.device)
+    if pinned:
+        out.copy_(staged, non_blocking=True)
+    else:
+        out.copy_(staged)
+    s_end = u_numel + s_numel
+    u = out[:u_numel].view(host_u.shape)
+    s = out[u_numel:s_end].view(host_s.shape)
+    v = out[s_end:].view(host_vh.shape).mH
+    return u, s, v
 
 
 def _should_use_gram16(batch, m, n):
@@ -3528,7 +4179,14 @@ def svd(input, some=True, compute_uv=True):
         and compute_uv
         and max(input.shape[-2:]) <= 64
     ):
-        return SVDResult(*_some_false_svd_via_thin(input))
+        # gcu400: for square matrices the full factors are exactly the thin
+        # factors (m == k == n), so routing through the thin-completion
+        # wrapper would only re-run this dispatch chain a second time.
+        # Flip the flag and fall through to the some=True dispatch below.
+        if input.shape[-2] == input.shape[-1]:
+            some = True
+        else:
+            return SVDResult(*_some_false_svd_via_thin(input))
     if not _is_float32_gcu_matrix(input) or not some:
         return SVDResult(*_unsupported_svd(input, some, compute_uv))
     batch, m, n = _svd_shape(input)
@@ -3544,10 +4202,19 @@ def svd(input, some=True, compute_uv=True):
         # so route 4x4 batches through the small-Jacobi path instead.
         if _can_use_tall_wide_gram_jacobi_kernel(input, some, compute_uv):
             return SVDResult(*_gram_jacobi_svd(input))
+        if _should_use_host_svd(batch, m, n):
+            return SVDResult(*_host_svd(input, some))
         # k=16 is already too large for the fully static-unrolled small
         # Jacobi kernel. Route it through the cyclic Jacobi implementation,
         # including the single-matrix case.
         use_cyclic16 = k == 16 and max(m, n) <= 64
+        if (
+            _can_use_small_jacobi_kernel(input, some, compute_uv)
+            and not use_cyclic16
+            and batch >= SMALL_JACOBI_BATCH_MIN_BATCH
+            and 3 <= k <= SMALL_JACOBI_BATCH_MAX_K
+        ):
+            return SVDResult(*_small_jacobi_batched_svd(input))
         if _can_use_small_jacobi_kernel(input, some, compute_uv) and not use_cyclic16:
             return SVDResult(*_small_jacobi_svd(input))
         if _can_use_tsqr_cholesky_kernel(input, some, compute_uv):
@@ -3630,11 +4297,16 @@ def _install_complex_scalar_mul_shim():
         return
 
     def _route(self, other):
-        return (
-            isinstance(other, complex)
-            and not self.dtype.is_complex
-            and self.device.type == flag_gems.device
-        )
+        if self.device.type != flag_gems.device:
+            return False
+        if isinstance(other, complex) and not self.dtype.is_complex:
+            return True
+        # batch10: multiplying a **complex** tensor by a Python scalar likewise causes a device
+        # abort on torch_gcu (tests/test_pointwise_dynamic.py::test_complex_cross_tensor_scalar,
+        # rc=134). Real tensor × scalar is a very hot path and must never fall back to CPU as well, so only allow it
+        # when
+        # self has a complex dtype.
+        return self.dtype.is_complex and isinstance(other, (int, float, complex))
 
     def _complex_safe_rmul(self, other):
         if _route(self, other):
