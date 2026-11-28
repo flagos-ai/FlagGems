@@ -944,7 +944,16 @@ _FULL_CONFIG = (
     ("_to_sparse_semi_structured", to_sparse_semi_structured),
     ("_transform_bias_rescale_qkv", _transform_bias_rescale_qkv),
     ("_transformer_encoder_layer_fwd", _transformer_encoder_layer_fwd),
-    ("_trilinear", _trilinear),
+    (
+        "_trilinear",
+        _trilinear,
+        None,
+        (
+            ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),)
+            if vendor_name == "nvidia"
+            else ()
+        ),
+    ),
     ("_trilinear.out", _trilinear_out),
     ("_unique2", _unique2),
     ("_unpack_dual", _unpack_dual, None, (AUTOGRAD_DISPATCH_KEY,)),

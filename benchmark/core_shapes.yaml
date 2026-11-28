@@ -1288,6 +1288,15 @@ pixel_unshuffle:
     - [4, 16, 64, 48, 4]
   shape_desc: "N, C, H, W, downscale_factor"
 
+trilinear_backward:
+  shapes:
+    - [2, 32]
+    - [32, 32]
+    - [256, 256]
+    - [1024, 1024]
+    - [64, 64, 256]
+  shape_desc: "M, N, K"
+
 repeat:
   shapes:
     - [536870912]  # 2^29, repeat [2] -> 2^30 < 2^31
