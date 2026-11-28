@@ -23,6 +23,18 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# --- TUNING PARAMS START ---
+# Single-CTA path covers short diagonals; longer diagonals are split over several
+# CTAs whose partial sums are folded by a second, tiny launch.
+TRACE_BLOCK = 1024
+TRACE_WARPS = 4
+TRACE_SPLIT_MIN_DIAG = 2048
+TRACE_SPLIT_BLOCK = 1024
+TRACE_SPLIT_WARPS = 4
+TRACE_REDUCE_BLOCK = 1024
+TRACE_REDUCE_WARPS = 1
+# --- TUNING PARAMS END ---
+
 
 # ---------------------------------------------------------------------------
 # torch.trace non-floating-on-gcu shim (torch_gcu P21 defect workaround)
@@ -133,8 +145,53 @@ def trace_kernel(
     tl.store(out_ptr, final_sum.to(out_ptr.type.element_ty))
 
 
+@libentry()
+@triton.jit
+def trace_partial_kernel(
+    inp_ptr,
+    part_ptr,
+    num_diag,
+    stride0,
+    stride1,
+    BLOCK_SIZE: tl.constexpr,
+):
+    # One program reduces one contiguous block of the diagonal; the diagonal
+    # stride is huge for tall/wide inputs, so spreading blocks over CTAs is what
+    # hides the gather latency.
+    inp_dtype = inp_ptr.type.element_ty
+    if inp_dtype.is_int():
+        acc_dtype = tl.int64
+        other_val = 0
+    elif inp_dtype == tl.float64:
+        acc_dtype = tl.float64
+        other_val = 0.0
+    else:
+        acc_dtype = tl.float32
+        other_val = 0.0
+
+    diag_stride = stride0 + stride1
+    indices = tl.program_id(0) * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    mask = indices < num_diag
+    vals = tl.load(inp_ptr + indices * diag_stride, mask=mask, other=other_val)
+    tl.store(part_ptr + tl.program_id(0), tl.sum(vals.to(acc_dtype), axis=0))
+
+
+@libentry()
+@triton.jit
+def trace_reduce_kernel(
+    part_ptr,
+    out_ptr,
+    n_parts,
+    BLOCK_SIZE: tl.constexpr,
+):
+    acc_dtype = part_ptr.type.element_ty
+    indices = tl.arange(0, BLOCK_SIZE)
+    vals = tl.load(part_ptr + indices, mask=indices < n_parts, other=0)
+    tl.store(out_ptr, tl.sum(vals.to(acc_dtype), axis=0).to(out_ptr.type.element_ty))
+
+
 def trace(self):
-    logger.debug("GEMS_ENFLAME_GCU400 TRACE")
+    logger.debug("GEMS_ENFLAME TRACE")
 
     if self.ndim != 2:
         raise RuntimeError(
@@ -156,8 +213,41 @@ def trace(self):
         output_dtype = torch.int64
     out = torch.empty((), dtype=output_dtype, device=self.device)
 
+    # The kernel addresses diagonal elements with 32-bit element offsets, so a
+    # diagonal spanning more than 2^31 bytes cannot be reached by it (the offsets
+    # wrap).  Reduce the diagonal view with aten instead: its kernels handle the
+    # 64-bit addressing and only touch num_diag elements.
+    if (num_diag - 1) * (stride0 + stride1) * self.element_size() > 2**31 - 1:
+        return torch.sum(self.diagonal(), dtype=output_dtype)
+
+    if num_diag > TRACE_SPLIT_MIN_DIAG:
+        if self.dtype.is_floating_point:
+            acc_dtype = torch.float64 if self.dtype == torch.float64 else torch.float32
+        else:
+            acc_dtype = torch.int64
+        n_parts = triton.cdiv(num_diag, TRACE_SPLIT_BLOCK)
+        partials = torch.empty(n_parts, dtype=acc_dtype, device=self.device)
+        with torch_device_fn.device(self.device):
+            trace_partial_kernel[(n_parts,)](
+                self,
+                partials,
+                num_diag,
+                stride0,
+                stride1,
+                BLOCK_SIZE=TRACE_SPLIT_BLOCK,
+                num_warps=TRACE_SPLIT_WARPS,
+            )
+            trace_reduce_kernel[(1,)](
+                partials,
+                out,
+                n_parts,
+                BLOCK_SIZE=max(TRACE_REDUCE_BLOCK, triton.next_power_of_2(n_parts)),
+                num_warps=TRACE_REDUCE_WARPS,
+            )
+        return out
+
     grid = (1,)
-    BLOCK_SIZE = 1024
+    BLOCK_SIZE = TRACE_BLOCK
     if num_diag < BLOCK_SIZE:
         BLOCK_SIZE = triton.next_power_of_2(num_diag)
         if BLOCK_SIZE == 0:
@@ -171,6 +261,7 @@ def trace(self):
             stride0,
             stride1,
             BLOCK_SIZE=BLOCK_SIZE,
+            num_warps=TRACE_WARPS,
         )
 
     return out

@@ -27,6 +27,9 @@ logger = logging.getLogger(__name__)
 NUM_SIPS = 24
 BLOCK_SIZE = 4096
 MAX_POLYNOMIAL_ORDER = 5
+# Order tensors at or below this size are validated with a host copy; larger
+# ones use a device reduction so the guard does not stream MBs to the host.
+_HOST_GUARD_LIMIT = 1 << 16
 
 # Small-input tile ladder. A fixed BLOCK=8192 leaves tensors up to 8192
 # elements with only one CTA, under-using the device; finer tiles raise
@@ -149,14 +152,34 @@ def special_chebyshev_polynomial_u(x, n):
     assert x.dtype == torch.float32, f"unsupported dtype {x.dtype}"
 
     n_is_scalar = not isinstance(n, torch.Tensor)
+    x_contiguous = x.contiguous()
+    n_total = x_contiguous.numel()
+    if x.device.type != flag_gems.device:
+        raise ValueError(f"Input must be a {flag_gems.device} tensor")
+
+    n_flat = None
     if n_is_scalar:
         min_order = max_order = int(n)
     else:
-        # Run the range guard on a CPU copy to avoid dispatching back into the
-        # gems reduction kernels while use_gems() is active.
-        n_reference = n.detach().to("cpu", dtype=torch.int32)
-        min_order = int(n_reference.amin().item())
-        max_order = int(n_reference.amax().item())
+        # Materialize the broadcast orders once; a zero-stride expanded tensor
+        # miscompiles on this toolchain, and a host copy of a multi-MB order
+        # tensor used to cost more than the kernel itself.
+        n_i32 = n.to(device=x.device, dtype=torch.int32)
+        if n_i32.shape != x_contiguous.shape:
+            n_i32 = n_i32.expand(x_contiguous.shape)
+        n_flat = (
+            n_i32.reshape(-1)
+            if n_i32.is_contiguous()
+            else n_i32.contiguous().reshape(-1)
+        )
+        if n_flat.numel() <= _HOST_GUARD_LIMIT:
+            # tiny order tensors: one host copy is cheaper than two reductions
+            n_host = n_flat.detach().to("cpu")
+            min_order = int(n_host.amin())
+            max_order = int(n_host.amax())
+        else:
+            min_order = int(n_flat.amin().item())
+            max_order = int(n_flat.amax().item())
 
     if max_order > MAX_POLYNOMIAL_ORDER or min_order < 0:
         raise ValueError(
@@ -164,13 +187,9 @@ def special_chebyshev_polynomial_u(x, n):
             f"got values in [{min_order}, {max_order}]"
         )
 
-    x_contiguous = x.contiguous()
     out = torch.empty_like(x_contiguous)
-    n_total = x_contiguous.numel()
     if n_total == 0:
         return out
-    if x.device.type != flag_gems.device:
-        raise ValueError(f"Input must be a {flag_gems.device} tensor")
 
     block = CHE_DEFAULT_BLOCK
     for limit, tile in CHE_TILE_LEVELS:
@@ -189,14 +208,6 @@ def special_chebyshev_polynomial_u(x, n):
                 num_warps=4,
             )
         else:
-            # Materialize broadcast orders contiguously: a zero-stride expanded
-            # tensor miscompiles on this toolchain.
-            n_flat = (
-                n.to(device=x.device, dtype=torch.int32)
-                .expand(x_contiguous.shape)
-                .reshape(-1)
-                .contiguous()
-            )
             _chebyshev_u_tensor_kernel[(grid_size,)](
                 x_contiguous,
                 n_flat,

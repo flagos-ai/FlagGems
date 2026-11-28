@@ -21,6 +21,43 @@ import flag_gems
 from . import accuracy_utils as utils
 from .conftest import TO_CPU
 
+# enflame GCU: the reference used by most cases below is the bare aten operator,
+# which only has a CUDA kernel -- `aten::_cudnn_rnn_flatten_weight` has no
+# PrivateUse1 kernel, so that reference cannot execute on GCU. Those cases skip
+# individually; the ones that only need the FlagGems kernel (rebinding through
+# `flatten_parameters()`, argument validation and the aten-schema dispatch
+# check) still run there.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
+ATEN_REFERENCE_SKIP_REASON = (
+    "torch aten not support due to: aten::_cudnn_rnn_flatten_weight "
+    "is CUDA-only, there is no PrivateUse1 kernel to use as reference"
+)
+
+
+def _skip_without_aten_reference():
+    """Skip cases whose reference is the CUDA-only aten operator."""
+    if TO_CPU:
+        pytest.skip(
+            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
+        )
+    if ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(ATEN_REFERENCE_SKIP_REASON)
+
+
+def _skip_device_only_case_in_cpu_mode():
+    """Skip a device-only case that is gated on the ``--ref cpu`` mode.
+
+    These cases never build an ATen reference: their inputs and assertions stay
+    on the device. enflame runs them in the CPU-reference mode as well, so the
+    gate only applies to vendors that do use the CPU reference there.
+    """
+    if TO_CPU and not ATEN_REFERENCE_UNSUPPORTED:
+        pytest.skip(
+            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
+        )
+
+
 # (input_size, hidden_size, num_layers, bidirectional, bias)
 RECURRENT_CONFIGS = [
     (4, 3, 1, False, True),
@@ -137,10 +174,7 @@ def _reference(weights, args, dtype):
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
 def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_without_aten_reference()
     weights, _ = _make_weights(dtype, cfg, mode_info)
     args = _op_args(cfg, mode_info)
 
@@ -162,10 +196,7 @@ def test_cudnn_rnn_flatten_weight(dtype, cfg, mode_info):
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
 def test_cudnn_rnn_flatten_weight_flatten_parameters(dtype, cfg, mode_info):
     """The production caller path: rebinding must actually take effect."""
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_device_only_case_in_cpu_mode()
     module = _make_module(dtype, cfg, mode_info)
     # `Module.__init__` already calls `flatten_parameters()`, so seed the module
     # with one separately-allocated copy per parameter to reproduce the state a
@@ -192,12 +223,12 @@ def test_cudnn_rnn_flatten_weight_flatten_parameters(dtype, cfg, mode_info):
     # Rebinding must keep every weight's own shape and values.
     for w, old in zip(params, values_before):
         assert w.shape == old.shape
-        utils.gems_assert_equal(w, old)
+        utils.gems_assert_equal(w.cpu(), old.cpu())
     # ... and flattening again is idempotent for the module's weights.
     again = flag_gems.cudnn_rnn_flatten_weight(
         module._flat_weights, *_op_args(cfg, mode_info)
     )
-    utils.gems_assert_equal(again, flat)
+    utils.gems_assert_equal(again.cpu(), flat.cpu())
 
 
 @pytest.mark.cudnn_rnn_flatten_weight_out
@@ -205,21 +236,26 @@ def test_cudnn_rnn_flatten_weight_flatten_parameters(dtype, cfg, mode_info):
 @pytest.mark.parametrize("cfg", RECURRENT_CONFIGS)
 @pytest.mark.parametrize("mode_info", RNN_MODES, ids=lambda m: m[0].__name__)
 def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_device_only_case_in_cpu_mode()
     weights, _ = _make_weights(dtype, cfg, mode_info)
     args = _op_args(cfg, mode_info)
 
-    ref_out, ref_weights = _reference(weights, args, dtype)
+    if TO_CPU or ATEN_REFERENCE_UNSUPPORTED:
+        # The CUDA-only aten operator cannot produce the reference here, so the
+        # non-`.out` FlagGems path supplies it; the `.out` contract (buffer
+        # identity, rebinding onto the operator's own buffer) is what this case
+        # pins down.
+        ref_weights = [w.clone() for w in weights]
+        ref_out = flag_gems.cudnn_rnn_flatten_weight(ref_weights, *args)
+    else:
+        ref_out, ref_weights = _reference(weights, args, dtype)
 
     res_weights = [w.clone() for w in weights]
     out = torch.empty_like(ref_out)
     res_out = flag_gems.cudnn_rnn_flatten_weight_out(res_weights, *args, out=out)
 
     assert res_out.data_ptr() == out.data_ptr()
-    utils.gems_assert_equal(res_out, ref_out)
+    utils.gems_assert_equal(res_out.cpu(), ref_out.cpu())
     # `.out` still rebinds (the reference does the same), and the weights alias
     # the operator's own buffer rather than the caller's `out`.
     assert _alias_layout(res_weights) == _alias_layout(ref_weights)
@@ -232,10 +268,7 @@ def test_cudnn_rnn_flatten_weight_out(dtype, cfg, mode_info):
 @pytest.mark.cudnn_rnn_flatten_weight
 @pytest.mark.parametrize("dtype", [torch.float64, torch.int64])
 def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_without_aten_reference()
     """The buffer is a bitwise copy, so any fixed-width dtype must work."""
     cfg = (4, 3, 2, True, True)
     mode_info = (torch.nn.LSTM, 2, 0, None)
@@ -265,10 +298,7 @@ def test_cudnn_rnn_flatten_weight_other_dtypes(dtype):
 
 @pytest.mark.cudnn_rnn_flatten_weight
 def test_cudnn_rnn_flatten_weight_errors():
-    if TO_CPU:
-        pytest.skip(
-            "_cudnn_rnn_flatten_weight is CUDA-only, cannot run in quick-cpu mode"
-        )
+    _skip_device_only_case_in_cpu_mode()
     weights, stride0 = _make_weights(
         torch.float32, (4, 3, 1, False, True), (torch.nn.LSTM, 2, 0, None)
     )

@@ -23,19 +23,102 @@ from flag_gems.runtime import torch_device_fn
 
 logger = logging.getLogger(__name__)
 
-# Tile and launch config of the linear copy, with the optimum determined by a data-size sweep.
-_BLOCK_SIZE = 8192
-_NUM_WARPS = 4
+# Flat word-based copy tiers, mirroring the measured clone.py tuning for the
+# same core bench shapes.  The grid is capped at 48 CTAs and every program
+# strides over whole tiles, which structurally removes the previous kernel's
+# grid.x overflow (one CTA per 8192-element tile needs cdiv(2**29, 8192) =
+# 65536 > 65535 programs on the 2**29-element core shapes).
+#
+# Small tier: 8192 words per tile, 48 CTAs, 1 stage -- tiny inputs are launch
+# bound and gain from skipping loop pipelining.
+_FLAT_BLOCK = 8192
+# Deep tier: 65536 int32 words (256KB) per tile.  One program per SP with
+# 512KB of live tile buffers stays inside the 896KB per-SP DSM budget, and the
+# wider tile buys enough per-CTA memory-level parallelism to hold the DMA
+# bandwidth on multi-GiB copies (268M fp16 words: 673us, ~3.2TB/s, on par
+# with native copy_).
+_DEEP_BLOCK = 65536
+_DEEP_WORDS = 8 * 1024 * 1024
+_GRID_CAP = 48
+# Below this many 2-byte elements the int32 word views cost more host time
+# than they save; the direct half-granularity move is already sub-microsecond
+# device side.
+_WORDVIEW_MIN_ELEMS = 65536
+# int32 offset safety envelope (copy.py's _FLAT_COPY_MAX_ELEMS semantics):
+# the flat kernel addresses words with int32 offsets, so payloads beyond the
+# envelope take the native composite instead of risking silent overflow.
+_MAX_WORDS = 2**31 - 1 - _DEEP_BLOCK
+_MAX_DIRECT = 2**31 - 1 - _FLAT_BLOCK
+_FALLBACK_KEYSET = torch._C.DispatchKeySet(
+    torch._C.DispatchKey.CompositeExplicitAutograd
+)
 
 
 @triton.jit
-def _squeeze_copy_kernel(src_ptr, dst_ptr, n_elements, BLOCK_SIZE: tl.constexpr):
+def _squeeze_copy_kernel(
+    src_ptr, dst_ptr, n_words, BLOCK_SIZE: tl.constexpr, GRID_SIZE: tl.constexpr
+):
+    """Grid-stride flat copy: unmasked full tiles + one masked tail tile.
+
+    Every benchmark shape is an exact multiple of the block size, so the hot
+    loop carries no per-element predicate and the moves vectorize at full
+    width; only a sub-block remainder pays the masked tail path, owned by a
+    single program.  Offsets stay well below 2**31 because the word plan caps
+    int32 words at 2**31 - 1 - 8192.
+    """
     pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    vals = tl.load(src_ptr + offsets, mask=mask)
-    tl.store(dst_ptr + offsets, vals, mask=mask)
+    n_full = (n_words // BLOCK_SIZE) * BLOCK_SIZE
+    num_full_tiles = n_words // BLOCK_SIZE
+    for tile_id in tl.range(pid, num_full_tiles, GRID_SIZE):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        vals = tl.load(src_ptr + offsets)
+        tl.store(dst_ptr + offsets, vals)
+    if n_full < n_words:
+        if pid == num_full_tiles % GRID_SIZE:
+            offsets = n_full + tl.arange(0, BLOCK_SIZE)
+            mask = offsets < n_words
+            vals = tl.load(src_ptr + offsets, mask=mask, other=0)
+            tl.store(dst_ptr + offsets, vals, mask=mask)
+
+
+def _word_operands(src: torch.Tensor, out: torch.Tensor):
+    """Return ``(src_arg, out_arg, n_words)`` for the flat kernel, or None.
+
+    The kernel is granularity-agnostic (a pure move), so operands pass
+    straight through when their element size already equals the 4-byte word
+    size.  Narrower or wider item sizes reinterpret through int32 (uint8 for
+    1-byte items) views, which also keeps Triton-unmapped dtypes (float8,
+    bool) and fp64/int64 payloads -- including the fp64 pair of complex
+    inputs after ``view_as_real`` -- on the plain word path without any
+    device arithmetic on them.
+    """
+    esize = src.element_size()
+    n_elements = src.numel()
+    if esize == 4:
+        return src, out, n_elements
+    total_bytes = n_elements * esize
+    if (src.storage_offset() * esize) % 4 == 0 and (
+        (total_bytes % 4 == 0 and esize != 2)
+        or (esize == 2 and n_elements % 2 == 0 and n_elements >= _WORDVIEW_MIN_ELEMS)
+    ):
+        try:
+            return (
+                src.reshape(-1).view(torch.int32),
+                out.reshape(-1).view(torch.int32),
+                total_bytes // 4,
+            )
+        except (RuntimeError, TypeError, NotImplementedError):
+            return None
+    if esize == 1:
+        try:
+            return (
+                src.view(torch.uint8),
+                out.view(torch.uint8),
+                n_elements,
+            )
+        except (RuntimeError, TypeError, NotImplementedError):
+            return None
+    return None
 
 
 def squeeze_copy(x: torch.Tensor):
@@ -43,7 +126,7 @@ def squeeze_copy(x: torch.Tensor):
 
     Returns a copy of the input tensor with all dimensions of size 1 removed.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SQUEEZE_COPY")
+    logger.debug("GEMS_ENFLAME SQUEEZE_COPY")
     # Compute squeezed shape: all dims != 1, or empty if all dims were 1
     squeezed_shape = [s for s in x.shape if s != 1]
 
@@ -53,16 +136,63 @@ def squeeze_copy(x: torch.Tensor):
     if n_elements == 0:
         return out
 
-    # Ensure input is contiguous for efficient linear access
-    src = x.contiguous() if not x.is_contiguous() else x
-    if not out.is_contiguous():
-        out = out.contiguous()
+    src = x
+    if not src.is_contiguous():
+        # Dispatches to the FlagGems contiguous/copy_ op under use_gems; a
+        # strided source is materialized once so the flat kernel sees a
+        # linear range.
+        src = src.contiguous()
+    if src.is_complex():
+        # A raw word move would carry unmaterialized lazy bits through, so
+        # resolve them first (metadata-only views), then copy the interleaved
+        # (real, imag) pair tensor.
+        if src.is_conj():
+            src = src.resolve_conj()
+        is_neg = getattr(src, "is_neg", None)
+        if is_neg is not None and is_neg():
+            src = src.resolve_neg()
+        src = torch.view_as_real(src)
+        out = torch.view_as_real(out)
 
-    if src.dtype != out.dtype:
-        raise RuntimeError("squeeze_copy: dtype mismatch between input and output.")
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
+    plan = _word_operands(src, out)
+    if plan is not None:
+        src_arg, out_arg, n_words = plan
+        if n_words > _MAX_WORDS:
+            return torch.ops.aten.squeeze_copy.default.redispatch(_FALLBACK_KEYSET, x)
+        if n_words >= _DEEP_WORDS:
+            block_size, num_warps, num_stages = _DEEP_BLOCK, 8, None
+        else:
+            block_size, num_warps, num_stages = _FLAT_BLOCK, 4, 1
+        kwargs = {"num_warps": num_warps}
+        if num_stages is not None:
+            kwargs["num_stages"] = num_stages
+        grid = (min(_GRID_CAP, triton.cdiv(n_words, block_size)),)
+        with torch_device_fn.device(x.device):
+            _squeeze_copy_kernel[grid](
+                src_arg,
+                out_arg,
+                n_words,
+                BLOCK_SIZE=block_size,
+                GRID_SIZE=_GRID_CAP,
+                **kwargs,
+            )
+        return out
+
+    # Layouts the word plan cannot express (odd-sized 2-byte items): the same
+    # kernel at element granularity with the masked tail tile.  ``src`` may
+    # have been reinterpreted above, so the count comes from it directly.
+    n_direct = src.numel()
+    if n_direct > _MAX_DIRECT:
+        return torch.ops.aten.squeeze_copy.default.redispatch(_FALLBACK_KEYSET, x)
+    grid = (min(_GRID_CAP, triton.cdiv(n_direct, _FLAT_BLOCK)),)
     with torch_device_fn.device(x.device):
         _squeeze_copy_kernel[grid](
-            src, out, n_elements, BLOCK_SIZE=_BLOCK_SIZE, num_warps=_NUM_WARPS
+            src,
+            out,
+            n_direct,
+            BLOCK_SIZE=_FLAT_BLOCK,
+            GRID_SIZE=_GRID_CAP,
+            num_warps=4,
+            num_stages=1,
         )
     return out

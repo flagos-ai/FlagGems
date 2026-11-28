@@ -273,7 +273,7 @@ def _batch_norm_impl_index_backward(
     via ``rsqrt(running_var + eps)``; the input gradient then degenerates to the
     plain ``grad_output * weight * inv_std`` form.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _BATCH_NORM_IMPL_INDEX_BACKWARD")
+    logger.debug("GEMS_ENFLAME _BATCH_NORM_IMPL_INDEX_BACKWARD")
 
     input_3d = make_3d_for_bn(input)
     grad_output_3d = make_3d_for_bn(grad_output)

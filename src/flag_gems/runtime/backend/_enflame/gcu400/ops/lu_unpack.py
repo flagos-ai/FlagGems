@@ -5,6 +5,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 @libentry()
 @triton.jit
-def lu_unpack_p_kernel_small(
+def lu_unpack_p_kernel(
     pivots_ptr,
     p_ptr,
     m,
@@ -25,21 +26,32 @@ def lu_unpack_p_kernel_small(
     BLOCK_M: tl.constexpr,
 ):
     """
-    Vectorized P kernel for small/medium matrices (m <= BLOCK_M).
-    One program per batch element processes the entire permutation at once.
-    Grid: (batch_size,)
+    Vectorized pivot-replay kernel, tiled over rows.
+    One program per (batch element, row tile): lane j replays the full pivot
+    sequence and tracks the final position of the row that started at j.
 
-    Strategy: maintain perm[0..m-1] as a vector, apply all k swaps vectorized,
-    then scatter 1.0 to P[i, perm[i]] for each i.
+    A transposition on positions (i, pivot) only rewrites lanes whose current
+    value equals i or pivot, so lanes are independent and a row tile stays
+    correct even when the swap partner lives outside the tile.  Tiling keeps
+    the per-program vector width at BLOCK_M while the grid gains m / BLOCK_M
+    programs of parallelism, replacing the legacy per-row kernel whose
+    k-step serial chain made large-m unpacks latency-bound on GCU400
+    (measured 79 ms for m = k = 4096; the replay itself is ~k * 0.25 us
+    because every step depends on the previous one).
+
+    Grid: (batch_size * cdiv(m, BLOCK_M),)
     """
-    batch_id = tl.program_id(0)
+    pid = tl.program_id(0)
+    num_tiles = (m + BLOCK_M - 1) // BLOCK_M
+    batch_id = pid // num_tiles
+    tile_id = pid % num_tiles
 
     pivots_base = batch_id * pivots_stride_b
     p_base = batch_id * p_stride_b
 
-    # Initialize perm = [0, 1, 2, ..., m-1]
-    row_ids = tl.arange(0, BLOCK_M)
-    perm = row_ids  # perm[i] tracks where row i maps to
+    # perm[j] tracks where the row that started at position j ends up
+    row_ids = tile_id * BLOCK_M + tl.arange(0, BLOCK_M)
+    perm = row_ids
     mask = row_ids < m
 
     # Apply all pivot swaps vectorized
@@ -60,51 +72,6 @@ def lu_unpack_p_kernel_small(
     # P is pre-zeroed, just scatter the 1s
     offsets = p_base + row_ids * p_stride_m + perm * p_stride_n
     tl.store(p_ptr + offsets, tl.full([BLOCK_M], 1.0, dtype=tl.float32), mask=mask)
-
-
-@libentry()
-@triton.jit
-def lu_unpack_p_kernel_large(
-    pivots_ptr,
-    p_ptr,
-    m,
-    k,
-    pivots_stride_b,
-    pivots_stride_k,
-    p_stride_b,
-    p_stride_m,
-    p_stride_n,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """
-    P kernel for large matrices (m > 4096).
-    Each program handles one row, computes its final permutation position,
-    then writes a single 1.0 at P[row, final_pos].
-    Grid: (batch_size * m,)
-    """
-    pid = tl.program_id(0)
-    batch_id = pid // m
-    row_id = pid % m
-
-    pivots_base = batch_id * pivots_stride_b
-    p_base = batch_id * p_stride_b
-
-    # Track where this row ends up after applying all pivot swaps
-    current_pos = row_id
-    for i in range(k):
-        pivot_val = tl.load(pivots_ptr + pivots_base + i * pivots_stride_k)
-        pivot_idx = pivot_val - 1
-        current_pos = tl.where(
-            current_pos == i,
-            pivot_idx,
-            tl.where(current_pos == pivot_idx, i, current_pos),
-        )
-
-    # P is pre-zeroed; only write the single 1.0
-    tl.store(
-        p_ptr + p_base + row_id * p_stride_m + current_pos * p_stride_n,
-        1.0,
-    )
 
 
 @libentry()
@@ -207,7 +174,47 @@ def lu_unpack_u_kernel(
         )
 
 
+class LuUnpackFunction(torch.autograd.Function):
+    """Autograd wrapper around :func:`lu_unpack`.
+
+    The forward keeps the existing unpack kernels; the backward repacks
+    ``grad_L`` / ``grad_U`` with the fused :func:`lu_unpack_backward` kernel
+    instead of the ``tril`` / ``triu`` / ``add`` / ``cat`` composite that
+    ``torch/csrc/autograd/FunctionsManual.cpp`` builds.
+
+    ``P`` and ``LU_pivots`` are non-differentiable, matching the ATen schema
+    (``output_differentiability: [False, True, True]``), so no gradient is
+    fabricated for them. Only ``L`` and ``U`` receive one, and either may be
+    ``None`` when that output was unused.
+    """
+
+    @staticmethod
+    def forward(ctx, LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
+        ctx.lu_shape = (LU_data.shape[-2], LU_data.shape[-1])
+        P, L, U = lu_unpack_forward(LU_data, LU_pivots, unpack_data, unpack_pivots)
+        ctx.mark_non_differentiable(P)
+        return P, L, U
+
+    @staticmethod
+    def backward(ctx, grad_P, grad_L, grad_U):
+        m, n = ctx.lu_shape
+        return lu_unpack_backward(grad_L, grad_U, m, n), None, None, None
+
+
 def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
+    """Device-dispatch entry for ``aten::lu_unpack`` (differentiable).
+
+    The unpack kernels are launched unchanged; when a graph is being recorded
+    the call is routed through :class:`LuUnpackFunction` so ``torch.lu_unpack``
+    gets the fused backward. ``autograd.Function.forward`` runs with grad mode
+    disabled, so the recursive entry resolves to the raw kernels.
+    """
+    if torch.is_grad_enabled() and LU_data.requires_grad:
+        return LuUnpackFunction.apply(LU_data, LU_pivots, unpack_data, unpack_pivots)
+    return lu_unpack_forward(LU_data, LU_pivots, unpack_data, unpack_pivots)
+
+
+def lu_unpack_forward(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
     """
     Unpacks the LU decomposition into P, L, U matrices.
 
@@ -261,15 +268,16 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
         # P has shape (..., m, m), pre-initialized to zeros
         P = torch.zeros(*batch_dims, m, m, device=device, dtype=dtype)
 
-        # Hybrid strategy based on matrix size:
-        # - Small m (<=512): vectorized kernel processing entire perm in one program
-        #   (reduces total pivot loop iterations from m*k to k with SIMD width m)
-        # - Large m (>512): per-row kernel with single store (better parallelism)
-        if m <= 512:
-            # Vectorized kernel: one program per batch, processes all rows in parallel
-            BLOCK_M = triton.next_power_of_2(m)
-            grid = (batch_size,)
-            lu_unpack_p_kernel_small[grid](
+        # Single tiled vectorized kernel for every m: the per-program lane
+        # width is a power of two capped at 1024 (DSM-safe for the perm /
+        # where-temporary vectors), and rows beyond one tile are covered by
+        # additional programs instead of falling back to a serial per-row
+        # kernel whose k-step dependency chain dominated large-m latency.
+        BLOCK_M = min(triton.next_power_of_2(m), 1024)
+        num_tiles = (m + BLOCK_M - 1) // BLOCK_M
+        grid = (batch_size * num_tiles,)
+        if m > 0:
+            lu_unpack_p_kernel[grid](
                 LU_pivots,
                 P,
                 m,
@@ -280,22 +288,6 @@ def lu_unpack(LU_data, LU_pivots, unpack_data=True, unpack_pivots=True):
                 P.stride(-2),
                 P.stride(-1),
                 BLOCK_M,
-            )
-        else:
-            # Per-row kernel: each program tracks one row through pivots
-            BLOCK_SIZE = 1  # Each program writes single element
-            grid = (batch_size * m,)
-            lu_unpack_p_kernel_large[grid](
-                LU_pivots,
-                P,
-                m,
-                k,
-                LU_pivots.stride(-2) if len(pivots_shape) > 1 else 0,
-                LU_pivots.stride(-1) if len(pivots_shape) > 0 else 0,
-                P.stride(-3) if len(batch_dims) > 0 else 0,
-                P.stride(-2),
-                P.stride(-1),
-                BLOCK_SIZE,
             )
     else:
         # Return empty tensor
@@ -374,7 +366,7 @@ def lu_unpack_out(
     Returns:
         Tuple of (P, L, U)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LU_UNPACK_OUT")
+    logger.debug("GEMS_ENFLAME LU_UNPACK_OUT")
     P_result, L_result, U_result = lu_unpack(
         LU_data, LU_pivots, unpack_data, unpack_pivots
     )
@@ -395,3 +387,211 @@ def lu_unpack_out(
         U = U_result
 
     return (P, L, U)
+
+
+@libentry()
+@triton.jit
+def lu_unpack_grad_kernel(
+    grad_l_ptr,
+    grad_u_ptr,
+    grad_lu_ptr,
+    m,
+    n,
+    HAS_L: tl.constexpr,
+    HAS_U: tl.constexpr,
+    BLOCK_M: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    FOLD_M: tl.constexpr,
+):
+    """Repack ``grad_L`` / ``grad_U`` into the packed ``grad_LU`` layout.
+
+    Grid: ``(batch, cdiv(m, BLOCK_M), cdiv(n, BLOCK_N))``, or
+    ``(batch * cdiv(m, BLOCK_M), cdiv(n, BLOCK_N))`` when ``FOLD_M`` is set —
+    the launcher caps grid.y at 255 and a tall matrix (4096 rows at
+    BLOCK_M=8) needs 512 row blocks.  The three tensors are
+    contiguous, so offsets follow from ``m``, ``n`` and ``k = min(m, n)`` alone.
+
+    ``L``'s strict lower triangle and ``U``'s closed upper triangle have
+    disjoint supports inside the ``k x k`` square, so every ATen branch is one
+    masked pass over the ``(..., m, n)`` packed result:
+
+    * ``HAS_L and HAS_U``: strict lower from ``grad_L``, closed upper (diagonal
+      included) from ``grad_U``; rows ``>= k`` (only reachable when ``m > n``)
+      come from ``grad_L`` and columns ``>= k`` (only when ``m < n``) from
+      ``grad_U``;
+    * ``HAS_L`` only: ``tril(grad_L, -1)`` zero-padded to ``(..., m, n)``;
+    * ``HAS_U`` only: ``triu(grad_U)`` zero-padded to ``(..., m, n)``.
+
+    Each position is therefore at most one real value plus an exact ``0.0``, so
+    the repack is bit-exact for every supported dtype.
+    """
+    if FOLD_M:
+        num_m = tl.cdiv(m, BLOCK_M)
+        pid = tl.program_id(0)
+        batch_id = pid // num_m
+        pid_m = pid % num_m
+        pid_n = tl.program_id(1)
+    else:
+        batch_id = tl.program_id(0)
+        pid_m = tl.program_id(1)
+        pid_n = tl.program_id(2)
+
+    k = tl.minimum(m, n)
+    rows = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
+    cols = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
+    row_out = rows[:, None]
+    col_out = cols[None, :]
+    in_tile = (row_out < m) & (col_out < n)
+
+    # 64-bit batch bases: a packed gradient can exceed 2**31 elements, while the
+    # trailing-dimension offsets are the same either way.
+    batch = batch_id.to(tl.int64)
+    l_ptr = (
+        grad_l_ptr
+        + batch * tl.cast(m, tl.int64) * tl.cast(k, tl.int64)
+        + row_out * k
+        + col_out
+    )
+    u_ptr = (
+        grad_u_ptr
+        + batch * tl.cast(k, tl.int64) * tl.cast(n, tl.int64)
+        + row_out * n
+        + col_out
+    )
+
+    if HAS_L and HAS_U:
+        l_mask = in_tile & (
+            ((row_out < k) & (col_out < k) & (row_out > col_out)) | (row_out >= k)
+        )
+        u_mask = in_tile & (
+            ((row_out < k) & (col_out < k) & (row_out <= col_out)) | (col_out >= k)
+        )
+        value = tl.load(l_ptr, mask=l_mask, other=0.0) + tl.load(
+            u_ptr, mask=u_mask, other=0.0
+        )
+    elif HAS_L:
+        l_mask = in_tile & (col_out < k) & (row_out > col_out)
+        value = tl.load(l_ptr, mask=l_mask, other=0.0)
+    elif HAS_U:
+        u_mask = in_tile & (row_out < k) & (row_out <= col_out)
+        value = tl.load(u_ptr, mask=u_mask, other=0.0)
+    else:
+        value = tl.zeros((BLOCK_M, BLOCK_N), dtype=tl.float32)
+
+    tl.store(
+        grad_lu_ptr
+        + batch * tl.cast(m, tl.int64) * tl.cast(n, tl.int64)
+        + row_out * n
+        + col_out,
+        value,
+        mask=in_tile,
+    )
+
+
+# (m, n, numel, element_size) -> launch geometry. The heuristic is a pure
+# function of the workload, so caching it only removes per-call Python work.
+_LAUNCH_PLAN_CACHE = {}
+
+
+def _launch_plan(m, n, numel, element_size):
+    """Tile geometry and warp count for one packed-gradient shape.
+
+    GCU400 launches are capped per grid dimension, so the column tile is limited
+    to 512 and the row tile shrinks accordingly; total programs per CTA stay
+    within the DSM budget shared with the unpack kernels.
+    """
+    cells = m * n
+    if cells <= 4096:
+        target, col_cap, warps = 256, 256, 1
+    elif cells <= 65536:
+        target, col_cap, warps = (2048, 256, 4) if element_size >= 8 else (1024, 256, 2)
+    elif element_size >= 8:
+        target, col_cap, warps = 4096, 256, 4
+    else:
+        target, col_cap, warps = 4096, 512, 4
+
+    block_n = min(triton.next_power_of_2(max(n, 1)), col_cap)
+    block_m = min(triton.next_power_of_2(max(m, 1)), max(1, target // block_n))
+    if warps == 2 and block_m * block_n > 1024:
+        warps = 4
+    return block_m, block_n, warps
+
+
+def lu_unpack_backward(grad_L, grad_U, m, n):
+    """Gradient of :func:`lu_unpack` with respect to the packed ``LU_data``.
+
+    Mirrors ``lu_unpack_backward`` in ``torch/csrc/autograd/FunctionsManual``:
+    the packed gradient of an ``(..., m, n)`` factorization is built from
+    ``grad_L`` (``(..., m, k)``) and ``grad_U`` (``(..., k, n)``) with
+    ``k = min(m, n)``. Either argument may be ``None`` when only the other
+    unpacked matrix took part in the graph; a supplied but zero-element
+    gradient (a zero-size batch) yields a zero-element ``(..., m, n)`` result.
+    """
+    # A 1-D empty tensor is the placeholder returned by ``unpack_data=False``,
+    # i.e. an unused output rather than a zero-size matrix.
+    has_l = grad_L is not None and grad_L.dim() >= 2
+    has_u = grad_U is not None and grad_U.dim() >= 2
+    if not (has_l or has_u):
+        return None
+
+    m = int(m)
+    n = int(n)
+    k = min(m, n)
+    if has_l and tuple(grad_L.shape[-2:]) != (m, k):
+        raise RuntimeError(
+            f"lu_unpack_backward: grad_L must end with ({m}, {k}), "
+            f"got {tuple(grad_L.shape)}"
+        )
+    if has_u and tuple(grad_U.shape[-2:]) != (k, n):
+        raise RuntimeError(
+            f"lu_unpack_backward: grad_U must end with ({k}, {n}), "
+            f"got {tuple(grad_U.shape)}"
+        )
+
+    source = grad_L if has_l else grad_U
+    grad_lu = torch.empty(
+        source.shape[:-2] + (m, n), dtype=source.dtype, device=source.device
+    )
+    numel = grad_lu.numel()
+    if numel == 0:
+        return grad_lu
+
+    # The kernel derives its offsets from `m` / `n` alone, so the inputs must be
+    # contiguous; the autograd-produced gradients already are, so the copy is a
+    # rare fallback for exotic strides.
+    if has_l and not grad_L.is_contiguous():
+        grad_L = grad_L.contiguous()
+    if has_u and not grad_U.is_contiguous():
+        grad_U = grad_U.contiguous()
+
+    plan_key = (m, n, numel, source.element_size())
+    plan = _LAUNCH_PLAN_CACHE.get(plan_key)
+    if plan is None:
+        block_m, block_n, num_warps = _launch_plan(m, n, numel, source.element_size())
+        num_m = triton.cdiv(m, block_m)
+        num_n = triton.cdiv(n, block_n)
+        batch = numel // (m * n)
+        # grid.y is capped at 255 on this backend: once a tall matrix needs
+        # more row blocks than that (4096 rows at BLOCK_M=8 -> 512), fold the
+        # row-block axis into grid.x and decode it inside the kernel.
+        fold_m = num_m > 255
+        grid = (batch * num_m, num_n) if fold_m else (batch, num_m, num_n)
+        plan = (grid, block_m, block_n, num_warps, fold_m)
+        _LAUNCH_PLAN_CACHE[plan_key] = plan
+    grid, block_m, block_n, num_warps, fold_m = plan
+
+    with torch_device_fn.device(source.device):
+        lu_unpack_grad_kernel[grid](
+            grad_L if has_l else grad_U,
+            grad_U if has_u else grad_L,
+            grad_lu,
+            m,
+            n,
+            HAS_L=has_l,
+            HAS_U=has_u,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
+            FOLD_M=fold_m,
+            num_warps=num_warps,
+        )
+    return grad_lu

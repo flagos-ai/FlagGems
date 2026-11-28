@@ -252,11 +252,13 @@ def pytest_addoption(parser):
         default="origin",
         choices=["origin", "nv_baseline"],
         help=(
-            "Which speedup to prefer when both native and baseline comparisons are "
-            "available. 'origin' (default) uses the on-machine gems-vs-torch speedup; "
-            "'nv_baseline' uses the compared_speedup from --base-data. The other becomes "
-            "a fallback when the preferred source is unavailable. Each shape's "
-            "'speedup_source' field records the source actually used."
+            "Deprecated and ignored here; accepted only so existing invocations "
+            "keep working. This runner always reports both ratios separately: "
+            "'speedup' is the on-machine gems-vs-torch ratio (None when no "
+            "reference ran) and 'compared_speedup' is the vs-baseline ratio from "
+            "--base-data. Preferring one over the other is done downstream by the "
+            "consumer (optest's --speedup-source), which relabels "
+            "'speedup_source' accordingly."
         ),
     )
     parser.addoption(

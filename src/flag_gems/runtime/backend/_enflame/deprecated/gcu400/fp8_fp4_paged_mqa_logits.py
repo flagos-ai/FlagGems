@@ -24,7 +24,7 @@ different workload distributions.
 GCU (gcu400) adaptations on top of the generic implementation:
 - the row axis is decomposed over grid.y/grid.z (GCU caps grid.y at 255), so
   production decode batches (e.g. 256 x next_n rows) stay launchable;
-- ``_install`` routes the ``flag_gems.deprecated`` submodule namespaces (used by
+- ``_install`` routes the ``flag_gems.fused`` submodule namespaces (used by
   the accuracy test and benchmark) to this copy and installs the vLLM
   DeepGEMM compat layer required by the GCU test environment.
 """
@@ -218,7 +218,7 @@ def fp8_fp4_paged_mqa_logits(
     Returns:
         Logits tensor [total_rows, max_model_len] float32.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_PAGED_MQA_LOGITS")
+    logger.debug("GEMS_ENFLAME FP8_FP4_PAGED_MQA_LOGITS")
 
     q_values, q_scale = q
 
@@ -296,28 +296,22 @@ def fp8_fp4_paged_mqa_logits(
 
 
 def _install():
-    """Route the generic namespaces to this GCU copy and install vLLM compat.
+    """Route the generic namespaces to this GCU copy.
 
     The accuracy test and benchmark import the op from the ``flag_gems.deprecated``
     submodule, which the SpecOpRegistrar top-level swap cannot reach, so patch
     the already-imported modules the same way the kunlunxin backend does for
-    ``bf16_paged_mqa_logits``. The vLLM compat shim keeps the test's metadata
-    and DeepGEMM reference legs alive on GCU (see
-    ``_vllm_paged_mqa_logits_compat``).
+    ``bf16_paged_mqa_logits``.
     """
-    from ._vllm_paged_mqa_logits_compat import install_vllm_paged_mqa_logits_compat
-
-    install_vllm_paged_mqa_logits_compat()
-
     from flag_gems.deprecated.fp8_fp4_paged_mqa_logits import (
         fp8_fp4_paged_mqa_logits as _generic_fp8_fp4_paged_mqa_logits,
     )
 
-    fused_pkg = sys.modules.get("flag_gems.deprecated")
-    if fused_pkg is not None:
-        cur = getattr(fused_pkg, "fp8_fp4_paged_mqa_logits", None)
+    deprecated_pkg = sys.modules.get("flag_gems.deprecated")
+    if deprecated_pkg is not None:
+        cur = getattr(deprecated_pkg, "fp8_fp4_paged_mqa_logits", None)
         if cur is _generic_fp8_fp4_paged_mqa_logits:
-            fused_pkg.fp8_fp4_paged_mqa_logits = fp8_fp4_paged_mqa_logits
+            deprecated_pkg.fp8_fp4_paged_mqa_logits = fp8_fp4_paged_mqa_logits
 
     sub = sys.modules.get("flag_gems.deprecated.fp8_fp4_paged_mqa_logits")
     if sub is not None:

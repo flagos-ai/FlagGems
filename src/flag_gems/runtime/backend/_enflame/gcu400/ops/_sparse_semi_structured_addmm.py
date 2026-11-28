@@ -300,7 +300,7 @@ def _sparse_semi_structured_addmm(
     Returns:
         Matrix of shape (M, N)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SPARSE_SEMI_STRUCTURED_ADDMM")
+    logger.debug("GEMS_ENFLAME SPARSE_SEMI_STRUCTURED_ADDMM")
 
     M = mat1.shape[0]
     K4 = mat1_meta.shape[1]

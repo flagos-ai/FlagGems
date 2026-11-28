@@ -79,7 +79,16 @@ _MCTA_RM_FP64 = 128
 # memory: BM=next_pow2(M) and BM*_PANEL_IB*itemsize must stay within the SRAM
 # budget.  _PANEL_IB=32, fp32 -> BM<=1024 (128 KB) is the safe cap.
 _GEQRT_SRAM_MAX_M = 512
-_LARFB_RM = 64  # row tile for the block-reflector apply kernel
+# Row cap for ONE multi-CTA panel launch.  The spin barrier needs all NC CTAs
+# co-resident, and a panel row tile wider than _MCTA_RM (needed once M exceeds
+# NC*_MCTA_RM) shrinks the resident set until the barrier deadlocks on the
+# device: 4096x1000 / 3072x1024 hang with rm=256, and rm=128 with 24 CTAs hangs
+# too, while every panel with M <= NC*_MCTA_RM (2048) completes.  Matrices taller
+# than this cap are factored by row split instead (see _tall_split_qr).
+_TALL_SPLIT_ENABLE = True
+_MCTA_ROWS = _MCTA_RM * _MCTA_NC_MAX  # 2048 rows per cooperative panel launch
+_LARFB_RM = 128  # row tile for the block-reflector apply kernel (A/B on 1024x1024
+#                 and 4x1024x1024: 128 rows gives ~2% over 64 at equal DSM, 256 spills)
 _LARFB_TN = 32  # column tile for the block-reflector apply kernel (tuned: TN=32
 #                gives ~1.9x on large trailing updates vs TN=16; TN=64 spills)
 _TSQR_ASPECT = 4  # m >= _TSQR_ASPECT * n  =>  tall-skinny candidate for TSQR
@@ -1534,20 +1543,24 @@ def _triu_copy_kernel(
 # ===========================================================================
 @libentry()
 @triton.jit
-def _identity_kernel(Q, m, qcols, grid_e, sQb, sQm, sQn, BLOCK: tl.constexpr):
-    # 1D grid (B * grid_e): a 2D (B, grid_e) grid would exceed CUDA's 65535
-    # gridY limit for large complete-mode Q (e.g. 8192x8192 -> grid_e = 65536).
+def _identity_kernel(
+    Q, m, qcols, chunks, progs_per_batch, sQb, sQm, sQn, BLOCK: tl.constexpr
+):
+    # 1D grid (B * progs_per_batch).  GCU400 caps grid.x at 65535, and a
+    # complete-mode Q can need far more 1024-element chunks than that
+    # (8192x8192 -> 65536 chunks), so each program strides over the chunk list
+    # instead of owning exactly one chunk.
     pid = tle.program_id(0)
-    pid_b = pid // grid_e
-    pid_e = pid % grid_e
+    pid_b = pid // progs_per_batch
+    pid_c = pid % progs_per_batch
     numel = m * qcols
-    offs = pid_e * BLOCK + tl.arange(0, BLOCK)
-    mmask = offs < numel
-    i = offs // qcols
-    j = offs % qcols
-    tl.store(
-        Q + pid_b * sQb + i * sQm + j * sQn, tl.where(i == j, 1.0, 0.0), mask=mmask
-    )
+    Qb = Q + pid_b * sQb
+    for chunk in range(pid_c, chunks, progs_per_batch):
+        offs = chunk * BLOCK + tl.arange(0, BLOCK)
+        mmask = offs < numel
+        i = offs // qcols
+        j = offs % qcols
+        tl.store(Qb + i * sQm + j * sQn, tl.where(i == j, 1.0, 0.0), mask=mmask)
 
 
 # ===========================================================================
@@ -1833,6 +1846,24 @@ def _blocked_qr(W, V, tau, Tbuf, m, n, k, ib=_PANEL_IB):
     needs_mcta = any(
         triton.next_power_of_2(m - kk) > sram_max_m for kk in range(0, k, ib)
     )
+    if needs_mcta and B > 1:
+        # _geqrt_mcta_kernel synchronizes the NC CTAs of one panel with an atomic spin barrier, so
+        # those NC CTAs must be resident together. With batch B one launch is B*NC CTAs, which
+        # pushes the CTA count past the co-residency limit and the barrier deadlocks (4x1024x1024
+        # hangs). Therefore whenever a multi-CTA panel exists the batches are factored serially, while
+        # the per-batch blocking parameters and tuned values stay unchanged.
+        for b in range(B):
+            _blocked_qr(
+                W[b : b + 1],
+                V[b : b + 1],
+                tau[b : b + 1],
+                Tbuf[b : b + 1],
+                m,
+                n,
+                k,
+                ib=ib,
+            )
+        return
     if needs_mcta:
         alpha_buf = torch.zeros(B, P, ib, dtype=dt, device=dev)
         xnorm_buf = torch.zeros(B, P, ib, dtype=dt, device=dev)
@@ -1998,9 +2029,13 @@ def _assemble_q(V, tau, Tbuf, m, n, k, qcols, ib, B, out):
     else:
         # fp64: identity + per-panel larfb (static ib, fast solve path)
         sQb, sQm, sQn = out.stride()
-        grid_e = (m * qcols + 1023) // 1024
-        _identity_kernel[(B * grid_e,)](
-            out, m, qcols, grid_e, sQb, sQm, sQn, BLOCK=1024
+        # grid.x is capped at 65535 on GCU400: hand out at most 65535 // B
+        # programs per batch entry and let each stride over the chunk list.
+        numel = m * qcols
+        chunks = (numel + 1023) // 1024
+        progs_per_batch = min(chunks, max(1, 65535 // B))
+        _identity_kernel[(B * progs_per_batch,)](
+            out, m, qcols, chunks, progs_per_batch, sQb, sQm, sQn, BLOCK=1024
         )
         for p in reversed(range(0, k, ib)):
             kk = p
@@ -2020,6 +2055,155 @@ def _triu_copy(W, R, rm, n, B):
     _triu_copy_kernel[(B * grid_e,)](
         W, R, rm, n, grid_e, sWb, sWm, sWn, sRb, sRm, sRn, BLOCK=1024
     )
+
+
+# ---------------------------------------------------------------------------
+# Row-split path for matrices taller than one cooperative panel launch.
+#
+# A panel of the blocked Householder QR spans every row below the panel start, so
+# a 4096-row matrix needs a 4096-row panel launch -- past the co-residency bound
+# of the atomic spin barrier (_MCTA_ROWS).  Instead of widening the panel tile
+# (which deadlocks), split the rows once and merge the local factors:
+#
+#   A = [A_0; ...; A_ng-1]        A_g = Q_g R_g      (blocked path per group)
+#   [R_0u; ...; R_ngu] = Qs Rs                      (stacked QR, ng*n rows)
+#   => Q_A = diag(Q_0 .. Q_ng-1) . P . Qs,  R_A = Rs
+#
+# P scatters the stacked rows back into the full row order.  Q is applied to that
+# embedding with the already-tuned larfb kernel (reverse panel order), so the
+# group Q factors never have to be materialised: only V/tau/T are kept.
+# ---------------------------------------------------------------------------
+def _row_group_bounds(m, ng):
+    """Nearly equal row groups covering m rows, each at most ceil(m/ng)."""
+    step = (m + ng - 1) // ng
+    bounds = []
+    start = 0
+    while start < m:
+        rows = min(step, m - start)
+        bounds.append((start, rows))
+        start += rows
+    return bounds
+
+
+def _apply_group_q(Cb, Vg, taug, Tbg, rows, n, qcols, B, ib=_PANEL_IB):
+    """Cb <- Q_g Cb in place, Q_g given by the group's compact-WY reflectors.
+
+    Q_g = H_0 H_1 ... , so the panels are applied in reverse order (last panel
+    first).  The last panel has no trailing update in _blocked_qr, hence no T yet;
+    build it exactly like _assemble_q does.
+    """
+    npanels = (n + ib - 1) // ib
+    kk_last = (npanels - 1) * ib
+    ib_last = min(ib, n - kk_last)
+    if kk_last + ib_last >= n:
+        _launch_larft(
+            Vg[:, kk_last:rows, kk_last : kk_last + ib_last],
+            taug[:, kk_last : kk_last + ib_last],
+            Tbg[:, kk_last : kk_last + ib_last, kk_last : kk_last + ib_last],
+            rows,
+            kk_last,
+            ib_last,
+            B,
+        )
+    for kk in reversed(range(0, n, ib)):
+        ib_active = min(ib, n - kk)
+        _launch_larfb(
+            Vg[:, kk:rows, kk : kk + ib_active],
+            Tbg[:, kk : kk + ib_active, kk : kk + ib_active],
+            Cb[:, kk:rows, :],
+            rows - kk,
+            qcols,
+            ib_active,
+            B,
+            upper=True,
+        )
+
+
+def _tall_split_qr(W, m, n, k, mode, B, qcols, out_Q=None, out_R=None):
+    """Row-split QR for m > _MCTA_ROWS.  Returns (Q, R) in (B, ...) layout, or
+    None when splitting cannot be applied (caller keeps the flat blocked path)."""
+    dt = W.dtype
+    dev = W.device
+    ng = (m + _MCTA_ROWS - 1) // _MCTA_ROWS
+    # The stacked factor has ng*n rows: it must be shorter than m, otherwise the
+    # merge problem is not smaller than the original one (no progress/no win).
+    if ng < 2 or ng * n >= m:
+        return None
+    bounds = _row_group_bounds(m, ng)
+    if bounds[-1][1] < n:
+        return None
+
+    # ---- per-group blocked QR: each group stays under the co-residency cap ----
+    Vg_list, taug_list, Tbg_list = [], [], []
+    Rstack = torch.empty(B, ng, n, n, dtype=dt, device=dev)
+    for gi, (r0, rows) in enumerate(bounds):
+        Wg = W[:, r0 : r0 + rows, :].clone()
+        Vg = (
+            torch.zeros(B, rows, n, dtype=dt, device=dev)
+            if mode != "r"
+            else torch.empty(B, rows, n, dtype=dt, device=dev)
+        )
+        taug = torch.empty(B, n, dtype=dt, device=dev)
+        Tbg = torch.empty(B, n, n, dtype=dt, device=dev)
+        _blocked_qr(Wg, Vg, taug, Tbg, rows, n, n)
+        _triu_copy(Wg, Rstack[:, gi], n, n, B)
+        Vg_list.append(Vg)
+        taug_list.append(taug)
+        Tbg_list.append(Tbg)
+
+    # ---- stacked QR of the local R factors (recurses if it is still too tall) --
+    stacked = Rstack.reshape(B, ng * n, n)
+    if mode == "complete":
+        Qs, Rs = _linalg_qr(stacked, "complete")
+    elif mode == "r":
+        _, Rs = _linalg_qr(stacked, "r")
+        Qs = None
+    else:
+        Qs, Rs = _linalg_qr(stacked, "reduced")
+
+    # ---- R: Rs sits in the first n rows, everything below is zero -------------
+    if mode == "complete":
+        # the stacked factor is (ng*n, n): only its first n rows are non-zero
+        R = out_R if out_R is not None else torch.empty(B, m, n, dtype=dt, device=dev)
+        R.zero_()
+        R[:, :n, :].copy_(Rs[:, :n, :])
+    else:
+        R = out_R if out_R is not None else Rs
+        if out_R is not None:
+            out_R.copy_(Rs)
+
+    if mode == "r":
+        return (out_Q if out_Q is not None else W.new_empty(0), R)
+
+    # ---- Q: embed Qs (scattered back to the full row order), then apply Q_g ----
+    C = out_Q if out_Q is not None else torch.empty(B, m, qcols, dtype=dt, device=dev)
+    C.zero_()
+    # columns of the merged factor: n for reduced, ng*n for complete
+    ncol1 = n if mode != "complete" else ng * n
+    for gi, (r0, rows) in enumerate(bounds):
+        C[:, r0 : r0 + n, 0:ncol1].copy_(Qs[:, gi * n : (gi + 1) * n, :])
+    if mode == "complete":
+        # rows without a stacked counterpart are carried by unit vectors
+        col = ncol1
+        for r0, rows in bounds:
+            free = rows - n
+            if free > 0:
+                C[:, r0 + n : r0 + rows, col : col + free].copy_(
+                    torch.eye(free, dtype=dt, device=dev)
+                )
+                col += free
+    for gi, (r0, rows) in enumerate(bounds):
+        _apply_group_q(
+            C[:, r0 : r0 + rows, :],
+            Vg_list[gi],
+            taug_list[gi],
+            Tbg_list[gi],
+            rows,
+            n,
+            qcols,
+            B,
+        )
+    return (C, R)
 
 
 # ---------------------------------------------------------------------------
@@ -2204,21 +2388,38 @@ def _tsqr(W, m, n, k, mode, B, out_Q=None, out_R=None):
             )
     else:
         # Stack too tall even for a two-level tree: factor it with the blocked
-        # path (the mcta panels handle any height) and assemble Q_t from its
-        # reflectors.  R_blocks is dead after this, so the blocked kernels may
-        # factor it in place (Rstack is a view).
+        # path and assemble Q_t from its reflectors.  R_blocks is dead after
+        # this, so the blocked kernels may factor it in place (Rstack is a view).
+        #
+        # The mcta panels do NOT handle any height: a stacked factor past one
+        # cooperative panel launch deadlocks its spin barrier (16384x64 stacks to
+        # Rm=4096 and hung here), so split the rows first.
         Rstack = R_blocks.reshape(B, Rm, n)
-        Vt = (
-            torch.zeros(B, Rm, n, dtype=dt, device=dev)
-            if write_Q
-            else torch.empty(B, Rm, n, dtype=dt, device=dev)
-        )
-        tau_t = torch.empty(B, n, dtype=dt, device=dev)
-        Tbuf_t = torch.empty(B, n, n, dtype=dt, device=dev)
-        _blocked_qr(Rstack, Vt, tau_t, Tbuf_t, Rm, n, n)
-        _triu_copy(Rstack, Racc, n, n, B)
-        if write_Q:
-            _assemble_q(Vt, tau_t, Tbuf_t, Rm, n, n, n, _PANEL_IB, B, Qt)
+        split_t = None
+        if _TALL_SPLIT_ENABLE and Rm > _MCTA_ROWS:
+            split_t = _tall_split_qr(
+                Rstack,
+                Rm,
+                n,
+                n,
+                "reduced" if write_Q else "r",
+                B,
+                n,
+                out_Q=Qt if write_Q else None,
+                out_R=Racc,
+            )
+        if split_t is None:
+            Vt = (
+                torch.zeros(B, Rm, n, dtype=dt, device=dev)
+                if write_Q
+                else torch.empty(B, Rm, n, dtype=dt, device=dev)
+            )
+            tau_t = torch.empty(B, n, dtype=dt, device=dev)
+            Tbuf_t = torch.empty(B, n, n, dtype=dt, device=dev)
+            _blocked_qr(Rstack, Vt, tau_t, Tbuf_t, Rm, n, n)
+            _triu_copy(Rstack, Racc, n, n, B)
+            if write_Q:
+                _assemble_q(Vt, tau_t, Tbuf_t, Rm, n, n, n, _PANEL_IB, B, Qt)
         two_level = False
 
     if not write_Q:
@@ -2293,7 +2494,7 @@ def _validate_out(out, dtype, batch_shape, m, n, mode):
 
 
 def linalg_qr(A, mode="reduced", *, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_QR")
+    logger.debug("GEMS_ENFLAME LINALG_QR")
     return _linalg_qr(A, mode, out=out)
 
 
@@ -2397,6 +2598,20 @@ def _linalg_qr(A, mode="reduced", *, out=None):
             )
         return (Qm.reshape(*batch_shape, m, n), Rm.reshape(*batch_shape, n, n))
 
+    # Taller than one cooperative panel launch: factor by row split (the flat
+    # path's panel kernel would need rm > _MCTA_RM and deadlock).  Shapes the
+    # split cannot reduce (n >= m/ng) fall through to the flat path.
+    if _TALL_SPLIT_ENABLE and not is_ts and m > _MCTA_ROWS and n <= m:
+        split = _tall_split_qr(W, m, n, k, mode, B, qcols, out_Q, out_R)
+        if split is not None:
+            logger.debug("GEMS_ENFLAME LINALG_QR tall row split (m=%d, n=%d)", m, n)
+            Q, R = split
+            if mode == "r":
+                return (Q, R.reshape(*batch_shape, k, n))
+            if mode == "reduced":
+                return (Q.reshape(*batch_shape, m, k), R.reshape(*batch_shape, k, n))
+            return (Q.reshape(*batch_shape, m, m), R.reshape(*batch_shape, m, n))
+
     # blocked Householder path (large matrices): kernels write W in place.
     # V is zero-initialised when Q is assembled (mode != "r"): the paired
     # assembly reads the whole trapezoid of V below each pair start, including
@@ -2447,7 +2662,7 @@ def _linalg_qr(A, mode="reduced", *, out=None):
 
 
 def linalg_qr_out(A, mode="reduced", *, Q, R):
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_QR_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_QR_OUT")
     return _linalg_qr(A, mode, out=(Q, R))
 
 
@@ -2468,6 +2683,16 @@ def linalg_qr_out(A, mode="reduced", *, Q, R):
 # the FlagGems Triton kernel via the dispatcher, which handles all m -- so the
 # shim passes through and stays out of the production path.  Drop once
 # topsatenGeqrf sizes its workspace correctly.
+#
+# 2026-11-18 extension (cholesky_solve accuracy gate, job j20261118130122_193ab3a6):
+# the native complex path aborts the same way for EVERY probed complex64 shape
+# (no Python exception, bare "Fatal Python error: Aborted" from topsaten; even
+# 16x16).  tests/test_cholesky_solve.py builds conditioned complex inputs with
+# torch.linalg.qr on the device, so the un-registered reference arm takes the
+# whole pytest process down before the op under test is ever reached.  Complex
+# dtypes therefore join the broken domain and route through CPU LAPACK under
+# the same not-registered guard; real (fp32/fp64) small shapes keep the native
+# path, and the registered (use_gems) passthrough semantics are unchanged.
 # ---------------------------------------------------------------------------
 _NATIVE_QR_SAFE_ROWS = 2560
 
@@ -2481,8 +2706,8 @@ def _install_native_qr_workspace_shim():
         if (
             isinstance(A, torch.Tensor)
             and A.dim() >= 2
-            and A.shape[-2] > _NATIVE_QR_SAFE_ROWS
             and A.device.type == "gcu"
+            and (A.shape[-2] > _NATIVE_QR_SAFE_ROWS or A.is_complex())
         ):
             try:
                 import flag_gems

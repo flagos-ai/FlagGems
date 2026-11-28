@@ -94,15 +94,24 @@ def _sparse_mm_reduce_impl_kernel(
     stride_out_n,
     IS_FP64: tl.constexpr,
     REDUCE: tl.constexpr,
+    BLOCK_E: tl.constexpr,
     BLOCK_N: tl.constexpr,
     INT64_IDX: tl.constexpr,
 ):
     """One program per (row, column block) of the dense output.
 
-    Walks the CSR row ``[crow[row], crow[row + 1])`` and folds the per-nnz
-    products ``val[e] * mat2[col[e], :]`` with the requested reduction.  Rows
-    with no stored entries yield zeros for every reduction and ``mean`` divides
-    by the row's *stored* nnz, matching the CPU reference kernel.
+    Folds the per-nnz products ``val[e] * mat2[col[e], :]`` of the CSR row
+    ``[crow[row], crow[row + 1])``. Rows with no stored entries yield zeros for
+    every reduction and ``mean`` divides by the row's *stored* nnz, matching the
+    CPU reference kernel.
+
+    The row is walked ``BLOCK_E`` entries at a time and reduced with one
+    ``tl.sum``/``tl.max`` per tile: the per-entry form issues a scalar index and
+    a scalar value load before every vector row load, so the loop is a chain of
+    dependent scalar loads whose latency dominates the arithmetic (probe on
+    GCU400 at 1024x1024: 26 GFLOP/s, latency bound). Tiling turns the same
+    number of products into ``nnz / BLOCK_E`` wider steps. ``BLOCK_E == 1``
+    keeps the old scalar behaviour for fp64, where a tile would not fit.
 
     The crow/col index tensors are int64, but torch_gcu only stores them with
     a true 8-byte element stride when the int64 layout is enabled; with the
@@ -124,37 +133,47 @@ def _sparse_mm_reduce_impl_kernel(
         col_idx = col_ptr.to(tl.pointer_type(tl.int32))
 
     acc_dtype = tl.float64 if IS_FP64 else tl.float32
-    acc = tl.zeros((BLOCK_N,), dtype=acc_dtype)
+    if REDUCE == _REDUCE_AMAX:
+        acc = tl.full((BLOCK_N,), float("-inf"), acc_dtype)
+    elif REDUCE == _REDUCE_AMIN:
+        acc = tl.full((BLOCK_N,), float("inf"), acc_dtype)
+    else:
+        acc = tl.zeros((BLOCK_N,), dtype=acc_dtype)
 
-    start = tl.load(crow_idx + row64).to(tl.int64)
-    end = tl.load(crow_idx + row64 + 1).to(tl.int64)
+    start = tl.load(crow_idx + row64)
+    end = tl.load(crow_idx + row64 + 1)
+
+    for e0 in range(start, end, BLOCK_E):
+        els = e0 + tl.arange(0, BLOCK_E)
+        em = els < end
+        cs = tl.load(col_idx + els, mask=em, other=0).to(tl.int64)
+        vs = tl.load(val_ptr + els, mask=em, other=0.0).to(acc_dtype)
+        # Masked lanes load 0, so sum/mean need no extra select; amax/amin fold
+        # the neutral element in explicitly to keep the tile out of the result.
+        b = tl.load(
+            mat2_ptr + cs[:, None] * stride_mat2_k + col_off[None, :],
+            mask=em[:, None] & rmask[None, :],
+            other=0.0,
+        ).to(acc_dtype)
+        p = b * vs[:, None]
+        if REDUCE == _REDUCE_AMAX:
+            acc = tl.maximum(
+                acc, tl.max(tl.where(em[:, None], p, float("-inf")), axis=0)
+            )
+        elif REDUCE == _REDUCE_AMIN:
+            acc = tl.minimum(
+                acc, tl.min(tl.where(em[:, None], p, float("inf")), axis=0)
+            )
+        else:
+            acc += tl.sum(p, axis=0)
 
     if REDUCE == _REDUCE_AMAX or REDUCE == _REDUCE_AMIN:
-        # Fold with tl.where so the first stored product seeds acc without a
-        # dynamic branch; max/min over an empty row collapses to zero below.
-        for e in range(start, end):
-            c = tl.load(col_idx + e).to(tl.int64)
-            v = tl.load(val_ptr + e).to(acc_dtype)
-            b = tl.load(
-                mat2_ptr + c * stride_mat2_k + col_off, mask=rmask, other=0.0
-            ).to(acc_dtype)
-            p = b * v
-            if REDUCE == _REDUCE_AMAX:
-                acc = tl.where(e == start, p, tl.maximum(acc, p))
-            else:
-                acc = tl.where(e == start, p, tl.minimum(acc, p))
+        # An empty row has no products at all: aten leaves zeros, not the
+        # neutral element.
         acc = tl.where(start < end, acc, 0.0)
-    else:
-        for e in range(start, end):
-            c = tl.load(col_idx + e).to(tl.int64)
-            v = tl.load(val_ptr + e).to(acc_dtype)
-            b = tl.load(
-                mat2_ptr + c * stride_mat2_k + col_off, mask=rmask, other=0.0
-            ).to(acc_dtype)
-            acc += b * v
-        if REDUCE == _REDUCE_MEAN:
-            nnz = (end - start).to(acc_dtype)
-            acc = tl.where(nnz > 0, acc / nnz, 0.0)
+    if REDUCE == _REDUCE_MEAN:
+        nnz = (end - start).to(acc_dtype)
+        acc = tl.where(nnz > 0, acc / nnz, 0.0)
 
     cos = (row64 * stride_out_m + (rn * stride_out_n).to(tl.int64)).to(tl.int64)
     tl.store(out_ptr + cos, acc.to(out_ptr.dtype.element_ty), mask=rmask)
@@ -201,7 +220,7 @@ def _sparse_mm_reduce_impl(self, other, reduce="sum"):
     backend specific (tie-breaking over equal products), which is why they are
     not reproduced.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _SPARSE_MM_REDUCE_IMPL")
+    logger.debug("GEMS_ENFLAME _SPARSE_MM_REDUCE_IMPL")
 
     if self.layout == torch.strided:
         raise NotImplementedError(
@@ -276,7 +295,17 @@ def _sparse_mm_reduce_impl(self, other, reduce="sum"):
     if val.device != other.device:
         val = val.to(other.device)
 
-    block_n = min(triton.next_power_of_2(N), 256)
+    # Sweep on GCU400 (384/1024/2048/4096 square, 10% density): the widest
+    # column block always wins, because one program per row keeps the CSR row
+    # pointer and the mat2 row segment hot, and 8 entries per tile is enough to
+    # hide the scalar index/value latency. The old 256-column block spent 2.3x
+    # more time on the same products. fp64 halves both to bound registers.
+    if other.dtype == torch.float64:
+        block_n = min(triton.next_power_of_2(N), 512)
+        block_e = 2
+    else:
+        block_n = min(triton.next_power_of_2(N), 2048)
+        block_e = 8
     grid = (M, triton.cdiv(N, block_n))
     # Match the element stride torch_gcu uses for the int64 crow/col index
     # tensors (see _gcu_int64_indices); re-checked per launch.
@@ -296,6 +325,7 @@ def _sparse_mm_reduce_impl(self, other, reduce="sum"):
             out.stride(1),
             IS_FP64=other.dtype == torch.float64,
             REDUCE=_REDUCE_CODES[reduce],
+            BLOCK_E=block_e,
             BLOCK_N=block_n,
             INT64_IDX=int64_idx,
             num_warps=4,

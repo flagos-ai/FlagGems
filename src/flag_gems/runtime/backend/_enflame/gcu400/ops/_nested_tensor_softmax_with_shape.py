@@ -87,7 +87,7 @@ def _nested_tensor_softmax_with_shape(
     out-of-range entries are masked to zero, matching
     ``torch.ops.aten._nested_tensor_softmax_with_shape``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_TENSOR_SOFTMAX_WITH_SHAPE")
+    logger.debug("GEMS_ENFLAME _NESTED_TENSOR_SOFTMAX_WITH_SHAPE")
 
     # attn: [B, T_max, H, T_max]
     attn = self.to_padded_tensor(0.0).contiguous()

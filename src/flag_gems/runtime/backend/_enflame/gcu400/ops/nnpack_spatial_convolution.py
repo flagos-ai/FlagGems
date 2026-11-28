@@ -699,7 +699,7 @@ class _ConvFunction(torch.autograd.Function):
 
 def nnpack_spatial_convolution(input, weight, bias, padding, stride=[1, 1], **kwargs):
     """aten::_nnpack_spatial_convolution(input, weight, bias, padding, stride=[1, 1])."""
-    logger.debug("GEMS_ENFLAME_GCU400 NNPACK_SPATIAL_CONVOLUTION")
+    logger.debug("GEMS_ENFLAME NNPACK_SPATIAL_CONVOLUTION")
     out = kwargs.pop("out", None)
     if kwargs:
         raise TypeError(
@@ -730,6 +730,6 @@ def nnpack_spatial_convolution(input, weight, bias, padding, stride=[1, 1], **kw
         return _ConvFunction.apply(input, weight, bias, shape)
 
     result = _forward(shape, input, weight, bias)
-    if input.is_cuda:
+    if input.device.type != "cpu":
         return result
     return result.to(input.device)

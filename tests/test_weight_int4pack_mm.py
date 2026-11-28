@@ -31,6 +31,13 @@ _ATEN_CUDA_CONVERT = getattr(torch.ops.aten, "_convert_weight_to_int4pack", None
 _ATEN_CPU_MM = getattr(torch.ops.aten, "_weight_int4pack_mm_for_cpu", None)
 _ATEN_CPU_CONVERT = getattr(torch.ops.aten, "_convert_weight_to_int4pack_for_cpu", None)
 
+# aten::_convert_weight_to_int4pack has no PrivateUse1 kernel on the enflame
+# backend and its CPU fallback is empty, so the on-device packing step of the
+# bf16 golden cannot run there. The CPU overload of the same ATen operator is
+# used in that case, which keeps the golden a genuine ATen int4 kernel while
+# keeping bf16 coverage instead of skipping the dtype.
+_ON_DEVICE_PACK_UNSUPPORTED = flag_gems.vendor_name == "enflame"
+
 
 def _aten_inner_k_tiles(K):
     """Largest innerKTiles in {8,4,2} satisfying ATen's K % (ikt*16) == 0."""
@@ -44,7 +51,9 @@ def _aten_reference_weight_int4pack_mm(A, weight_int4, qGroupSize, scale, zero):
     """Golden output from the real ATen `_weight_int4pack_mm`.
 
     Dispatches to the genuine ATen operator this PR implements: the CUDA
-    overload on-device for bf16, else its CPU overload.
+    overload on-device for bf16, else its CPU overload. Backends without an
+    aten kernel for the int4 packer (see _ON_DEVICE_PACK_UNSUPPORTED) always
+    take the CPU overload, bf16 included.
 
     This operator's dequantization convention is `w = (q - zero) * scale`,
     while ATen dequantizes as `w = scale * (q - 8) + zero_add`. The two are
@@ -61,7 +70,11 @@ def _aten_reference_weight_int4pack_mm(A, weight_int4, qGroupSize, scale, zero):
     Returns:
         Golden output (M, N) on A's device, in A's dtype.
     """
-    if A.dtype == torch.bfloat16 and _ATEN_CUDA_MM is not None:
+    if (
+        A.dtype == torch.bfloat16
+        and _ATEN_CUDA_MM is not None
+        and not _ON_DEVICE_PACK_UNSUPPORTED
+    ):
         # On-device golden via the real CUDA overload. Its packer expects the
         # opposite nibble order, so the byte-pair nibbles are swapped below.
         K = A.shape[1]
@@ -130,10 +143,6 @@ def _create_scale_and_zeros(K, N, qGroupSize, dtype, device):
 
 
 # N must be divisible by 16 for the ATen CPU int4 packer, and qGroupSize even.
-@pytest.mark.skipif(
-    flag_gems.vendor_name == "enflame",
-    reason="gcu dose not support 4 bit",
-)
 @pytest.mark.skipif(
     _ATEN_CPU_MM is None or _ATEN_CPU_CONVERT is None,
     reason="aten._weight_int4pack_mm_for_cpu not available in this torch build",

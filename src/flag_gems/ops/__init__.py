@@ -293,7 +293,7 @@ from flag_gems.ops._linalg_eigh import _linalg_eigh
 from flag_gems.ops._linalg_eigvals import _linalg_eigvals
 from flag_gems.ops._linalg_slogdet import _linalg_slogdet
 from flag_gems.ops._linalg_solve_ex import _linalg_solve_ex
-from flag_gems.ops._linalg_svd import _linalg_svd
+from flag_gems.ops._linalg_svd import _linalg_svd, linalg_svd_backward
 from flag_gems.ops._list_to_tensor import _list_to_tensor
 from flag_gems.ops._logcumsumexp import _logcumsumexp, _logcumsumexp_out
 from flag_gems.ops._lu_with_info import _lu_with_info
@@ -312,6 +312,7 @@ from flag_gems.ops._native_batch_norm_legit_functional import (
 )
 from flag_gems.ops._native_batch_norm_legit_no_training import (
     _native_batch_norm_legit_no_training,
+    native_batch_norm_legit_no_training_backward,
 )
 from flag_gems.ops._native_multi_head_attention import _native_multi_head_attention
 from flag_gems.ops._neg_view_copy import _neg_view_copy, _neg_view_copy_out
@@ -397,6 +398,7 @@ from flag_gems.ops._sobol_engine_initialize_state_ import (
 )
 from flag_gems.ops._sobol_engine_scramble_ import _sobol_engine_scramble_
 from flag_gems.ops._sparse_addmm import _sparse_addmm, _sparse_addmm_out
+from flag_gems.ops._sparse_addmm_backward import sparse_addmm_backward
 from flag_gems.ops._sparse_log_softmax import (
     _sparse_log_softmax,
     _sparse_log_softmax_int,
@@ -1115,7 +1117,7 @@ from flag_gems.ops.linalg_cond import linalg_cond, linalg_cond_p_str
 from flag_gems.ops.linalg_cross import linalg_cross, linalg_cross_out
 from flag_gems.ops.linalg_det import linalg_det, linalg_det_out
 from flag_gems.ops.linalg_eig import linalg_eig
-from flag_gems.ops.linalg_eigh import linalg_eigh
+from flag_gems.ops.linalg_eigh import linalg_eigh, linalg_eigh_backward
 from flag_gems.ops.linalg_eigvals import linalg_eigvals, linalg_eigvals_out
 from flag_gems.ops.linalg_eigvalsh import linalg_eigvalsh, linalg_eigvalsh_out
 from flag_gems.ops.linalg_householder_product import linalg_householder_product
@@ -2887,6 +2889,7 @@ __all__ = [
     "linalg_det_out",
     "linalg_eig",
     "linalg_eigh",
+    "linalg_eigh_backward",
     "linalg_eigvals",
     "linalg_eigvals_out",
     "linalg_eigvalsh",
@@ -2931,6 +2934,7 @@ __all__ = [
     "linalg_solve_triangular",
     "linalg_solve_triangular_out",
     "linalg_svd",
+    "linalg_svd_backward",
     "linalg_svdvals",
     "linalg_tensorinv",
     "linalg_tensorinv_out",
@@ -3082,6 +3086,7 @@ __all__ = [
     "nansum_out",
     "narrow_copy",
     "native_batch_norm",
+    "native_batch_norm_legit_no_training_backward",
     "native_channel_shuffle",
     "native_dropout_backward",
     "native_group_norm",
@@ -3354,6 +3359,7 @@ __all__ = [
     "softshrink_out",
     "sort",
     "sort_stable",
+    "sparse_addmm_backward",
     "sparse_broadcast_to",
     "sparse_broadcast_to_copy",
     "sparse_bsc_tensor",

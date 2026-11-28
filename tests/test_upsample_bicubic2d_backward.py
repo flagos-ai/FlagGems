@@ -411,6 +411,10 @@ def test_upsample_bicubic2d_backward_nonfinite_cpu_reference(
         "enflame/GCU does not support FP64/FP4/COMPLEX128"
     ),
 )
+@pytest.mark.skipif(
+    not utils.fp64_is_supported,
+    reason="the fp64-opmath reference requires fp64, which this device does not support",
+)
 @pytest.mark.parametrize("align_corners", [False, True])
 @pytest.mark.parametrize(
     "out_variant",

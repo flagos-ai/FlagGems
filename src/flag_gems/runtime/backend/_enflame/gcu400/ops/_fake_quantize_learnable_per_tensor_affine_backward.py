@@ -24,6 +24,21 @@ logger = logging.getLogger(__name__)
 
 
 @triton.jit
+def _rint_even(v):
+    # round-half-to-even via the magic-constant trick, exact for |v| < 2**22.
+    # gcu400 lowers the __ef_nearbyintf libdevice extern to an opaque call
+    # (~14x slower than this on a bandwidth-bound pointwise body), while every
+    # lane whose rounded value is consumed inside the quantization range has
+    # |v| < 2**22; out-of-range lanes only feed the range classification, where
+    # the trick stays within +/-2 of nearbyint for arbitrarily large |v|.
+    # Unlike the forward op's (x*inv + C) pattern, the backward's two-step sum
+    # (zr_f + x*inv, variable addend) was adversarially probed on this backend
+    # (direct-tie and cancellation-tie families + random sweeps vs aten CPU):
+    # no fma contraction divergence, so no min/max barrier is needed here.
+    return (v + 12582912.0) - 12582912.0
+
+
+@triton.jit
 def _fq_tiny_kernel(
     grad_ptr,
     x_ptr,
@@ -49,6 +64,7 @@ def _fq_tiny_kernel(
     # aten backward zero point: (int64) clamp(z + 0.5f, qmin, qmax). The clamp is
     # in float, then the cast truncates toward zero (matches static_cast<int64_t>).
     zr = tl.minimum(tl.maximum(z + 0.5, qminf), qmaxf).to(tl.int64)
+    zr_f = zr.to(tl.float32)
     lo = (qmin_i - zr).to(tl.float32)
     hi = (qmax_i - zr).to(tl.float32)
 
@@ -61,16 +77,27 @@ def _fq_tiny_kernel(
         x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
         # aten CPU: int64_t xqi = nearbyint(zero_point + X * inv_scale); the
         # zero_point is added before the round, then the integral float narrows
-        # to int64 and the range test is an int64 comparison.
-        xq = (tl_extra_shim.nearbyint(zr.to(tl.float32) + x * inv)).to(tl.int64)
-        inr = (xq >= qmin_i) & (xq <= qmax_i)
-        xq_c = tl.minimum(tl.maximum(xq, qmin_i), qmax_i)
-        xfqi = (xq_c - zr).to(tl.float32) * s
+        # to int64 and the range test is an int64 comparison.  For every fp32
+        # value u the int64 range test equals the plain float compare (the
+        # narrowing is exact for in-range magnitudes and both flag anything
+        # larger as out of range), except that x86 maps every float->int64
+        # conversion it cannot represent (NaN, +-inf, |u| >= 2**63) to
+        # INT64_MIN, which lands in the qmin (lo) branch.  The hi_sel below
+        # reproduces that with plain ordered compares: only an ordered value
+        # above qmax but within int64 range takes the hi branch, everything
+        # else (NaN/inf/huge) falls through to lo, matching aten.  No negated
+        # compare is used: gcu400 canonicalizes ~(u>=q) into ordered u<q and
+        # thereby loses the unordered NaN case.
+        u = _rint_even(zr_f + x * inv)
+        inr = (u >= qminf) & (u <= qmaxf)
+        uc = tl.minimum(tl.maximum(u, qminf), qmaxf)
+        xfqi = (uc - zr_f) * s
         tl.store(gs_ptr + offs, tl.where(inr, dy, 0.0), mask=mask)
+        hi_sel = (u > qmaxf) & (u <= 9223372036854775808.0)
         ds_v = tl.where(
             inr,
             dy * (xfqi - x) * inv,
-            tl.where(xq < qmin_i, lo * dy, hi * dy),
+            tl.where(hi_sel, hi * dy, lo * dy),
         )
         dz_v = tl.where(inr, 0.0, -dy * s)
         acc_ds += tl.sum(ds_v, axis=0)
@@ -106,6 +133,7 @@ def _fake_quantize_learnable_per_tensor_affine_backward_kernel(
     qminf = qmin.to(tl.float32)
     qmaxf = qmax.to(tl.float32)
     zr = tl.minimum(tl.maximum(z + 0.5, qminf), qmaxf).to(tl.int64)
+    zr_f = zr.to(tl.float32)
     lo = (qmin_i - zr).to(tl.float32)
     hi = (qmax_i - zr).to(tl.float32)
 
@@ -118,17 +146,22 @@ def _fake_quantize_learnable_per_tensor_affine_backward_kernel(
         dy = tl.load(grad_ptr + offs, mask=mask, other=0.0).to(tl.float32)
         x = tl.load(x_ptr + offs, mask=mask, other=0.0).to(tl.float32)
 
-        xq = (tl_extra_shim.nearbyint(zr.to(tl.float32) + x * inv)).to(tl.int64)
-        inr = (xq >= qmin_i) & (xq <= qmax_i)
-        xq_c = tl.minimum(tl.maximum(xq, qmin_i), qmax_i)
-        xfqi = (xq_c - zr).to(tl.float32) * s
+        u = _rint_even(zr_f + x * inv)
+        inr = (u >= qminf) & (u <= qmaxf)
+        uc = tl.minimum(tl.maximum(u, qminf), qmaxf)
+        xfqi = (uc - zr_f) * s
 
         tl.store(gs_ptr + offs, tl.where(inr, dy, 0.0), mask=mask)
 
+        # The clamp above is kept even though ``uc == u`` on the in-range branch:
+        # folding it away stayed bit-exact in the probe but cost 1.5% (1024^3)
+        # to 11% (16M) through the core benchmark on this board (2026-11-20), so
+        # the compiler schedules the clamped form better.
+        hi_sel = (u > qmaxf) & (u <= 9223372036854775808.0)
         acc_ds += tl.where(
             inr,
             dy * (xfqi - x) * inv,
-            tl.where(xq < qmin_i, lo * dy, hi * dy),
+            tl.where(hi_sel, hi * dy, lo * dy),
         )
         acc_dz += tl.where(inr, 0.0, -dy * s)
 
@@ -146,25 +179,24 @@ def _reduce_kernel(pds_ptr, pdz_ptr, out_s_ptr, out_z_ptr, g, gf, BLOCK: tl.cons
     tl.store(out_z_ptr, tl.sum(dz, axis=0) * gf)
 
 
-_G = 256
-_WORK_PER_PROG = 262144
+_G = 512
+_WORK_PER_PROG = 131072
 _TINY_BLOCK = 4096
 _TINY_LIMIT = 2 * _TINY_BLOCK
-# Static launch geometry instead of a triton.autotune sweep (whose per-call
-# dispatch is not free and which picked BLOCK=8192/num_warps=8, i.e. 137ms on
-# 1G fp32).  Measured on gcu:1 at n=2**30 fp32 (12GB of traffic):
-# BLOCK=32768/nw=4 -> 35.0ms, BLOCK=65536/nw=2 -> 34.6-39.3ms,
-# BLOCK=8192/nw=4 -> 54.9ms (the old autotuned pick).
-_MAIN_BLOCK = 32768
-_MAIN_WARPS = 4
+# Static launch geometry (measured on gcu400 at n=2**30 fp32, 12GB of traffic,
+# with the magic-constant rounding body): BLOCK=16384/num_warps=2 with 512
+# strided programs -> 5.66ms (2277 GB/s vs a 2555 GB/s trivial-copy floor);
+# BLOCK=32768/num_warps=4 -> 7.36ms, BLOCK=8192/num_warps=2 -> 7.09ms,
+# BLOCK=65536 exceeds the 917504-byte DSM budget.  The __ef_nearbyintf extern
+# previously used here dominated the old kernel: 75.3ms for the same tile.
+_MAIN_BLOCK = 16384
+_MAIN_WARPS = 2
 
 
 def _fake_quantize_learnable_per_tensor_affine_backward(
     grad, self, scale, zero_point, quant_min, quant_max, grad_factor=1.0
 ):
-    logger.debug(
-        "GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE_BACKWARD"
-    )
+    logger.debug("GEMS_ENFLAME FAKE_QUANTIZE_LEARNABLE_PER_TENSOR_AFFINE_BACKWARD")
 
     if not (
         torch.is_floating_point(grad)

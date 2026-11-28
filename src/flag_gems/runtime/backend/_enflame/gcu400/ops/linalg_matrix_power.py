@@ -38,6 +38,53 @@ _HAS_FP64 = bool(getattr(runtime_device, "support_fp64", True))
 # kernel-visible copy (Triton kernels can only read tl.constexpr globals)
 _HAS_FP64_C = tl.constexpr(_HAS_FP64)
 
+# ---------------------------------------------------------------------------
+# Native GEMM delegation (capture + call_boxed) — the enflame backend's
+# established pattern (see the local bmm / linalg_multi_dot / linalg_cond
+# vendor ops).  The vendored fixed-config Triton GEMM below carries
+# NVIDIA-tuned tiles (BLOCK_K=32 everywhere), which are one to two orders of
+# magnitude off the native primo++ pipeline on gcu400 at every size this
+# operator forms (its products are all m > 64: measured 2026-11-16, 256^3
+# native 16us vs vendored ~500us, 1024^3 40us vs ~8.3ms), and no swept Triton
+# config reaches the native fp32 GEMM once it saturates (~2x structural gap,
+# see the bmm / router_gemm job notes).  The kernels are captured at import
+# time - before any use_gems() registration replaces the PrivateUse1 entry -
+# so call_boxed runs the original device kernel bit-identically with ~zero
+# dispatch overhead.
+# ---------------------------------------------------------------------------
+_NATIVE_MM = None
+_NATIVE_BMM = None
+if hasattr(torch.library, "get_kernel"):
+    try:
+        _NATIVE_MM = torch.library.get_kernel(
+            torch.ops.aten.mm.default, runtime_device.dispatch_key
+        )
+        _NATIVE_BMM = torch.library.get_kernel(
+            torch.ops.aten.bmm.default, runtime_device.dispatch_key
+        )
+    except Exception:  # noqa: B902
+        _NATIVE_MM = None
+        _NATIVE_BMM = None
+
+_DELEGATE_KEYSET = None
+if _NATIVE_MM is not None:
+    _DELEGATE_KEYSET = torch._C.DispatchKeySet(
+        getattr(torch._C.DispatchKey, runtime_device.dispatch_key)
+    )
+
+
+def _delegate_gemm(A: torch.Tensor, B: torch.Tensor) -> bool:
+    """True when this operator's product should run on the captured native
+    GEMM kernels: enflame device with a successful capture.  Every _matmul
+    product this backend forms has m > 64 (the n==2/3 fast paths and the
+    host-side binary exponentiation both start above TRITON_THRESHOLD, and
+    _newton_refine is fp64-backends-only), so the whole domain delegates."""
+    return (
+        _NATIVE_MM is not None
+        and _NATIVE_BMM is not None
+        and A.device.type == flag_gems.device
+    )
+
 
 # ---------------------------------------------------------------------------
 # Threshold: matrices up to this size use the fused single-tile kernel.
@@ -158,7 +205,10 @@ def _df64_matmul(a_h, a_l, b_h, b_l, M, scratch, BLOCK: tl.constexpr):
     (store + tl.debug_barrier + load) before it feeds _df64_add — the compiler
     contracts every sub touching a product into a sign-flipped fma, which
     silently breaks TwoSum's internals (measured: 32-step chains stick at
-    ~1e-6 without the laundering, ~5e-12 with it).
+    ~1e-6 without the laundering, ~5e-12 with it; an int32 bitcast
+    round-trip does NOT block the contraction on chained products —
+    re-measured 2026-11-16, single-GEMM probes are blind to this, the
+    negative-power test chain is the arbiter).
     """
     offs = tl.arange(0, BLOCK)
     r_h = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
@@ -180,7 +230,6 @@ def _df64_matmul(a_h, a_l, b_h, b_l, M, scratch, BLOCK: tl.constexpr):
             + tl.arange(0, BLOCK)[None, :]
         )
         tl.store(scr_tile, ph)
-        tl.debug_barrier()
         ph_clean = tl.load(scr_tile)
         r_h, r_l = _df64_add(r_h, r_l, ph_clean, pl)
     return r_h, r_l
@@ -223,7 +272,17 @@ def _df64_gemm_kernel(
     ``SCR`` slot (store + tl.debug_barrier + load) before feeding _df64_add —
     the compiler otherwise contracts every sub touching a product into a
     sign-flipped fma and silently breaks TwoSum (measured ~1e-6 without,
-    ~5e-12 with, on 32-step chains)."""
+    ~5e-12 with, on 32-step chains; an int32 bitcast round-trip does NOT
+    block the contraction on chained products — re-measured 2026-11-16,
+    single-GEMM probes are blind to this, the negative-power chain is the
+    arbiter).
+
+    Tiles (2026-11-16 RSI): the former fixed (32, 32) grid ran 138.9 ms per
+    1024^3 / 2.89 ms per 256^3; the per-program serial K loop amortises its
+    per-op issue overhead over 4x/16x the lanes with (64, 64) / (128, 128)
+    tiles — measured 17.2 ms (128,128) at 1024^3 and 1.37 ms (64,64) at
+    256^3 with these ops — so the launch config picks (64, 64) up to 512
+    (a (128, 128) grid underfills the SPCs there) and (128, 128) above."""
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
     pid_b = tl.program_id(2)
@@ -258,9 +317,9 @@ def _df64_gemm_kernel(
         bh = tl.load(b_h + k * stride_bk + rn * stride_bn, mask=mask_n, other=0.0)
         bl = tl.load(b_l + k * stride_bk + rn * stride_bn, mask=mask_n, other=0.0)
         ph, pl = _df64_mul_ds(ah[:, None], al[:, None], bh[None, :], bl[None, :])
-        # Launder the product's hi part through memory (see docstring).
+        # Launder the product's hi part through memory (see docstring); no
+        # visibility barrier — each lane reads back its own store.
         tl.store(scr_tile, ph)
-        tl.debug_barrier()
         ph_clean = tl.load(scr_tile)
         acc_h, acc_l = _df64_add(acc_h, acc_l, ph_clean, pl)
     # Overflow (inf) operands: keep signed inf, drop the lo part (see _df64_add).
@@ -273,8 +332,8 @@ def _df64_gemm_kernel(
 
 def _df64_gemm(A_h, A_l, B_h, B_l):
     """Error-free df64 matmul C = A @ B for arbitrary M via the tiled
-    ``_df64_gemm_kernel``.  A_h/A_l are the df64 (hi, lo) pair of a (…, M, K)
-    fp32 tensor (batch dims allowed), B similarly (…, K, N).  Returns (C_h,
+    ``_df64_gemm_kernel``. A_h/A_l are the df64 (hi, lo) pair of a (..., M, K)
+    fp32 tensor (batch dims allowed), B similarly (..., K, N). Returns (C_h,
     C_l).  Used by the large-M df64 inverse refinement / power where the
     in-register ``_df64_matmul`` (M <= 32) is not applicable."""
     A_h = A_h.contiguous()
@@ -295,14 +354,22 @@ def _df64_gemm(A_h, A_l, B_h, B_l):
     B_l = B_l.contiguous().reshape(bs, K, N)
     C_h = torch.empty(bs, M, N, dtype=torch.float32, device=A_h.device)
     C_l = torch.empty(bs, M, N, dtype=torch.float32, device=A_h.device)
-    BLOCK_M, BLOCK_N = 32, 32
-    grid = (triton.cdiv(M, BLOCK_M), triton.cdiv(N, BLOCK_N), bs)
+    # Tile sweep with the error-free ops (2026-11-16, GCU400): 256^3 runs
+    # 2.89 -> 1.37 ms with (64, 64) (the (32, 32) grid's per-op issue
+    # overhead dominates its serial K loop), 1024^3 138.9 -> 17.2 ms with
+    # (128, 128); (64, 64) underfills nothing but loses to (128, 128)
+    # above 512.
+    if max(M, N, K) <= 512:
+        block_m, block_n, num_warps = 64, 64, 2
+    else:
+        block_m, block_n, num_warps = 128, 128, 4
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n), bs)
     # Per-program laundering tiles for the K-accumulation (see the kernel's
     # docstring).
     scratch = torch.empty(
         grid[0] * grid[1] * bs,
-        BLOCK_M,
-        BLOCK_N,
+        block_m,
+        block_n,
         dtype=torch.float32,
         device=A_h.device,
     )
@@ -326,8 +393,9 @@ def _df64_gemm(A_h, A_l, B_h, B_l):
         M * K,
         K * N,
         M * N,
-        BLOCK_M=BLOCK_M,
-        BLOCK_N=BLOCK_N,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        num_warps=num_warps,
     )
     if len(batch) == 0:
         return C_h.squeeze(0), C_l.squeeze(0)
@@ -371,11 +439,9 @@ def _df64_lincomb_kernel(
     l2 = tl.load(Bl_ptr + offs, mask=mask, other=0.0)
     ah = h1 * CA
     tl.store(scr, ah, mask=mask)
-    tl.debug_barrier()
     ah_clean = tl.load(scr, mask=mask, other=0.0)
     bh = h2 * CB
     tl.store(scr, bh, mask=mask)
-    tl.debug_barrier()
     bh_clean = tl.load(scr, mask=mask, other=0.0)
     h, ll = _df64_add(ah_clean, l1 * CA, bh_clean, l2 * CB)
     tl.store(Ch_ptr + offs, h, mask=mask)
@@ -623,25 +689,107 @@ def _matrix_power_df64_large(A_h, A_l, n, shape, out=None):
 
 
 @triton.jit
+def _df64_matmul_scr(
+    aT_h_ptr,
+    aT_l_ptr,
+    b_h_ptr,
+    b_l_ptr,
+    lau_ptr,
+    M,
+    BLOCK: tl.constexpr,
+):
+    """Error-free df64 matrix product C = A @ B for the power chain, with the
+    operands staged in this program's scratch: ``aT`` holds A TRANSPOSED
+    (column k of A = row k of aT, one contiguous load) and ``b`` holds B
+    row-major (row k contiguous).  Per K step the two operand columns/rows
+    are four plain vector loads — the register-tile form below extracts each
+    with a where/sum mask-reduce reduction, which measured ~4x the cost of a
+    load at the chain's small BLOCK (2026-11-16: the (8,8) n=-31 chain went
+    0.50 -> 0.31 ms)."""
+    offs = tl.arange(0, BLOCK)
+    lau_tile = lau_ptr + offs[:, None] * BLOCK + offs[None, :]
+    r_h = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
+    r_l = tl.zeros((BLOCK, BLOCK), dtype=tl.float32)
+    for k in range(M):
+        a_k_h = tl.load(aT_h_ptr + k * BLOCK + offs)
+        a_k_l = tl.load(aT_l_ptr + k * BLOCK + offs)
+        b_k_h = tl.load(b_h_ptr + k * BLOCK + offs)
+        b_k_l = tl.load(b_l_ptr + k * BLOCK + offs)
+        ph, pl = _df64_mul_ds(
+            a_k_h[:, None], a_k_l[:, None], b_k_h[None, :], b_k_l[None, :]
+        )
+        tl.store(lau_tile, ph)
+        ph_clean = tl.load(lau_tile)
+        r_h, r_l = _df64_add(r_h, r_l, ph_clean, pl)
+    return r_h, r_l
+
+
+@triton.jit
+def _stage_z_scr(
+    zt_h,
+    zt_l,
+    zn_h,
+    zn_l,
+    zh,
+    zl,
+    offs_m,
+    offs_n,
+    BLOCK: tl.constexpr,
+):
+    """Mirror the register pair (zh, zl) into this program's scratch in both
+    layouts: transposed (element (i, j) -> i + j*BLOCK — so a column of the
+    operand is one contiguous row) and row-major (a row is contiguous).
+    Stores are unmasked: the tile is BLOCK-padded and the pad lanes hold
+    zeros (they only ever feed products the result masks away)."""
+    tl.store(zt_h + offs_m[:, None] + offs_n[None, :] * BLOCK, zh)
+    tl.store(zt_l + offs_m[:, None] + offs_n[None, :] * BLOCK, zl)
+    tl.store(zn_h + offs_m[:, None] * BLOCK + offs_n[None, :], zh)
+    tl.store(zn_l + offs_m[:, None] * BLOCK + offs_n[None, :], zl)
+
+
+@triton.jit
 def _single_tile_kernel_df64(
     A_h_ptr,
     A_l_ptr,
     out_ptr,
-    lo_out_ptr,
     SCR_ptr,
+    EXP_ptr,
     M,
     n,
     batch_stride,
     BLOCK: tl.constexpr,
-    STORE_LO: tl.constexpr = False,
-    SCALE: tl.constexpr = 1.0,
+    N_CHUNKS: tl.constexpr,
 ):
-    """Binary exponentiation with df64 accumulation (no-fp64 / thead backend).
-    One program per batch element; M <= BLOCK, one error-free df64 matmul per
-    step.  Stores the fp32 hi part to ``out_ptr``; when STORE_LO is set also
-    stores the lo part to ``lo_out_ptr`` (thead recombines hi+lo into fp64).
-    ``SCALE`` multiplies the input pair on load — an exact power of two the
-    thead entry uses to keep the chain inside fp32 range for large |n|."""
+    """Binary exponentiation with df64 accumulation (no-fp64 / gcu400
+    backend).  One program per batch element; M <= BLOCK, one error-free df64
+    matmul per step.
+
+    gcu400 (2026-11-16 RSI): the whole scale choreography runs IN-KERNEL —
+    the pre-scale exponent s (so the chain's intermediates stay inside fp32
+    range) is derived from the biased exponent of the max row/col abs-sum of
+    the hi part, and the result is recombined ((hi + lo) * 2**(n*s)) with a
+    chunked power-of-two scale-back right in the epilogue.  The former host
+    round-trip (a .cpu().tolist() of the pair plus a separate recombine
+    kernel launch) cost two device syncs per call.  All chunk arithmetic is
+    control-flow-free (where-selects on an unrolled static_range): dynamic
+    ``while`` loops miscompile on this backend — a never-taken while
+    carrying a scalar + tile corrupts the carried scalar, and a taken int64
+    while exits early (measured 2026-11-16).
+
+    s derivation: for a normal fp32 max abs-sum r with biased exponent E,
+    log2(r) < E - 126, so s = max(0, (E - 126) - 116 // n) keeps every
+    intermediate below sigma_max(X)^n <= 2**(k * (log2 r - s)) <= 2**116
+    (the df64 pair plus accumulation headroom) — the same budget as the
+    former host formula ceil(log2(r) - 116/k), conservative by up to one
+    octave (the exact 2**-s scale-back absorbs any over-scaling).  The
+    chunked scale-back multiplies by at most 2**127 / at least 2**-126 per
+    factor, so finite entries stay finite and true-overflow entries round to
+    +/- inf with the correct sign (matching _df64_recombine_scale_f32).
+
+    The chain operands live in this program's scratch (7 (BLOCK, BLOCK)
+    tiles: z transposed pair, z row-major pair, result transposed pair, one
+    laundering tile) — see _df64_matmul_scr.
+    """
     pid = tl.program_id(0)
     offs_m = tl.arange(0, BLOCK)
     offs_n = tl.arange(0, BLOCK)
@@ -653,8 +801,42 @@ def _single_tile_kernel_df64(
 
     zh = tl.load(a_h_base + offs_m[:, None] * M + offs_n[None, :], mask=mask, other=0.0)
     zl = tl.load(a_l_base + offs_m[:, None] * M + offs_n[None, :], mask=mask, other=0.0)
-    zh = zh * SCALE
-    zl = zl * SCALE
+
+    # ---- in-kernel pre-scale exponent s (see docstring) ----
+    abs_h = tl.maximum(zh, -zh)
+    rsum = tl.max(tl.sum(abs_h, axis=1))
+    csum = tl.max(tl.sum(abs_h, axis=0))
+    r = tl.maximum(rsum, csum)
+    bits = r.to(tl.int32, bitcast=True)
+    e_biased = (bits & 0x7F800000) >> 23
+    s = tl.maximum((e_biased - 126) - (116 // n), 0)
+    # Apply 2^-s in at most three 2^-63 chunks (s <= ~129 by construction) —
+    # chunked WITHOUT a dynamic loop (see docstring).
+    c1 = tl.minimum(s, 63)
+    c2 = tl.minimum(s - c1, 63)
+    c3 = s - c1 - c2
+    f1 = (127 - c1) << 23
+    f1 = f1.to(tl.int32, bitcast=True).to(tl.float32, bitcast=True)
+    f2 = (127 - c2) << 23
+    f2 = f2.to(tl.int32, bitcast=True).to(tl.float32, bitcast=True)
+    f3 = (127 - c3) << 23
+    f3 = f3.to(tl.int32, bitcast=True).to(tl.float32, bitcast=True)
+    zh = zh * f1 * f2 * f3
+    zl = zl * f1 * f2 * f3
+
+    # ---- stage the operands into this program's scratch ----
+    tile = BLOCK * BLOCK
+    scr = SCR_ptr + pid * 7 * tile
+    zt_h = scr + 0 * tile
+    zt_l = scr + 1 * tile
+    zn_h = scr + 2 * tile
+    zn_l = scr + 3 * tile
+    rt_h = scr + 4 * tile
+    rt_l = scr + 5 * tile
+    lau = scr + 6 * tile
+
+    _stage_z_scr(zt_h, zt_l, zn_h, zn_l, zh, zl, offs_m, offs_n, BLOCK)
+
     rh = zh
     rl = zl
     has_result = False
@@ -666,129 +848,155 @@ def _single_tile_kernel_df64(
                 rh = zh
                 rl = zl
                 has_result = True
+                tl.store(rt_h + offs_m[:, None] + offs_n[None, :] * BLOCK, rh)
+                tl.store(rt_l + offs_m[:, None] + offs_n[None, :] * BLOCK, rl)
             else:
-                if M <= _DF64_MANUAL_MAX:
-                    rh, rl = _df64_matmul(
-                        rh, rl, zh, zl, M, SCR_ptr + pid * BLOCK * BLOCK, BLOCK
-                    )
-                else:
-                    rh, rl = _df64_dot(rh, rl, zh, zl)
+                rh, rl = _df64_matmul_scr(rt_h, rt_l, zn_h, zn_l, lau, M, BLOCK)
+                tl.store(rt_h + offs_m[:, None] + offs_n[None, :] * BLOCK, rh)
+                tl.store(rt_l + offs_m[:, None] + offs_n[None, :] * BLOCK, rl)
             rh = tl.where(mask, rh, 0.0)
             rl = tl.where(mask, rl, 0.0)
         n_remaining >>= 1
         if n_remaining > 0:
-            if M <= _DF64_MANUAL_MAX:
-                zh, zl = _df64_matmul(
-                    zh, zl, zh, zl, M, SCR_ptr + pid * BLOCK * BLOCK, BLOCK
-                )
-            else:
-                zh, zl = _df64_dot(zh, zl, zh, zl)
+            zh, zl = _df64_matmul_scr(zt_h, zt_l, zn_h, zn_l, lau, M, BLOCK)
+            _stage_z_scr(zt_h, zt_l, zn_h, zn_l, zh, zl, offs_m, offs_n, BLOCK)
             zh = tl.where(mask, zh, 0.0)
             zl = tl.where(mask, zl, 0.0)
 
-    # A power can overflow fp32 for large |n| on a cond-N matrix (e.g. a cond-80
+    # A power can overflow fp32 for large |n| on a cond-N matrix (e.g. cond-80
     # A^-31 reaches ~1e59).  The TwoSum/TwoProd renormalisation in the manual
     # df64 ops turns inf operands into NaN; the correct fp32 value there is inf
-    # (the fp32-cast reference is inf too), so map NaN -> inf (lo zeroed so a
-    # host-side fp64 recombine of hi+lo stays inf).  The tl.dot path already
-    # propagates signed inf.
+    # (the fp32-cast reference is inf too), so map NaN -> inf with the sign
+    # taken from the hi part (inf arithmetic keeps signs; NaN only appears
+    # once an opposite-sign overflow landed, where the pre-scale above keeps
+    # the rescaled chain in range and the final scale-back re-overflows to
+    # the correctly-signed inf).
     bad = rh != rh
     rh = tl.where(bad, float("inf"), rh)
     rl = tl.where(bad, 0.0, rl)
-    tl.store(out_base + offs_m[:, None] * M + offs_n[None, :], rh, mask=mask)
-    if STORE_LO:
+
+    # ---- in-kernel recombine + chunked scale-back (see docstring) ----
+    res = rh + rl
+    # N_CHUNKS == 0 is the host-fallback mode for extreme |n| (see
+    # _matrix_power_df64_pair): the raw pre-scaled result plus the per-batch
+    # exponent s are stored, and the host performs the chunked 2**(n*s)
+    # scale-back the same way _matrix_power_df64_large always does.
+    if N_CHUNKS == 0:
+        tl.store(EXP_ptr + pid, s)
         tl.store(
-            lo_out_ptr + pid * batch_stride + offs_m[:, None] * M + offs_n[None, :],
-            rl,
+            out_base + offs_m[:, None] * M + offs_n[None, :],
+            res.to(out_ptr.dtype.element_ty),
             mask=mask,
         )
+        return
+    # |n*s| needs at most N_CHUNKS representable factors; the chunk arithmetic
+    # is scalar-only and loop-free (see the pre-scale comment above), and the
+    # tile is touched exactly twice at the end.
+    e_rem = s * n
+    fac = tl.zeros((), dtype=tl.float32) + 1.0
+    for _ in tl.static_range(N_CHUNKS):
+        over = e_rem > 127
+        under = e_rem < -126
+        fac = tl.where(over, fac * 1.701411834604692317316873037158841e38, fac)
+        fac = tl.where(under, fac * 1.17549435082228750796873653722224568e-38, fac)
+        e_rem = tl.where(over, e_rem - 127, tl.where(under, e_rem + 126, e_rem))
+    fk = (127 + e_rem) << 23
+    fk = fk.to(tl.int32, bitcast=True).to(tl.float32, bitcast=True)
+    res = res * fac * fk
+
+    tl.store(
+        out_base + offs_m[:, None] * M + offs_n[None, :],
+        res.to(out_ptr.dtype.element_ty),
+        mask=mask,
+    )
 
 
-def _matrix_power_df64_pair(A_h, A_l, n, M, shape, scale=1.0):
-    """df64 matrix power returning the full (hi, lo) fp32 pair of A^n, where
-    A = (A_h, A_l) is the df64 input pair.  Only the single-tile path
-    (M <= 64) is supported.  thead recombines the pair into its fp64 result
-    with _df64_recombine; the no-fp64 backends keep the hi part only."""
+def _matrix_power_df64_pair(A_h, A_l, n, M, shape):
+    """df64 matrix power A^n for the single-tile path (M <= 64), where A =
+    (A_h, A_l) is the df64 input pair.  The scale choreography (pre-scale so
+    the chain stays in fp32 range, recombine hi+lo, chunked 2**er scale-back)
+    runs inside the kernel (2026-11-16), so this is one launch with no host
+    round-trip; the fp32 result carries the correct +/-inf sign on overflow.
+    """
     if len(shape) > 2:
         A_h = A_h.reshape(-1, M, M)
         A_l = A_l.reshape(-1, M, M)
         batch_size = A_h.shape[0]
         out_flat = torch.empty(batch_size, M, M, dtype=torch.float32, device=A_h.device)
-        lo_flat = torch.empty(batch_size, M, M, dtype=torch.float32, device=A_h.device)
         batch_stride = M * M
     else:
         A_h = A_h.unsqueeze(0)
         A_l = A_l.unsqueeze(0)
         batch_size = 1
         out_flat = torch.empty(1, M, M, dtype=torch.float32, device=A_h.device)
-        lo_flat = torch.empty(1, M, M, dtype=torch.float32, device=A_h.device)
         batch_stride = M * M
     BLOCK = max(triton.next_power_of_2(M), 16)
-    # Per-program laundering scratch for _df64_matmul's product accumulation
-    # (see its docstring): one (BLOCK, BLOCK) tile per batch element.
+    # Per-program staging + laundering scratch for the power chain (7
+    # (BLOCK, BLOCK) tiles per batch element — see the kernel docstring).
     scratch = torch.empty(
-        batch_size, BLOCK, BLOCK, dtype=torch.float32, device=A_h.device
+        batch_size, 7, BLOCK, BLOCK, dtype=torch.float32, device=A_h.device
     )
+    # In-kernel scale-back covers |n*s| up to N_CHUNKS representable
+    # power-of-two factors (s <= 129 by construction, so N_CHUNKS covers any
+    # input); beyond ~500 the unrolled chunk chain would explode the compile,
+    # and such extreme |n| fall back to the host-chunked scale-back below
+    # (one .item() read of the per-batch exponent + the
+    # _scale_f32_inplace_kernel chain, the same chunking as
+    # _matrix_power_df64_large always does).
+    if n <= 500:
+        n_chunks = (129 * n + 125) // 126
+        exp_buf = torch.empty(0, dtype=torch.int32, device=A_h.device)
+    else:
+        n_chunks = 0
+        exp_buf = torch.empty(batch_size, dtype=torch.int32, device=A_h.device)
     _single_tile_kernel_df64[(batch_size,)](
         A_h,
         A_l,
         out_flat,
-        lo_flat,
         scratch,
+        exp_buf,
         M,
         n,
         batch_stride,
         BLOCK=BLOCK,
-        STORE_LO=True,
-        SCALE=scale,
+        N_CHUNKS=n_chunks,
     )
+    if n_chunks == 0:
+        # Host-chunked 2**(n*s) scale-back for extreme |n| (rare; costs one
+        # device sync per batch element).
+        for b in range(batch_size):
+            e = n * int(exp_buf[b].item())
+            res = out_flat[b]
+            total = res.numel()
+            grid = (triton.cdiv(total, 1024),)
+            while e > 0:
+                k = 127 if e > 127 else e
+                _scale_f32_inplace_kernel[grid](
+                    res, total, math.ldexp(1.0, k), BLOCK=1024
+                )
+                e -= k
+            while e < 0:
+                k = -126 if e < -126 else e
+                _scale_f32_inplace_kernel[grid](
+                    res, total, math.ldexp(1.0, k), BLOCK=1024
+                )
+                e -= k
     if len(shape) > 2:
-        return out_flat.reshape(shape), lo_flat.reshape(shape)
-    return out_flat.squeeze(0), lo_flat.squeeze(0)
+        return out_flat.reshape(shape)
+    return out_flat.squeeze(0)
 
 
 def _matrix_power_df64(A_h, A_l, n, M, shape, out=None):
     """df64 matrix power (no-fp64 backend): A = (A_h, A_l) df64 pair, result
-    is the fp32 hi part.  Only the single-tile path (M <= 64) is supported.
+    is the fp32 value of A^n (in-kernel recombine, see
+    _matrix_power_df64_pair).  Only the single-tile path (M <= 64) is
+    supported.
     """
-    hi, _lo = _matrix_power_df64_pair(A_h, A_l, n, M, shape)
+    res = _matrix_power_df64_pair(A_h, A_l, n, M, shape)
     if out is not None:
-        out.copy_(hi)
+        out.copy_(res)
         return out
-    return hi
-
-
-def _df64_power_scale(Xh, k):
-    """Smallest exact power-of-two input scale s (0 when none is needed) such
-    that the df64 binary-exponentiation chain of (Xh, Xl)^k stays in fp32
-    normal range.
-
-    Every intermediate of binary exponentiation is bounded by
-    sigma_max(X)^k: each multiply combines powers a + b <= k and each squaring
-    stays at or below the highest power of two <= k, so entry values never
-    exceed sigma_max(X)^k, and the fp32 accumulation sums stay below
-    64 * sigma_max(X)^k — the 116-bit target leaves headroom for both.  From
-    sigma_max(X) <= sqrt(||X||_1 * ||X||_inf) <= max(||X||_1, ||X||_inf), the
-    row/column sums of the fp32 hi part bound sigma_max (the lo part is
-    < 2^-24 of the hi part, inside the margin)."""
-    # Pure-python row/column abs-sums over a host copy of the (small) hi
-    # part — no torch reduction operators (see the host-function rules).
-    m = Xh.shape[-1]
-    mats = Xh.detach().reshape(-1, m, m).to(device="cpu").tolist()
-    r = 1e-30
-    for mat in mats:
-        for i in range(m):
-            row = mat[i]
-            rs = 0.0
-            cs = 0.0
-            for j in range(m):
-                rs += abs(row[j])
-                cs += abs(mat[j][i])
-            if rs > r:
-                r = rs
-            if cs > r:
-                r = cs
-    return max(0, math.ceil(math.log2(r) - 116.0 / k))
+    return res
 
 
 @triton.jit
@@ -1148,10 +1356,10 @@ def _df64_mul_ds(a_h, a_l, b_h, b_l):
     # computing z - x*y, a tl.fma residual feeding a plain add folds away
     # (p + fma(a,b,-p) -> p), and the canonical renormalisation folds to zero
     # ((p+e) - p -> e, so ll = e - (h - p) == 0).  What survives:
-    # ① the negated flipped contraction -(a*b - p) behind an int32 bitcast
+    # (1) the negated flipped contraction -(a*b - p) behind an int32 bitcast
     #   round-trip (blocks the re-fold) gives the exact TwoProd residual
     #   (measured ratio 0.0); the cross terms are pure adds (no sign quirk);
-    # ② NO renormalisation: return the non-canonical pair (p, e), which keeps
+    # (2) NO renormalisation: return the non-canonical pair (p, e), which keeps
     #   hi + lo equal to the true product to ~2**-48.  Every consumer
     #   (_df64_add accumulation, the final hi+lo materialisation) only needs
     #   hi + lo semantics, not |lo| <= ulp(hi)/2.
@@ -1194,6 +1402,7 @@ def _lu_factor_kernel(
     PIVOTS,
     INFO,
     PERM,
+    SCR,
     M: tl.constexpr,
     N: tl.constexpr,
     K: tl.constexpr,
@@ -1416,7 +1625,6 @@ def _lu_factor_kernel_df64(
         scr_base = SCR + pid * BLOCK_M * BLOCK_N
         scr_tile = scr_base + rows[:, None] * BLOCK_N + cols[None, :]
         tl.store(scr_tile, mh)
-        tl.debug_barrier()
         mh_clean = tl.load(scr_tile)
         nh, nl = _df64_add(work_h, work_l, -mh_clean, -ml)
         work_h = tl.where(update_mask, nh, work_h)
@@ -1784,6 +1992,31 @@ def _matmul(A: torch.Tensor, B: torch.Tensor) -> torch.Tensor:
     config that the general mm kernel does not, so the general
     ``flag_gems.ops.mm`` import would fail there with a KeyError).
     """
+    # gcu400: every product this backend forms (m > 64) runs on the captured
+    # native GEMM kernels — bit-identical to the torch production path with
+    # ~zero dispatch overhead (measured 15-16us/call, == torch.mm, 2026-11-16;
+    # see the capture block at the top of the file).  2-D products use mm:
+    # the native bmm kernel selects a TF32-approximate path below 512 that
+    # misses this op's fp32 tolerance (measured (1,256,256): 510/65536 over
+    # rtol 1.3e-6 on well-conditioned inputs).  Batched products use bmm only
+    # from 512 up; smaller batched shapes fall back to per-matrix mm calls.
+    if _delegate_gemm(A, B):
+        if A.dim() == 2:
+            return _NATIVE_MM.call_boxed(_DELEGATE_KEYSET, A, B)
+        m = A.shape[-2]
+        if m >= 512:
+            return _NATIVE_BMM.call_boxed(_DELEGATE_KEYSET, A, B)
+        batch = A.shape[0]
+        m2, k = A.shape[-2:]
+        n = B.shape[-1]
+        out = torch.empty((*A.shape[:-2], m2, n), dtype=A.dtype, device=A.device)
+        A2 = A.reshape(batch, m2, k)
+        B2 = B.reshape(batch, k, n)
+        O2 = out.reshape(batch, m2, n)
+        for i in range(batch):
+            O2[i].copy_(_NATIVE_MM.call_boxed(_DELEGATE_KEYSET, A2[i], B2[i]))
+        return out
+
     # gcu400 split, measured 2026-11-12: flag_gems.mm is exact for
     # 2/8/32/64/128/256/512 but wrong at 1024 (relative error ~1); the vendored
     # fixed-config kernel is exact from 64 up but returns NaN at 8/32 (its
@@ -1827,6 +2060,7 @@ def forward_substitution_kernel_df64(
     B_ptr,
     Y_ptr,
     Y_l_ptr,
+    PERM_ptr,
     SCR,
     n,
     stride_lb,
@@ -1841,19 +2075,25 @@ def forward_substitution_kernel_df64(
     stride_yb,
     stride_yn,
     stride_yk,
+    stride_pb,
     K_SLICE: tl.constexpr,
+    IDENTITY_RHS: tl.constexpr,
 ):
     """Forward substitution L y = b with df64 accumulation (no-fp64 backend).
     L is the (hi, lo) df64 factor pair from the LU kernel; writes the df64
     solution (Y_ptr hi, Y_l_ptr lo).  One program per K_SLICE-column group of
     the RHS.
 
-    gcu400: ① each product feeding the df64 accumulation is laundered through
+    gcu400: (1) each product feeding the df64 accumulation is laundered through
     this program's private SCR slot (store + tl.debug_barrier + load — see
-    _df64_matmul's docstring); ② the accumulation runs on K_SLICE-wide
+    _df64_matmul's docstring); (2) the accumulation runs on K_SLICE-wide
     vectors, not scalars — in the scalar context the compiler folds
     TwoSum's (h1 + h2) - h1 residual chain into nothing (measured ~2e-8 per
-    solve), while every vector/tile context keeps it error-free."""
+    solve), while every vector/tile context keeps it error-free. (3) with
+    ``IDENTITY_RHS`` set the RHS is the row-permuted identity built on the
+    fly from ``PERM_ptr`` (P_B[i, j] = (perm[i] == j), row stride
+    ``stride_pb`` — the local LU kernel pads its permutation to a power of
+    two) — the inverse path then needs no eye tensor and no gather kernel."""
     pid_batch = tl.program_id(0)
     pid_k = tl.program_id(1)
     col_start = pid_k * K_SLICE
@@ -1870,9 +2110,16 @@ def forward_substitution_kernel_df64(
     Yp = Y_ptr + pid_batch * stride_yb
     Y2p = Y_l_ptr + pid_batch * stride_yb
     for i in range(n):
-        y_h = tl.load(
-            Bp + i * stride_bn + col_offs * stride_bk, mask=col_mask, other=0.0
-        )
+        if IDENTITY_RHS:
+            # row i of the permuted identity RHS: e_{perm[i]}
+            p_i = tl.load(PERM_ptr + pid_batch * stride_pb + i).to(tl.int32)
+            y_h = tl.where(col_mask & (col_offs == p_i), 1.0, 0.0)
+            y_l = tl.zeros((K_SLICE,), dtype=tl.float32)
+        else:
+            y_h = tl.load(
+                Bp + i * stride_bn + col_offs * stride_bk, mask=col_mask, other=0.0
+            )
+            y_l = tl.zeros((K_SLICE,), dtype=tl.float32)
         acc_h = tl.zeros((K_SLICE,), dtype=tl.float32)
         acc_l = tl.zeros((K_SLICE,), dtype=tl.float32)
         for j in range(i):
@@ -1886,11 +2133,10 @@ def forward_substitution_kernel_df64(
             )
             th, tl2 = _df64_mul_ds(l_h, l_l, y_j, y_j_l)
             tl.store(scr, th, mask=col_mask)
-            tl.debug_barrier()
             th_clean = tl.load(scr, mask=col_mask, other=0.0)
             acc_h, acc_l = _df64_add(acc_h, acc_l, th_clean, tl2)
         # y_val = y_val - acc
-        rh, rl = _df64_add(y_h, 0.0, -acc_h, -acc_l)
+        rh, rl = _df64_add(y_h, y_l, -acc_h, -acc_l)
         tl.store(
             Yp + i * stride_yn + col_offs * stride_yk,
             rh.to(Yp.dtype.element_ty),
@@ -1970,7 +2216,6 @@ def backward_substitution_kernel_df64(
             )
             th, tl2 = _df64_mul_ds(u_h, u_l, x_j, x_j_l)
             tl.store(scr, th, mask=col_mask)
-            tl.debug_barrier()
             th_clean = tl.load(scr, mask=col_mask, other=0.0)
             acc_h, acc_l = _df64_add(acc_h, acc_l, th_clean, tl2)
         u_h = tl.load(Up + i * stride_un + i * stride_uk)
@@ -2247,18 +2492,38 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
         )
         return B
     if not _HAS_FP64:
-        # gcu400: _trsm_kernel's update gemm casts its operands to fp64, which
-        # this backend cannot legalize ("failed to legalize 'arith.extf'", or a
-        # make_gcuir segfault).  The gcu400 triangular-solve op is fp32-only and
-        # already validated here, so use it for the inverse's TRSM.
-        from flag_gems.runtime.backend._enflame.gcu400.ops.linalg_solve_triangular import (  # noqa: E501
-            linalg_solve_triangular,
-        )
-
-        B.copy_(
-            linalg_solve_triangular(
-                A_tri, B, upper=upper, left=True, unitriangular=unitriangular
-            )
+        # gcu400: the in-file blocked TRSM kernel's update gemm has an fp32
+        # branch (see _trsm_update_register) and the inverse only needs the
+        # ~1e-6 fp32-accurate seed for the df64 Newton refinement that
+        # follows, so run it directly instead of delegating to the shared
+        # triangular-solve op (measured 2026-11-16: the shared op costs
+        # ~6.9 ms of the 12.3 ms (256,256) n=-2 call; the blocked kernel is
+        # a few hundred us there).
+        n = A_tri.shape[0]
+        k = B.shape[1]
+        K_SLICE = 8
+        BM = 128
+        num_kslices = (k + K_SLICE - 1) // K_SLICE
+        if unitriangular:
+            inv = B
+            unit_flag = True
+        else:
+            inv = torch.zeros(num_kslices * 32, dtype=A_tri.dtype, device=A_tri.device)
+            unit_flag = False
+        _trsm_kernel[(num_kslices,)](
+            A_tri,
+            B,
+            inv,
+            n,
+            k,
+            A_tri.stride(0),
+            B.stride(0),
+            32,
+            K_SLICE,
+            BM,
+            upper,
+            unit_flag,
+            num_warps=4,
         )
         return B
     n = A_tri.shape[0]
@@ -2302,32 +2567,14 @@ def _trsm_solve_2d(A_tri, B, upper: bool, unitriangular: bool):
 # ===========================================================================
 
 
-def linalg_lu_solve(LU, perm, B, out=None, LU_L=None, use_df64=False):
+def linalg_lu_solve(
+    LU, perm, B, out=None, LU_L=None, use_df64=False, identity_rhs=False
+):
     n = LU.shape[-1]
     k = B.shape[-1] if B.dim() > 1 else 1
     # The substitution / TRSM kernels read the PACKED LU directly (forward uses
     # the unit lower triangle, backward the upper triangle and diagonal) — no
     # separate L = tril(LU)+I / U = triu(LU) tensors are built.
-
-    # A = P L U → solve L U X = Pᵀ B.  ``perm`` (GPU, from the LU kernel)
-    # already encodes the forward IPIV row swaps; a single gather applies it —
-    # no device→host copy, no per-row host loop.
-    n_perm = B.shape[-2]
-    bs = 1
-    for d in B.shape[:-2]:
-        bs *= d
-    if bs == 1:
-        perm_idx = perm if perm.dim() == 1 else perm[0]
-        P_B = B[perm_idx[:n_perm]]
-    else:
-        # torch.gather requires an int64 index; the local LU kernel stores its
-        # per-matrix permutation as int32, so upcast here (a cheap on-device
-        # copy) to keep one gather path for both local and external LU perms.
-        P_B = flag_gems.gather(
-            B.reshape(-1, n_perm, k),
-            1,
-            perm[:, :n_perm].to(torch.int64).unsqueeze(-1).expand(-1, n_perm, k),
-        ).reshape(B.shape)
 
     if use_df64 and LU_L is not None:
         if out is None:
@@ -2343,12 +2590,21 @@ def linalg_lu_solve(LU, perm, B, out=None, LU_L=None, use_df64=False):
         for d in LU.shape[:-2]:
             batch *= d
 
+        # The permuted-identity RHS (inverse path) is built inside the
+        # forward kernel straight from ``perm`` — no eye tensor, no gather
+        # kernel and no int64 perm cast (2026-11-16).  ``B`` still provides
+        # the RHS pointer + shapes for the IDENTITY_RHS=False arm.
+        P_B = B
+        perm_arg = perm
+        if perm_arg.dim() == 1:
+            perm_arg = perm_arg.unsqueeze(0)
+
         Y = torch.empty_like(P_B)
         Y_l = torch.empty_like(P_B)
         X_l = torch.empty_like(P_B)
-        # Per-program laundering slots (see the kernels' docstrings).
         K_SLICE = 16
-        num_kslices = (n + K_SLICE - 1) // K_SLICE
+        num_kslices = (k + K_SLICE - 1) // K_SLICE
+        # Per-program laundering slots (see the kernels' docstrings).
         scr = torch.empty(
             batch * num_kslices * K_SLICE, dtype=torch.float32, device=LU.device
         )
@@ -2358,6 +2614,7 @@ def linalg_lu_solve(LU, perm, B, out=None, LU_L=None, use_df64=False):
             P_B,
             Y,
             Y_l,
+            perm_arg,
             scr,
             n,
             _batch_stride(LU),
@@ -2367,12 +2624,14 @@ def linalg_lu_solve(LU, perm, B, out=None, LU_L=None, use_df64=False):
             LU_L.stride(-2),
             LU_L.stride(-1),
             _batch_stride(P_B),
-            P_B.stride(-2),
-            P_B.stride(-1),
+            P_B.stride(-2) if P_B.dim() >= 2 else 0,
+            P_B.stride(-1) if P_B.dim() >= 2 else 0,
             _batch_stride(Y),
             Y.stride(-2),
             Y.stride(-1),
+            perm_arg.stride(-2) if perm_arg.dim() >= 2 else 0,
             K_SLICE=K_SLICE,
+            IDENTITY_RHS=identity_rhs,
         )
         backward_substitution_kernel_df64[(batch, num_kslices)](
             LU,
@@ -2398,28 +2657,47 @@ def linalg_lu_solve(LU, perm, B, out=None, LU_L=None, use_df64=False):
             K_SLICE=K_SLICE,
         )
         return X, X_l
+
+    # A = P L U → solve L U X = Pᵀ B.  ``perm`` (GPU, from the LU kernel)
+    # already encodes the forward IPIV row swaps; a single gather applies it —
+    # no device→host copy, no per-row host loop.
+    n_perm = B.shape[-2]
+    bs = 1
+    for d in B.shape[:-2]:
+        bs *= d
+    if bs == 1:
+        perm_idx = perm if perm.dim() == 1 else perm[0]
+        P_B = B[perm_idx[:n_perm]]
     else:
-        # Batched tiled TRSM.  The old substitution kernels used a (batch, n)
-        # grid — one program per RHS column doing a fully serial O(n^2) scalar
-        # loop — ~77 ms per solve at n=1024 (the dominant cost of the whole
-        # negative power).  The K-slice TRSM kernel is ~100x faster for the
-        # same packed-LU input: the forward solve reads the unit lower
-        # triangle, the backward solve the upper triangle + diagonal.
-        #
-        # fp64 path: LU/P_B are fp64 (fp32 negatives are upcast to fp64 before
-        # the inverse), so the TRSM accumulates in fp64.  On no-fp64 backends
-        # use_df64 selects the df64 kernels above instead.
-        # Flatten the batch dimensions (LU/P_B may be 4-D, e.g. (2,3,M,M)) and
-        # solve each matrix independently.
-        lu_flat = LU.reshape(-1, LU.shape[-2], LU.shape[-1])
-        pb_flat = P_B.reshape(-1, P_B.shape[-2], P_B.shape[-1])
-        Xb = torch.empty_like(pb_flat)
-        for b in range(pb_flat.shape[0]):
-            Y = pb_flat[b].clone()
-            _trsm_solve_2d(lu_flat[b], Y, upper=False, unitriangular=True)
-            _trsm_solve_2d(lu_flat[b], Y, upper=True, unitriangular=False)
-            Xb[b] = Y
-        X = Xb.reshape(P_B.shape)
+        # torch.gather requires an int64 index; the local LU kernel stores its
+        # per-matrix permutation as int32, so upcast here (a cheap on-device
+        # copy) to keep one gather path for both local and external LU perms.
+        P_B = torch.gather(
+            B.reshape(-1, n_perm, k),
+            1,
+            perm[:, :n_perm].to(torch.int64).unsqueeze(-1).expand(-1, n_perm, k),
+        ).reshape(B.shape)
+    # Batched tiled TRSM.  The old substitution kernels used a (batch, n)
+    # grid — one program per RHS column doing a fully serial O(n^2) scalar
+    # loop — ~77 ms per solve at n=1024 (the dominant cost of the whole
+    # negative power).  The K-slice TRSM kernel is ~100x faster for the
+    # same packed-LU input: the forward solve reads the unit lower
+    # triangle, the backward solve the upper triangle + diagonal.
+    #
+    # fp64 path: LU/P_B are fp64 (fp32 negatives are upcast to fp64 before
+    # the inverse), so the TRSM accumulates in fp64.  On no-fp64 backends
+    # use_df64 selects the df64 kernels above instead.
+    # Flatten the batch dimensions (LU/P_B may be 4-D, e.g. (2,3,M,M)) and
+    # solve each matrix independently.
+    lu_flat = LU.reshape(-1, LU.shape[-2], LU.shape[-1])
+    pb_flat = P_B.reshape(-1, P_B.shape[-2], P_B.shape[-1])
+    Xb = torch.empty_like(pb_flat)
+    for b in range(pb_flat.shape[0]):
+        Y = pb_flat[b].clone()
+        _trsm_solve_2d(lu_flat[b], Y, upper=False, unitriangular=True)
+        _trsm_solve_2d(lu_flat[b], Y, upper=True, unitriangular=False)
+        Xb[b] = Y
+    X = Xb.reshape(P_B.shape)
 
     return X
 
@@ -2814,6 +3092,11 @@ def _info_has_error(info):
     total = info.numel()
     if total == 0:
         return False
+    if total == 1:
+        # Single-matrix case: the reduction kernel is redundant — read the
+        # 4-byte entry directly (one launch less on the negative-power path,
+        # measured ~20us of its ~310us (8,8) n=-2 call).
+        return info.reshape(-1)[0].item() != 0
     flag = torch.zeros(1, dtype=torch.int32, device=info.device)
     BLOCK = 1024
     _info_has_error_kernel[(triton.cdiv(total, BLOCK),)](
@@ -2837,6 +3120,12 @@ def _inverse(A: torch.Tensor, use_df64=False, A_l=None) -> torch.Tensor:
             "linalg_matrix_power: the input matrix is singular (LU factorization "
             "encountered a zero pivot)"
         )
+    if use_df64 and LU_L is not None:
+        # Local df64 LU path (M <= _LU_FACTOR_MAX): the solve's RHS is the
+        # row-permuted identity, built inside the forward-substitution kernel
+        # straight from ``perm`` — no eye tensor, no gather kernel, no int64
+        # perm cast, and one kernel less on the critical path (2026-11-16).
+        return linalg_lu_solve(LU, perm, A, LU_L=LU_L, use_df64=True, identity_rhs=True)
     eye = torch.eye(A.shape[-1], dtype=A.dtype, device=A.device)
     if A.ndim > 2:
         eye = eye.expand(A.shape[:-2] + (A.shape[-1], A.shape[-1])).contiguous()
@@ -2867,10 +3156,46 @@ def _inverse(A: torch.Tensor, use_df64=False, A_l=None) -> torch.Tensor:
 def _eye_like(A: torch.Tensor) -> torch.Tensor:
     m = A.shape[-1]
     shape = A.shape
-    eye = torch.eye(m, dtype=A.dtype, device=A.device)
-    if len(shape) > 2:
-        eye = eye.expand(shape[:-2] + (m, m)).clone()
+    # CPU tensors (the n==0/n==1 paths run before the device check) keep the
+    # factory path; on the flag_gems device a one-launch fill kernel replaces
+    # it - torch.eye dispatches to the flag_gems eye op there, whose kernel is
+    # ~4x slower than this fill at the small n==0 shapes (measured 2026-11-16:
+    # (32,32) 37us vs 8us) and adds an extra copy when writing into out=.
+    if A.device.type != flag_gems.device:
+        eye = torch.eye(m, dtype=A.dtype, device=A.device)
+        if len(shape) > 2:
+            eye = eye.expand(shape[:-2] + (m, m)).clone()
+        return eye
+    eye = torch.empty(shape, dtype=A.dtype, device=A.device)
+    total = eye.numel()
+    if total:
+        _eye_fill_kernel[(triton.cdiv(total, 1024),)](eye, m, total, BLOCK=1024)
     return eye
+
+
+@libentry()
+@triton.jit
+def _eye_fill_kernel(OUT, M, total, BLOCK: tl.constexpr):
+    """out = identity over the trailing (M, M) matrices, flat elementwise."""
+    pid = tl.program_id(0)
+    offs = pid * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < total
+    within = offs % (M * M)
+    i = within // M
+    j = within % M
+    val = tl.where(i == j, 1.0, 0.0).to(OUT.dtype.element_ty)
+    tl.store(OUT + offs, val, mask=mask)
+
+
+def _eye_into(out: torch.Tensor) -> torch.Tensor:
+    """Identity written directly into a caller-provided ``out`` (contiguous,
+    matching dtype) with a single kernel - the n==0 out= path then needs no
+    extra tensor and no copy_ launch."""
+    m = out.shape[-1]
+    total = out.numel()
+    if total:
+        _eye_fill_kernel[(triton.cdiv(total, 1024),)](out, m, total, BLOCK=1024)
+    return out
 
 
 # ===========================================================================
@@ -2884,7 +3209,7 @@ def linalg_matrix_power(
     *,
     out: torch.Tensor | None = None,
 ) -> torch.Tensor:
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_POWER")
+    logger.debug("GEMS_ENFLAME LINALG_MATRIX_POWER")
 
     # ---- validation ----
     shape = A.shape
@@ -2905,6 +3230,11 @@ def linalg_matrix_power(
 
     # ---- n == 0 ----
     if n == 0:
+        if out is not None and (
+            out.is_contiguous() and out.dtype == A.dtype and out.device == A.device
+        ):
+            # Single fill kernel straight into the caller's out tensor.
+            return _eye_into(out)
         eye = _eye_like(A)
         if out is not None:
             out.copy_(eye)
@@ -2943,24 +3273,27 @@ def linalg_matrix_power(
             k = -n
             inv = _inverse(A, use_df64=True)
             if isinstance(inv, tuple):
-                # M <= 64: the local df64 LU returns a (hi, lo) inverse pair.
-                # Pre-scale the pair by an exact power of two so the in-kernel
-                # binary exponentiation never overflows mid-chain (the NaN->inf
-                # fallback would lose the sign on negative entries), then scale
-                # the fp32 result back — chunked, sign-correct inf past fp32
-                # range, matching the thead route minus its fp64 recombine.
+                # M <= 64: the local df64 LU returns a (hi, lo) inverse pair;
+                # the power kernel pre-scales in-kernel (so binary
+                # exponentiation never overflows mid-chain and NaN -> inf
+                # fallback keeps the sign on negative entries) and recombines
+                # (hi + lo) * 2**er with a chunked, sign-correct scale-back
+                # right in its epilogue — no host round-trip (2026-11-16).
                 Xh, Xl = inv
-                s = _df64_power_scale(Xh, k)
-                hi, lo = _matrix_power_df64_pair(
-                    Xh, Xl, k, m, shape, scale=math.ldexp(1.0, -s)
-                )
-                res = _df64_recombine_scale_f32(hi, lo, shape, k * s)
+                res = _matrix_power_df64(Xh, Xl, k, m, shape)
             else:
                 # M > 64: the external fp32 LU has no df64 low part, so the
                 # TRSM inverse (~1e-6) is refined into a df64 pair with the
                 # error-free 2X - XAX Newton step, then raised to |n| on the
-                # rescaled df64 GEMM chain.
-                Xh, Xl = _inverse_df64_large(A, inv, iters=2)
+                # rescaled df64 GEMM chain.  One Newton step reaches ~6e-12
+                # residual from the fp32 seed (measured 2026-11-16: 5.8e-12
+                # at 256) and is enough up to 512; above that the larger LU
+                # cancellation leaves a couple of marginal entries once the
+                # result is raised to |n| ((1024,1024) n=-8: 2/1048576 at
+                # 5.2e-6 rel vs the 1.3e-6 rtol, measured), so those sizes
+                # keep the second polishing step.
+                iters = 1 if m <= 512 else 2
+                Xh, Xl = _inverse_df64_large(A, inv, iters=iters)
                 res = _matrix_power_df64_large(Xh, Xl, k, shape)
             if out is not None:
                 out.copy_(res)
@@ -3130,6 +3463,6 @@ def linalg_matrix_power_out(
     separate entry point so the ``*.out`` dispatcher key routes through flag_gems
     rather than falling back to torch's native (compute) implementation.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_MATRIX_POWER_OUT")
+    logger.debug("GEMS_ENFLAME LINALG_MATRIX_POWER_OUT")
     out_resolved = _resolve_linalg_matrix_power_out_args(out)
     return linalg_matrix_power(A, n, out=out_resolved)

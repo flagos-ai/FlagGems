@@ -513,5 +513,5 @@ class SkipLayerNorm(torch.autograd.Function):
 
 
 def skip_layer_norm(x, residual, normalized_shape, weight, bias, eps=1e-5):
-    logger.debug("GEMS_ENFLAME_GCU400 SKIP_LAYER_NORM")
+    logger.debug("GEMS_ENFLAME SKIP_LAYER_NORM")
     return SkipLayerNorm.apply(x, residual, normalized_shape, weight, bias, eps)
