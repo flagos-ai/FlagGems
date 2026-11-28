@@ -45,3 +45,33 @@ def test_im2col(shape, dtype, kernel_size, dilation, padding, stride):
     act_out = flag_gems.im2col(x, kernel_size, dilation, padding, stride)
 
     utils.gems_assert_close(act_out, ref_out, dtype=dtype)
+
+
+@pytest.mark.im2col_backward
+@pytest.mark.parametrize("shape", IM2COL_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("kernel_size, dilation, padding, stride", IM2COL_CONFIGS)
+def test_im2col_backward(shape, dtype, kernel_size, dilation, padding, stride):
+    x = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
+    ref_x = utils.to_reference(x, True)
+
+    res_out = flag_gems.im2col(x, kernel_size, dilation, padding, stride)
+    ref_out = torch.ops.aten.im2col(ref_x, kernel_size, dilation, padding, stride)
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    (res_dx,) = torch.autograd.grad(res_out, x, out_grad)
+    (ref_dx,) = torch.autograd.grad(ref_out, ref_x, ref_out_grad)
+    utils.gems_assert_close(res_dx, ref_dx, dtype)
+
+    # The public backward primitive must match the autograd path.
+    res_direct = flag_gems.im2col_backward(
+        out_grad,
+        (shape[-2], shape[-1]),
+        kernel_size,
+        dilation,
+        padding,
+        stride,
+    )
+    utils.gems_assert_close(res_direct, ref_dx, dtype)

@@ -20,6 +20,7 @@ import triton
 import triton.language as tl
 
 from flag_gems import runtime
+from flag_gems.ops.col2im import col2im
 from flag_gems.runtime import device
 from flag_gems.utils import libentry
 
@@ -173,8 +174,78 @@ def _launch_im2col_kernel(x, out, kH, kW, dH, dW, pH, pW, sH, sW):
     )
 
 
+def im2col_backward(
+    grad_output, input_size, kernel_size, dilation=1, padding=0, stride=1
+):
+    """Backward of ``im2col`` with respect to its input.
+
+    ``im2col`` (unfold) is linear in the input, so its adjoint is ``col2im``
+    (fold) with the same kernel/dilation/padding/stride parameters.
+    """
+    logger.debug("GEMS IM2COL_BACKWARD")
+    kH, kW = _parse_2tuple(kernel_size, "kernel_size")
+    dH, dW = _parse_2tuple(dilation, "dilation")
+    pH, pW = _parse_2tuple(padding, "padding")
+    sH, sW = _parse_2tuple(stride, "stride")
+
+    grad = grad_output
+    if grad.dim() == 2:
+        # 3D input (C, H, W) -> im2col squeezed the batch dim.
+        grad = grad.unsqueeze(0)
+        squeeze = True
+    elif grad.dim() == 3:
+        squeeze = False
+    else:
+        raise ValueError("im2col_backward expects a 2D or 3D grad_output")
+
+    H, W = input_size
+    out = col2im(
+        grad,
+        [int(H), int(W)],
+        [kH, kW],
+        [dH, dW],
+        [pH, pW],
+        [sH, sW],
+    )
+    return out.squeeze(0) if squeeze else out
+
+
+class Im2colFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, input, kernel_size, dilation, padding, stride):
+        if input.ndim not in (3, 4):
+            raise ValueError("im2col expects input of shape (N, C, H, W) or (C, H, W)")
+        ctx.input_size = (input.shape[-2], input.shape[-1])
+        ctx.kernel_size = _parse_2tuple(kernel_size, "kernel_size")
+        ctx.dilation = _parse_2tuple(dilation, "dilation")
+        ctx.padding = _parse_2tuple(padding, "padding")
+        ctx.stride = _parse_2tuple(stride, "stride")
+        return _im2col_forward(input, kernel_size, dilation, padding, stride)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        return (
+            im2col_backward(
+                grad_output,
+                ctx.input_size,
+                ctx.kernel_size,
+                ctx.dilation,
+                ctx.padding,
+                ctx.stride,
+            ),
+            None,
+            None,
+            None,
+            None,
+        )
+
+
 def im2col(input, kernel_size, dilation=1, padding=0, stride=1):
     logger.debug("GEMS IM2COL")
+    return Im2colFunction.apply(input, kernel_size, dilation, padding, stride)
+
+
+def _im2col_forward(input, kernel_size, dilation=1, padding=0, stride=1):
     x = input
     if x.ndim == 3:
         x = x.unsqueeze(0)
