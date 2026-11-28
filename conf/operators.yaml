@@ -4496,6 +4496,19 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: cos_backward
+  description: The backward computation of `cos()`, exercised through the autograd
+    of the forward operator.
+  for:
+  - cos
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: cosh
   description: Returns a new tensor with the hyperbolic cosine of the elements of
     `input`.

@@ -14,6 +14,7 @@
 
 import logging
 
+import torch
 import triton
 import triton.language as tl
 
@@ -28,8 +29,26 @@ def cos_func(x):
     return tl.cos(x.to(tl.float32))
 
 
+class CosFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, A):
+        ctx.save_for_backward(A)
+        return cos_func(A)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        # ``aten::cos`` has no standalone backward operator, so the gradient
+        # runs a Triton kernel from ``flag_gems.ops.cos_backward``.
+        (A,) = ctx.saved_tensors
+        from flag_gems.ops.cos_backward import cos_backward
+
+        return cos_backward(grad_output, A)
+
+
 def cos(A):
     logger.debug("GEMS COS")
+    if torch.is_grad_enabled() and A.requires_grad:
+        return CosFunction.apply(A)
     return cos_func(A)
 
 

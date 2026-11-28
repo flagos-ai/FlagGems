@@ -1363,7 +1363,15 @@ _FULL_CONFIG = (
     ),
     ("copysign_.Tensor", copysign_),
     ("corrcoef", corrcoef),
-    ("cos", cos),
+    # Autograd fallthrough: the CosFunction wrapper owns the differentiable
+    # path. Without it the device-key override drops ATen's autograd formula
+    # and torch.cos() takes the native backward.
+    (
+        "cos",
+        cos,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("cos_", cos_),
     # Autograd fallthrough: the CoshFunction wrapper owns the differentiable
     # path. Without it the device-key override drops ATen's autograd formula
