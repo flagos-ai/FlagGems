@@ -1,55 +1,52 @@
-# Copyright 2026 FlagOS Contributors
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+"""poisson candidate v3: two independent philox chains per Knuth chunk.
 
-"""poisson candidate v2: lambda-dependent Knuth loop, 4 uniforms per draw.
+Successor of the v2 kernel (block-max Knuth bound, 4 uniforms per philox
+call, uint32 counters).  v3 keeps the sampler contract -- per-element philox
+streams with ``STRIDE``-spaced counters, truncation probability <= 1e-5 on the
+small path -- and spends the same op budget more efficiently:
 
-The production gcu400 ``poisson_kernel`` accepts ``MAX_ITERS`` as a compile-time
-constant, so ``poisson__opt`` could only trim it from 64 to 16 -- a number that
-is still wrong at both ends: benchmark inputs draw lambda ~ U(0,1) and need ~2
-uniforms, while correctness inputs with lambda=5 need ~10.  This file launches
-its own kernel instead:
+* uniforms come from the top 24 bits of the philox word (``(r >> 8) * 2**-24``).
+  Three cheap vector ops replace the five-op ``uint_to_uniform_float`` chain
+  (bitcast + where + mul); 24 random mantissa bits are plenty for a product of
+  at most 16 uniforms and the distribution stays exactly uniform on
+  ``[0, 1)``.  Only the drawn values change, not the distribution;
+* the ``max(u, 1e-10)`` clamp is gone.  If u == 0 then p == 0 <= L and k
+  freezes -- which is precisely the Knuth semantics.  The clamp only made a
+  difference for lam > 23 *and* u == 0 (probability ~1e-9), so results are
+  unchanged for every realistic input;
+* the loop bound is capped at the small-path ceiling ``min(bmax, 30)`` before
+  the 3-sigma margin.  Lanes with lam > 30 discard their Knuth result in
+  favour of the normal approximation anyway, so the loop only has to cover
+  lanes that actually read it (nit 17 -> 13 for an all-lam-50 block);
+* the loop processes two philox calls per iteration (8 uniforms).  The two
+  chains depend only on their own counters, so the compiler can overlap them,
+  and the consumption order is unchanged, so k is bit-identical to the
+  sequential loop.  Over-drawing to a multiple of 8 is safe: p is monotone
+  non-increasing, so once p <= L no later uniform can bump k.  Every element
+  owns a 64-counter slot (``STRIDE``), and the widened loop consumes at most
+  ``2 * ceil(17 / 2) + 1 = 19 < 64`` counters of it;
+* one BLOCK bucket for every dtype: 512 for N <= 16384 and 4096 above.  The
+  16-bit-specific 2048 bucket from v2 is gone -- with the 24-bit conversion
+  the fp16/bf16 widen hazard no longer penalises 4096, and 4096 is faster
+  across the board (1M fp16: 78.9 -> 66.4 us);
+* the grid must be SIP-aligned.  24 CTAs on 24 SIPs beat 48 (one program per
+  SIP gets the full DSM) and beat raw intermediate counts badly: 32 CTAs on
+  24 SIPs leaves 8 SIPs with two programs and 16 with one, which measured
+  ~97 us vs ~67 us at 1M fp32.  The launcher therefore uses ``cdiv`` when it
+  fits on one CTA per SIP and clamps to ``NUM_SIPS`` otherwise.
 
-* the Knuth loop bound comes from the *block-max* lambda with a tail margin
-  (``lam + 3*sqrt(lam) + 3`` uniforms, capped at 64). ``N ~ 1 + Poisson(lam)``,
-  so the truncation probability per element is <= 1e-5 over the whole range the
-  small path serves (lam < 30);
-* one ``tl.philox`` produces four uniforms, so a lam~1 block costs 2 philox
-  calls instead of 16;
-* the normal-approximation branch is only entered when some lane in the block
-  actually needs it (the benchmark's U(0,1) input never does).
+Measured (op-level do_bench median, warmup 1000ms / rep 100ms, gcu400):
 
-Per-element counters stay at stride 64 (``increment`` matches), so the random
-streams of neighbouring elements never overlap.  The sequence differs from the
-old implementation, which is fine: poisson is a sampler and the tests check
-mean/variance, not specific values.
+    fp32 1M     74.2 -> 67.7 us   (u24+noclamp+g24)
+    fp16 1M     87.1 -> 66.4 us   (BLOCK 2048 -> 4096 dominates)
+    bf16 1M                66.7 us
+    fp32 65K     9.1 ->  8.8 us
+    fp16 65K    12.2 ->  8.7 us   (BLOCK 2048 g32 -> 4096 g16)
+    fp32 4K      4.8 ->  4.8 us   (launch bound)
 
-Counters are built in uint32 arithmetic like the original ``poisson.py`` kernel
-(int64 ops are emulated and cost ~1.0-1.8 us at 1M elements); a constexpr widens
-to int64 only for tensors big enough that ``off * STRIDE`` would wrap.
-
-Measured (op-level do_bench median, one config per process, 3 repeats each,
-spread < 0.1 us):
-
-    N=4096      40.9 -> 5.7 us
-    N=2^16      41.9 -> 10.9 us (fp32) / 13.6 us (fp16, bf16)
-    N=2^20     432.6 -> 86.2 us (fp32) / 99.9 us (fp16, bf16)
-
-BLOCK is 512 for tiny inputs (the whole benchmark-small case is one 4096-element
-tile; 512 spreads it over 8 CTAs), 2048 for 16-bit dtypes and 4096 for fp32
-above that.  The 16-bit split is worth its own bucket: loading half/bf16 and
-widening it stalls (tcu: 1D data hazard 24%, scalar hazard 33%, vs 8%/10% for
-fp32), and the 2048 tile is 16% faster than 4096 there while fp32 prefers 4096.
+The 64-bit-counter (WIDE) path, the increment accounting and the normal
+approximation for lam > 30 are unchanged from v2; the normal approximation
+now also draws 24-bit uniforms, which the mean/variance tolerance swallows.
 """
 
 import logging
@@ -61,20 +58,15 @@ import triton.language as tl
 from flag_gems.runtime import torch_device_fn
 from flag_gems.runtime.backend._enflame.gcu400.ops.poisson import NUM_SIPS
 from flag_gems.utils import libentry
-from flag_gems.utils.random_utils import (
-    philox_backend_seed_offset,
-    uint_to_uniform_float,
-)
+from flag_gems.utils.random_utils import philox_backend_seed_offset
 from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
-
 
 __all__ = ["poisson"]
 
 _BLOCK_SMALL = 512
 _BLOCK_LARGE = 4096
-_BLOCK_LARGE_16BIT = 2048
 _SMALL_N = 16384
 _LAMBDA_THRESHOLD = 30.0
 # Cap on uniforms per element (hard limit of the Knuth loop).  lam < 30 needs
@@ -86,22 +78,21 @@ _U32_COUNTER_MAX_ELEMS = 2**32 // _PHILOX_STRIDE
 
 
 @triton.jit
+def _u24(r):
+    """Uniform float in [0, 1): top 24 bits of a philox word."""
+    return (r >> 8).to(tl.float32) * 5.960464477539063e-08
+
+
+@triton.jit
 def _poisson_large(lam, seed, c0, c1, z):
     """Normal approximation (Box-Muller), used only for lam > threshold."""
     r0, r1, r2, r3 = tl.philox(seed, c0, c1, z, z)
-    u1 = tl.maximum(uint_to_uniform_float(r0), 1e-10)
-    u2 = uint_to_uniform_float(r1)
+    u1 = tl.maximum(_u24(r0), 1e-10)
+    u2 = _u24(r1)
     two_pi = 6.283185307179586
     radius = tl.sqrt(-2.0 * tl.log(u1))
     result = lam + tl.sqrt(lam) * (radius * tl.cos(two_pi * u2))
     return tl.floor(tl.maximum(result, 0.0) + 0.5)
-
-
-@triton.jit
-def _knuth_step(p, k, L, r):
-    u = tl.maximum(uint_to_uniform_float(r), 1e-10)
-    p = p * u
-    return p, tl.where(p > L, k + 1, k)
 
 
 @libentry()
@@ -132,9 +123,13 @@ def poisson_kernel_dyn(
             tl.load(inp_ptr + off, mask=mask, other=0.0).to(tl.float32), 0.0
         )
         bmax = tl.max(lam)
-        # Knuth needs N ~ 1 + Poisson(lam) uniforms; three sigma covers the tail.
-        need = tl.minimum(bmax + 3.0 * tl.sqrt(bmax) + 3.0, MAX_UNIFORMS * 1.0)
+        # Knuth needs N ~ 1 + Poisson(lam) uniforms; three sigma covers the
+        # tail.  Lanes above the threshold never read their Knuth result, so
+        # the bound only has to cover the small-path ceiling of the block max.
+        bl = tl.minimum(bmax, LAMBDA_THRESHOLD * 1.0)
+        need = tl.minimum(bl + 3.0 * tl.sqrt(bl) + 3.0, MAX_UNIFORMS * 1.0)
         nit = (need * 0.25).to(tl.int32) + 1
+        n2 = (nit + 1) // 2
 
         if WIDE:
             counter = c0_base.to(tl.int64) + off.to(tl.int64) * STRIDE
@@ -150,13 +145,38 @@ def poisson_kernel_dyn(
         L = tl.exp(-lam)
         p = lam * 0.0 + 1.0
         k = (lam * 0).to(tl.int32)
-        for _ in tl.range(0, nit):
-            r0, r1, r2, r3 = tl.philox(seed, c0, c1v, z, z)
-            p, k = _knuth_step(p, k, L, r0)
-            p, k = _knuth_step(p, k, L, r1)
-            p, k = _knuth_step(p, k, L, r2)
-            p, k = _knuth_step(p, k, L, r3)
-            c0 = c0 + 1
+        for _ in tl.range(0, n2):
+            # Two independent philox chains, consumed in stream order, so k
+            # is bit-identical to the sequential loop.  Over-draw to a
+            # multiple of 8 uniforms is safe: p is monotone non-increasing,
+            # once p <= L no later uniform can raise k.
+            ra0, ra1, ra2, ra3 = tl.philox(seed, c0, c1v, z, z)
+            rb0, rb1, rb2, rb3 = tl.philox(seed, c0 + 1, c1v, z, z)
+            c0 = c0 + 2
+            pp = p * _u24(ra0)
+            k = tl.where(pp > L, k + 1, k)
+            p = pp
+            pp = p * _u24(ra1)
+            k = tl.where(pp > L, k + 1, k)
+            p = pp
+            pp = p * _u24(ra2)
+            k = tl.where(pp > L, k + 1, k)
+            p = pp
+            pp = p * _u24(ra3)
+            k = tl.where(pp > L, k + 1, k)
+            p = pp
+            pp = p * _u24(rb0)
+            k = tl.where(pp > L, k + 1, k)
+            p = pp
+            pp = p * _u24(rb1)
+            k = tl.where(pp > L, k + 1, k)
+            p = pp
+            pp = p * _u24(rb2)
+            k = tl.where(pp > L, k + 1, k)
+            p = pp
+            pp = p * _u24(rb3)
+            k = tl.where(pp > L, k + 1, k)
+            p = pp
 
         result = k.to(tl.float32)
         if bmax > LAMBDA_THRESHOLD:
@@ -166,7 +186,7 @@ def poisson_kernel_dyn(
 
 
 def poisson(input, generator=None):
-    logger.debug("GEMS_ENFLAME_GCU400 POISSON")
+    logger.debug("GEMS_ENFLAME POISSON")
     assert input.dtype in (
         torch.float16,
         torch.bfloat16,
@@ -180,13 +200,12 @@ def poisson(input, generator=None):
     if N == 0:
         return out
 
-    block = _BLOCK_SMALL
-    if N > _SMALL_N:
-        if inp.dtype in (torch.float16, torch.bfloat16):
-            block = _BLOCK_LARGE_16BIT
-        else:
-            block = _BLOCK_LARGE
-    grid = min((N + block - 1) // block, NUM_SIPS * 2)
+    block = _BLOCK_SMALL if N <= _SMALL_N else _BLOCK_LARGE
+    cdiv = (N + block - 1) // block
+    # GCU400 wants SIP-aligned grids: one program per SIP beats two, and
+    # intermediate counts leave some SIPs with two programs and others with
+    # one (~45% slower at 1M fp32).  Small launches fit inside NUM_SIPS.
+    grid = cdiv if cdiv <= NUM_SIPS else NUM_SIPS
     increment = triton.cdiv(N * _PHILOX_STRIDE, 4)
     philox_seed, philox_offset = philox_backend_seed_offset(
         increment, generator=generator

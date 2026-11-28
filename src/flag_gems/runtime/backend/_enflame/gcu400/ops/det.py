@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 
 def det(A):
-    logger.debug("GEMS_ENFLAME_GCU400 DET")
+    logger.debug("GEMS_ENFLAME DET")
     # aten::det is numerically equivalent to aten::linalg_det; both only
     # support float32/float64 (LU decomposition). Reject other dtypes early.
     if A.dtype not in (torch.float32, torch.float64):

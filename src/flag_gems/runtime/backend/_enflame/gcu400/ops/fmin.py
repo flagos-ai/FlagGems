@@ -22,22 +22,39 @@ from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
-NUM_SIPS = 48
+
+# Fixed Grid on GCU400 (48 CTAs); see ops/deg2rad.py for the grid.x limit
+# rationale.
+_GRID_SIZE = 48
 
 
 @libentry()
-@triton.jit(do_not_specialize=["N_total"])
-def fmin_kernel(x_ptr, y_ptr, out_ptr, N_total, BLOCK: tl.constexpr):
-    pid = tl.program_id(0)
-    num_pids = tl.num_programs(0)
-    arange = tl.arange(0, BLOCK)
-    for block_id in tl.range(pid, (N_total + BLOCK - 1) // BLOCK, num_pids):
-        off = block_id * BLOCK + arange
-        mask = off < N_total
-        x = tl.load(x_ptr + off, mask=mask).to(tl.float32)
-        y = tl.load(y_ptr + off, mask=mask).to(tl.float32)
+@triton.jit
+def fmin_kernel(
+    x_ptr,
+    y_ptr,
+    out_ptr,
+    n_elements,
+    BLOCK_SIZE: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
+):
+    # tl.minimum lowers to minnumf on this backend (verified against
+    # torch.fmin: one-NaN -> other operand, both-NaN -> NaN), so it already
+    # carries fmin NaN semantics. The former .to(tl.float32) upcast was both
+    # a measurable tax on fp16 (kernel-only 16M/1G probes: +4-6% over the
+    # 2R1W floor) and silently lossy for int64 inputs beyond 2^24; native
+    # dtype compute sits at the 2R1W memory floor for every float dtype
+    # (fp16/bf16/fp32, 16.7M/1G, interleaved A/B).
+    pid = tl.program_id(axis=0)
+    num_tile = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for tile_id in tl.range(pid, num_tile, GRID_SIZE, num_stages=NUM_STAGES):
+        offsets = tile_id * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        mask = offsets < n_elements
+        x = tl.load(x_ptr + offsets, mask=mask)
+        y = tl.load(y_ptr + offsets, mask=mask)
         out = tl.minimum(x, y)
-        tl.store(out_ptr + off, out, mask=mask)
+        tl.store(out_ptr + offsets, out, mask=mask)
 
 
 def _to_tensor(x, device=None, dtype=None):
@@ -61,7 +78,7 @@ def _prepare_inputs(a, b, out=None):
         if isinstance(b, torch.Tensor):
             dev = b.device if dev is None else dev
     if dev is None:
-        dev = torch.device("cuda")
+        dev = torch.device(f"gcu:{torch.gcu.current_device()}")
     a = _to_tensor(a, device=dev)
     b = _to_tensor(b, device=dev)
     a_b, b_b = torch.broadcast_tensors(a, b)
@@ -75,13 +92,42 @@ def _prepare_inputs(a, b, out=None):
 
 
 def _launch_fmin(a_c, b_c, out_c):
-    N = out_c.numel()
-    if N == 0:
+    n_elements = out_c.numel()
+    if n_elements == 0:
         return
-    BLOCK = 8192
-    grid = min((N + BLOCK - 1) // BLOCK, NUM_SIPS * 2)
-    with torch_device_fn.device(a_c.device):
-        fmin_kernel[(grid,)](a_c, b_c, out_c, N, BLOCK=BLOCK, num_warps=4)
+    # Tuned on GCU400 (minnum kernel body, official bench kernel mode
+    # do_bench w1000/r100 median, interleaved A/B probes):
+    # - 16-bit peak at BLOCK=65536 (1G fp16/bf16 2.8-2.9 TB/s vs 2.4-2.5 at
+    #   8192), fp32 keeps 32768 (256KB DSM per 2R stream);
+    # - num_warps=2 (4 is +10-16% everywhere); grid capped at 48 CTAs
+    #   (96/192 neutral-to-worse, fp16 1G grid96 +8%);
+    # - n<=4096 (e.g. core (64,64)): 16-bit favors a single wide CTA
+    #   (BS=max(1024, npo2(n)): fp16 3.44 vs 3.75us for npo2(n//2)),
+    #   4-byte favors two (BS=max(512, npo2(n//2)): fp32 3.50 vs 3.57us).
+    if n_elements <= 4096:
+        if a_c.element_size() <= 2:
+            block_size = max(1024, triton.next_power_of_2(n_elements))
+        else:
+            block_size = max(512, triton.next_power_of_2(n_elements // 2))
+        num_stages = 1
+    else:
+        block_size = 65536 if a_c.element_size() <= 2 else 32768
+        if n_elements < block_size:
+            block_size = max(1024, triton.next_power_of_2(n_elements))
+        num_stages = 4
+    num_tile = triton.cdiv(n_elements, block_size)
+    grid = (min(_GRID_SIZE, num_tile), 1, 1)
+    with torch_device_fn.device(out_c.device.index):
+        fmin_kernel[grid](
+            a_c,
+            b_c,
+            out_c,
+            n_elements,
+            BLOCK_SIZE=block_size,
+            GRID_SIZE=min(_GRID_SIZE, num_tile),
+            NUM_STAGES=num_stages,
+            num_warps=2,
+        )
 
 
 def fmin(a, b):

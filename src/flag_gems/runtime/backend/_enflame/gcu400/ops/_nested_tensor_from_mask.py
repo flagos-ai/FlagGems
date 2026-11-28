@@ -116,7 +116,7 @@ def _nested_tensor_from_mask_compact_kernel(
 
 
 def _nested_tensor_from_mask(t, mask, mask_check=True):
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_TENSOR_FROM_MASK")
+    logger.debug("GEMS_ENFLAME _NESTED_TENSOR_FROM_MASK")
     assert t.dim() == 3, "Input should be a 3D tensor, N * L * D"
     assert mask.dim() == 2, "Padding mask should be 2D"
     assert mask.dtype == torch.bool, "Expected mask to be a bool tensor"

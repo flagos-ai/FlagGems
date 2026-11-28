@@ -12742,6 +12742,19 @@ ops:
   - BLAS
   stages:
   - alpha: '5.4'
+- id: linalg_svd_backward
+  description: The backward computation of the singular value decomposition, exercised
+    through autograd.
+  for:
+  - _linalg_svd
+  labels:
+  - aten
+  - LinearAlg
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.5.0'
 - id: linalg_svdvals
   description: Computes the singular values of a matrix.
   for:
@@ -15249,6 +15262,20 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.4'
+- id: native_batch_norm_legit_no_training_backward
+  description: The backward computation of `_native_batch_norm_legit_no_training`,
+    exercised through the autograd of the forward operator. The engine derives it
+    from `native_batch_norm_backward` with train=False and empty saved statistics,
+    so the running estimates are the normalisation statistics.
+  for:
+  - _native_batch_norm_legit_no_training
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.5.0'
 - id: native_batch_norm_legit_out
   description: Out variant of batch normalization with running statistics.
   for:
@@ -19994,6 +20021,22 @@ ops:
   - BLAS
   stages:
   - alpha: '5.5.0'
+- id: sparse_addmm_backward
+  description: The backward computation of _sparse_addmm, exercised through
+    the autograd of the forward operator. grad_self is beta * grad_output
+    reduced over the bias broadcast; grad_mat1 is alpha * (grad_output @
+    mat2.T) sampled at mat1's stored pattern and returned in mat1's own sparse
+    layout; grad_mat2 is alpha * mat1.T @ grad_output over the stored entries
+    only.
+  for:
+  - _sparse_addmm
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - beta: '5.5.0'
 - id: sparse_addmm_out
   description: |
     A variant of _sparse_addmm that writes beta * self + alpha * (mat1 @ mat2)

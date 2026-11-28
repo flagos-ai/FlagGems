@@ -46,7 +46,7 @@ _NATIVE_DTYPES = (torch.float64, torch.complex128)
 
 
 def masked_select_backward(grad, input, mask):
-    logger.debug("GEMS_ENFLAME_GCU400 MASKED_SELECT_BACKWARD")
+    logger.debug("GEMS_ENFLAME MASKED_SELECT_BACKWARD")
     if (
         grad.dtype in _NATIVE_DTYPES
         # Non-contiguous inputs take the op's broadcast/as_strided route, whose

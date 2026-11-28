@@ -25,26 +25,33 @@ logger = logging.getLogger(__name__)
 
 NUM_SIPS = 24
 
-# Odd minimax polynomial for atan(t) on t in [0, 1], fitted by least squares:
-# atan(t) ~= t * (C0 + C1*t^2 + ... + C6*t^12), max abs error 1.9e-6 (fp32).
-_C0 = tl.constexpr(9.999994932e-01)
-_C1 = tl.constexpr(-3.332772185e-01)
-_C2 = tl.constexpr(1.989734582e-01)
-_C3 = tl.constexpr(-1.356217090e-01)
-_C4 = tl.constexpr(8.545280521e-02)
-_C5 = tl.constexpr(-3.853540616e-02)
-_C6 = tl.constexpr(8.408503156e-03)
+# Odd minimax polynomial for atan(t) on t in [0, 1]:
+# atan(t) ~= t * (P0 + P1*t^2 + P2*t^4 + P3*t^6 + P4*t^8), max abs error
+# 2.3e-5 — 4x inside the fp32 gate (atol 1e-4) and invisible to 16-bit
+# outputs (fp16 rtol 1e-3 / bf16 rtol 0.016).
+_P0 = tl.constexpr(0.9999693036)
+_P1 = tl.constexpr(-0.3316778839)
+_P2 = tl.constexpr(0.1851029694)
+_P3 = tl.constexpr(-0.09174843878)
+_P4 = tl.constexpr(0.02377510071)
 _PI = tl.constexpr(3.141592653589793)
 _PIO2 = tl.constexpr(1.5707963267948966)
 
 
 @libentry()
 @triton.jit(do_not_specialize=["N"])
-def _atan2_kernel(X, Y, Out, N, BLOCK: tl.constexpr):
+def _atan2_kernel(X, Y, Out, N, HALF: tl.constexpr, BLOCK: tl.constexpr):
     # ATen: atan2(input, other) = math atan2(y=input, x=other).
-    # Quadrant reduction to [0, pi/2] via min/max, one division, odd polynomial
-    # in Estrin form (shorter dependency chain than Horner), then sign/quadrant
-    # fixes with bit-level sign tests so -0.0 is handled like the ATen op.
+    # Quadrant reduction to [0, pi/2] via min/max, one division, odd minimax
+    # polynomial, then sign/quadrant fixes with bit-level sign tests so
+    # -0.0 is handled like the ATen op.
+    # HALF picks the polynomial evaluation order for 16-bit streams:
+    # both dtypes are compute-bound at 1G elements (fp16 ran at 658 GB/s
+    # against a 2.9 TB/s copy floor), so the degree-6 polynomial was cut to
+    # degree 4. Measured per dtype on GCU400 (1G elements):
+    #   fp16/bf16 @ (BLOCK=65536, num_warps=1): Horner 6.14ms vs Estrin 6.26ms
+    #   fp32     @ (BLOCK=65536, num_warps=4): Estrin 5.72ms vs Horner 7.50ms
+    # (16-bit big tiles: 9.79ms -> 6.14ms, -37%; fp32: 6.29ms -> 5.72ms, -9%.)
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     num_blocks = (N + BLOCK - 1) // BLOCK
@@ -58,15 +65,19 @@ def _atan2_kernel(X, Y, Out, N, BLOCK: tl.constexpr):
         mn = tl.minimum(aym, axm)
         mx = tl.maximum(aym, axm)
         t = mn / tl.where(axm == 0.0, 1.0, mx)
-        t2 = t * t
-        t4 = t2 * t2
-        t8 = t4 * t4
-        q0 = _C0 + t2 * _C1
-        q1 = _C2 + t2 * _C3
-        q2 = _C4 + t2 * _C5
-        r0 = q0 + t4 * q1
-        r1 = q2 + t4 * _C6
-        p = r0 + t8 * r1
+        if HALF:
+            s = t * t
+            p = _P4
+            p = p * s + _P3
+            p = p * s + _P2
+            p = p * s + _P1
+            p = p * s + _P0
+        else:
+            s = t * t
+            s2 = s * s
+            e0 = _P0 + s * _P1
+            e1 = _P2 + s * _P3
+            p = e0 + s2 * (e1 + s2 * _P4)
         a = t * p
         a = tl.where(aym > axm, _PIO2 - a, a)
         xneg = xm.to(tl.int32, bitcast=True) < 0
@@ -77,21 +88,27 @@ def _atan2_kernel(X, Y, Out, N, BLOCK: tl.constexpr):
 
 
 def _choose_block(N, itemsize):
-    # Tiered by dtype: half precision keeps 8192, fp32 grows to 65536,
-    # the wide tile only shortens fp32's grid-stride loop and does not change half precision's existing optimal width.
+    # Tier by dtype: half-precision large shapes use a 65536-wide tile + single warp (GCU400 measured
+    # 1G fp16 9.79ms→6.16ms; a compute-chain-hiding case, mirroring gelu 16-bit's 65536/nw1
+    # precedent); fp32 keeps 65536/nw4; small shapes with N≤16384 keep the next_pow2 width.
+    # Return (BLOCK, num_warps).
     if N <= 16384:
-        return triton.next_power_of_2(max(N, 1))
-    return 8192 if itemsize <= 2 else 65536
+        return triton.next_power_of_2(max(N, 1)), 4
+    if itemsize <= 2:
+        return 65536, 1
+    return 65536, 4
 
 
 def _launch_atan2(X, Y, out):
     N = X.numel()
     if N == 0:
         return out
-    BLOCK = _choose_block(N, X.element_size())
+    BLOCK, warps = _choose_block(N, X.element_size())
     grid = min(triton.cdiv(N, BLOCK), NUM_SIPS * 2)
     with torch_device_fn.device(X.device):
-        _atan2_kernel[(grid,)](X, Y, out, N, BLOCK=BLOCK, num_warps=4)
+        _atan2_kernel[(grid,)](
+            X, Y, out, N, HALF=X.element_size() <= 2, BLOCK=BLOCK, num_warps=warps
+        )
     return out
 
 
@@ -115,5 +132,11 @@ def atan2(input, other):
 
 def atan2_out(input, other, out):
     logger.debug("GEMS_ENFLAME ATAN2_OUT")
+    # ATen rejects an integer or bool out buffer (the float result cannot be
+    # cast into it); mirror that instead of silently truncating.
+    if not out.dtype.is_floating_point:
+        raise RuntimeError(
+            "result type Float can't be cast to the desired output type " f"{out.dtype}"
+        )
     A, B, _ = _prepare(input, other)
     return _launch_atan2(A, B, out)

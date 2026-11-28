@@ -138,7 +138,7 @@ def shifted_chebyshev_polynomial_u_kernel_scalar_n(x, n):
 
 
 def special_shifted_chebyshev_polynomial_u(x, n):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U")
+    logger.debug("GEMS_ENFLAME SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U")
     # shifted_chebyshev_polynomial_u_cuda only supports float32
     if x.dtype not in (torch.float32,):
         raise ValueError(f"Unsupported dtype {x.dtype}, only float32 is supported")
@@ -151,7 +151,7 @@ def special_shifted_chebyshev_polynomial_u(x, n):
 
 
 def special_shifted_chebyshev_polynomial_u_(x, n):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U_")
+    logger.debug("GEMS_ENFLAME SPECIAL_SHIFTED_CHEBYSHEV_POLYNOMIAL_U_")
     # shifted_chebyshev_polynomial_u_cuda only supports float32
     if x.dtype not in (torch.float32,):
         raise ValueError(f"Unsupported dtype {x.dtype}, only float32 is supported")

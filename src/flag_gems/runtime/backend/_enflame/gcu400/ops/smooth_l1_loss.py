@@ -424,12 +424,10 @@ def _smooth_l1_loss_reduce(input, target, beta, reduction, out=None):
         mid = torch.empty((grid,), device=input.device, dtype=torch.float32)
 
     beta_f = float(beta)
-    # EVEN_N (unmasked fast path) steadily gains 1.27~1.34x on 16-bit and small/medium fp32,
-    # but is 1.35x slower on large-scale fp32 (16.7M: 0.0759ms -> 0.1021ms, interleaved
-    # same-process A/B minimum), so it is explicitly disabled there.
+    # EVEN_N (unmasked fast path) gains 1.27~1.34x on 16-bit and on fp32 as well
+    # once the tile is 16384 (2^24 fp32: 0.0759ms masked -> 0.0688ms unmasked,
+    # same-process sweep).  Only the tile matters here, so no dtype override.
     even_n = n_elements % block_size == 0
-    if input.element_size() >= 4 and n_elements > (1 << 21):
-        even_n = False
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic; acosh.py / sinh.py / atan2_.py precedent for this
     # toolchain family); retrying the launch recompiles and succeeds.
@@ -515,12 +513,12 @@ def smooth_l1_loss_backward(
         return out
     block_size = _backward_config(n_elements, input.element_size())
     if triton.cdiv(n_elements, block_size) > 65535:
-        # Grid dimension cap protection: enlarge BLOCK for huge tensors to keep one launch.
+        # Guard against the grid dimension limit: for very large tensors, increase BLOCK to keep it to a single launch.
         block_size = 65536
     grid = triton.cdiv(n_elements, block_size)
     beta_f = float(beta)
-    # Same empirical rule as the reduction path: unmasked is slightly slower on large fp32 (16.7M
-    # elements 0.1270ms vs 0.1203ms), while 16-bit steadily gains 1.5~2.5x, so disable only there.
+    # Same empirical rule as the reduction path: on large-scale fp32, no mask is slightly slower (16.7M
+    # elements: 0.1270ms vs 0.1203ms), while 16-bit consistently gains 1.5~2.5x, so disable it only there.
     even_n = n_elements % block_size == 0
     if input.element_size() >= 4 and n_elements > (1 << 21):
         even_n = False

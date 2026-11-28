@@ -594,6 +594,35 @@ def _affine_grid_generator_backward_3d_kernel(
     tl.store(grad_theta_ptr + out_base + 11, acc_23)
 
 
+# Launch-plan cache for 2D shapes: do_bench's event window also measures the host-side launch overhead,
+# and this path recomputes next_power_of_2 / hb / rows_per_block / num_warps on every call;
+# on a cache hit each step is just one dict lookup. The key includes dtype because the dtype of the part buffer depends
+# on it.
+_2D_PLAN_CACHE = {}
+
+
+def _plan_2d(dtype, N, H, W, align_corners):
+    key = (dtype, N, H, W, align_corners)
+    plan = _2D_PLAN_CACHE.get(key)
+    if plan is None:
+        block_w = max(32, triton.next_power_of_2(W))
+        hb = max(1, min(H, TARGET_PROGS // N))
+        plan = (
+            block_w,
+            W % block_w == 0,
+            hb,
+            -(-H // hb),
+            _num_warps_for(block_w),
+            triton.next_power_of_2(hb),
+            _part_dtype(dtype),
+        )
+        if len(_2D_PLAN_CACHE) >= 512:
+            # Clear the whole cache when the number of distinct shapes grows abnormally, to avoid unbounded growth
+            _2D_PLAN_CACHE.clear()
+        _2D_PLAN_CACHE[key] = plan
+    return plan
+
+
 def affine_grid_generator_backward(grad_output, size, align_corners):
     """
     Compute the backward pass of affine_grid_generator using Triton.
@@ -614,7 +643,7 @@ def affine_grid_generator_backward(grad_output, size, align_corners):
             2D: [N, 2, 3]
             3D: [N, 3, 4]
     """
-    logger.debug("GEMS_ENFLAME_GCU400 AFFINE_GRID_GENERATOR_BACKWARD")
+    logger.debug("GEMS_ENFLAME AFFINE_GRID_GENERATOR_BACKWARD")
     assert grad_output.dtype in (
         torch.float16,
         torch.bfloat16,
@@ -645,11 +674,9 @@ def affine_grid_generator_backward(grad_output, size, align_corners):
             )
             return grad_theta
 
-        BLOCK_W = max(32, triton.next_power_of_2(W))
-        exact_w = W % BLOCK_W == 0
-        hb = max(1, min(H, TARGET_PROGS // N))
-        rows_per_block = -(-H // hb)
-        num_warps = _num_warps_for(BLOCK_W)
+        BLOCK_W, exact_w, hb, rows_per_block, num_warps, hb_pad, part_dtype = _plan_2d(
+            grad_output.dtype, N, H, W, align_corners
+        )
 
         if hb == 1:
             _launch_retry(
@@ -673,7 +700,7 @@ def affine_grid_generator_backward(grad_output, size, align_corners):
             part = torch.empty(
                 (N, hb, 6),
                 device=grad_output.device,
-                dtype=_part_dtype(grad_output.dtype),
+                dtype=part_dtype,
             )
             _launch_retry(
                 lambda: _affine_grid_bwd_2d_partial_kernel[(N * hb,)](
@@ -697,7 +724,7 @@ def affine_grid_generator_backward(grad_output, size, align_corners):
                     part,
                     grad_theta,
                     hb,
-                    HB_PAD=triton.next_power_of_2(hb),
+                    HB_PAD=hb_pad,
                     VALS=6,
                     VALS_PAD=8,
                     num_warps=1,

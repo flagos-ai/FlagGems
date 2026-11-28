@@ -210,6 +210,10 @@ def test_diagflat_backward_non_contiguous_grad(offset):
 
 @pytest.mark.diagflat
 @pytest.mark.skipif(not utils.complex_is_supported, reason="complex unsupported")
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="GCU aten sum aborts on complex64 (op_aten_sum: data type combination not support)",
+)
 @pytest.mark.parametrize("offset", [0, 2])
 def test_diagflat_backward_complex_sum(offset):
     # A stride-0 complex grad used to fail the complex-to-real view in backward.

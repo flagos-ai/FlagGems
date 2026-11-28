@@ -59,6 +59,13 @@ def _nansum_out_baseline(inp, dim=None, keepdim=False, *, dtype=None, out=None):
     return result
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "aten::nansum has no usable GCU kernel; the native baseline SIGSEGVs, "
+        "so nansum.out cannot be timed against it"
+    ),
+)
 @pytest.mark.nansum_out
 def test_benchmark_nansum_out():
     bench = _NansumOutBenchmark(

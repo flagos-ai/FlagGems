@@ -33,5 +33,5 @@ def or_tensor(self, other):
     name (``gcu400.ops...``), so tests/accuracy_utils.gems_log_prefix derives
     "GEMS" for this module.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 OR_TENSOR")
+    logger.debug("GEMS_ENFLAME OR_TENSOR")
     return bitwise_or_tensor(self, other)

@@ -12,6 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import math
+
 import pytest
 import torch
 
@@ -28,6 +30,19 @@ DIAGONAL_SCATTER_BACKWARD_SHAPES = [
     (1024, 256, 256),
     (16, 4096, 4096),
 ]
+
+
+def _baseline_grid_fits(shape):
+    """Whether the eager baseline can be launched on this device at all.
+
+    The reference is ``torch.diagonal_scatter`` (a clone plus a diagonal
+    write-back), whose copy kernel issues one 1024-element program per block.
+    GCU400 caps ``grid.x`` at 65535, so any tensor above ~67.1M elements makes
+    the *baseline* leg fail with ``out of resource: grid.x`` regardless of the
+    FlagGems kernel. Those points are dropped on enflame only: the FlagGems
+    implementation itself folds its grid and does run there.
+    """
+    return math.ceil(math.prod(shape) / 1024) <= 65535
 
 
 def diagonal_scatter_backward_input_fn(shape, dtype, device):
@@ -48,6 +63,8 @@ def _diagonal_scatter_backward_ref(grad_output, src, offset, dim1, dim2):
 class DiagonalScatterBackwardBenchmark(base.Benchmark):
     def set_shapes(self, shape_file_path=None):
         self.shapes = DIAGONAL_SCATTER_BACKWARD_SHAPES
+        if flag_gems.vendor_name == "enflame":
+            self.shapes = [s for s in self.shapes if _baseline_grid_fits(s)]
 
     def get_input_iter(self, cur_dtype):
         for shape in self.shapes:

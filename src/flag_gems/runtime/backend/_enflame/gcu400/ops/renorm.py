@@ -18,206 +18,505 @@ import logging
 import torch
 import triton
 import triton.language as tl
+from triton.language.extra import libdevice
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry, tl_extra_shim
-from flag_gems.utils import triton_lang_extension as tle
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+_PINF = float("inf")
+_INT32_LIMIT = 2**31 - 1
+_SPC_TARGET = 48
+_TILE_BYTES = 8192
 
-@libentry()
+
 @triton.jit
-def renorm_kernel_norms(
-    X,
-    norms_out,
-    M,
-    N,
-    p_val,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Kernel to compute p-norms for each sub-tensor (one per row when dim=0)."""
-    pid = tle.program_id(0)
+def _renorm_term(x, P_MODE: tl.constexpr, p):
+    """Contribution of one element to the p-norm sum."""
+    if P_MODE == 1:
+        return tl.abs(x)
+    if P_MODE == 2:
+        return x * x
+    if P_MODE == 3:
+        return x * x * tl.abs(x)
+    if P_MODE == 4:
+        return tl.abs(x)
+    return libdevice.pow(tl.abs(x), p)
 
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
-        X.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
-    else:
-        cdtype = X.dtype.element_ty
 
-    row_offset = pid * N
-    x_ptr_row = X + row_offset
-    norm_ptr = norms_out + pid
-
-    _sum = tl.zeros([BLOCK_SIZE], dtype=cdtype)
-
-    for off in range(0, N, BLOCK_SIZE):
-        cols = off + tl.arange(0, BLOCK_SIZE)
-        mask = cols < N
-        x_vals = tl.load(x_ptr_row + cols, mask=mask, other=0.0).to(cdtype)
-        abs_vals = tl.abs(x_vals)
-        if p_val == 2.0:
-            powered = x_vals * x_vals
-        else:
-            powered = tl_extra_shim.pow(abs_vals, p_val)
-        _sum += powered
-
-    sum_val = tl.sum(_sum)
-    if p_val == 2.0:
-        norm = tl_extra_shim.sqrt(sum_val)
-    else:
-        norm = tl_extra_shim.pow(sum_val, 1.0 / p_val)
-
-    tl.store(norm_ptr, norm)
+@triton.jit
+def _renorm_norm(acc, P_MODE: tl.constexpr, inv_p):
+    """Slice norm from the finished accumulation."""
+    if P_MODE == 1:
+        return acc
+    if P_MODE == 2:
+        return tl.sqrt(acc)
+    if P_MODE == 4:
+        return acc
+    return libdevice.pow(acc, inv_p)
 
 
 @libentry()
 @triton.jit
-def renorm_kernel_scale(
-    X,
-    norms_in,
-    Y,
+def _renorm2d_kernel(
+    x_ptr,
+    y_ptr,
     M,
-    N,
-    p_val,
+    Q,
+    sM,
+    sQ,
+    ysM,
+    ysQ,
+    p,
+    inv_p,
     maxnorm,
-    BLOCK_SIZE: tl.constexpr,
+    P_MODE: tl.constexpr,
+    BQ: tl.constexpr,
+    BM: tl.constexpr,
+    WIDE: tl.constexpr,
+    KEEP: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
-    """Kernel to apply scaling based on precomputed norms."""
-    pid = tle.program_id(0)
+    """Lead axis empty (P == 1): slice m reduces over the q axis.
 
-    if tl.constexpr(X.dtype.element_ty == tl.float16) or tl.constexpr(
-        X.dtype.element_ty == tl.bfloat16
-    ):
-        cdtype = tl.float32
+    Tile [BQ, BM]; the m axis is the contiguous one for row-major inputs.
+    KEEP means BQ covers Q, so the one loaded tile is reused for the store
+    and x is never read twice.
+    """
+    pid = tl.program_id(0)
+    m = pid * BM + tl.arange(0, BM)
+    q = tl.arange(0, BQ)
+    if WIDE:
+        mi = m.to(tl.int64)
+        qi = q.to(tl.int64)
     else:
-        cdtype = X.dtype.element_ty
-
-    row_offset = pid * N
-    x_ptr_row = X + row_offset
-    y_ptr_row = Y + row_offset
-    norm = tl.load(norms_in + pid)
-
-    if norm <= maxnorm:
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x_vals = tl.load(x_ptr_row + cols, mask=mask, other=0.0)
-            tl.store(y_ptr_row + cols, x_vals, mask=mask)
+        mi = m
+        qi = q
+    xbase = x_ptr + qi[:, None] * sQ + mi[None, :] * sM
+    ybase = y_ptr + qi[:, None] * ysQ + mi[None, :] * ysM
+    dt = y_ptr.dtype.element_ty
+    if KEEP:
+        if EVEN:
+            x = tl.load(xbase).to(tl.float32)
+        else:
+            mask = (q < Q)[:, None] & (m < M)[None, :]
+            x = tl.load(xbase, mask=mask, other=0.0).to(tl.float32)
+        if P_MODE == 4:
+            acc = tl.max(tl.abs(x), axis=0)
+        else:
+            acc = tl.sum(_renorm_term(x, P_MODE, p), axis=0)
+        norm = _renorm_norm(acc, P_MODE, inv_p)
+        scale = tl.where(norm > maxnorm, maxnorm / norm, 1.0)
+        y = (x * scale[None, :]).to(dt)
+        if EVEN:
+            tl.store(ybase, y)
+        else:
+            # P15 workaround: partial-mask 2D tile stores drop/scatter elements on
+            # this backend; a 1D-flattened store with the same mask is correct.
+            yoff = tl.reshape(qi[:, None] * ysQ + mi[None, :] * ysM, [BQ * BM])
+            tl.store(
+                y_ptr + yoff,
+                tl.reshape(y, [BQ * BM]),
+                mask=tl.reshape(mask, [BQ * BM]),
+            )
     else:
-        scale = maxnorm / norm
-        for off in range(0, N, BLOCK_SIZE):
-            cols = off + tl.arange(0, BLOCK_SIZE)
-            mask = cols < N
-            x_vals = tl.load(x_ptr_row + cols, mask=mask, other=0.0).to(cdtype)
-            y_vals = x_vals * scale
-            tl.store(y_ptr_row + cols, y_vals.to(X.dtype.element_ty), mask=mask)
+        acc = tl.zeros([BM], dtype=tl.float32)
+        for q0 in range(0, Q, BQ):
+            if EVEN:
+                x = tl.load(xbase + q0 * sQ).to(tl.float32)
+            else:
+                mask = (q0 + q < Q)[:, None] & (m < M)[None, :]
+                x = tl.load(xbase + q0 * sQ, mask=mask, other=0.0).to(tl.float32)
+            if P_MODE == 4:
+                acc = tl.maximum(acc, tl.max(tl.abs(x), axis=0))
+            else:
+                acc += tl.sum(_renorm_term(x, P_MODE, p), axis=0)
+        norm = _renorm_norm(acc, P_MODE, inv_p)
+        scale = tl.where(norm > maxnorm, maxnorm / norm, 1.0)
+        for q0 in range(0, Q, BQ):
+            xoff = xbase + q0 * sQ
+            yoff = ybase + q0 * ysQ
+            if EVEN:
+                x = tl.load(xoff).to(tl.float32)
+                tl.store(yoff, (x * scale[None, :]).to(dt))
+            else:
+                mask = (q0 + q < Q)[:, None] & (m < M)[None, :]
+                x = tl.load(xoff, mask=mask, other=0.0).to(tl.float32)
+                yv = (x * scale[None, :]).to(dt)
+                yoff_f = (
+                    tl.reshape(qi[:, None] * ysQ + mi[None, :] * ysM, [BQ * BM])
+                    + q0 * ysQ
+                )
+                tl.store(
+                    y_ptr + yoff_f,
+                    tl.reshape(yv, [BQ * BM]),
+                    mask=tl.reshape(mask, [BQ * BM]),
+                )
+
+
+@libentry()
+@triton.jit
+def _renorm3d_kernel(
+    x_ptr,
+    y_ptr,
+    M,
+    Q,
+    P,
+    sM,
+    sQ,
+    sP,
+    ysM,
+    ysQ,
+    ysP,
+    p,
+    inv_p,
+    maxnorm,
+    P_MODE: tl.constexpr,
+    BQ: tl.constexpr,
+    BP: tl.constexpr,
+    BM: tl.constexpr,
+    WIDE: tl.constexpr,
+    KEEP: tl.constexpr,
+    EVEN: tl.constexpr,
+):
+    """Both lead (P) and trail (Q) axes present: tile [BM, BP, BQ]."""
+    pid = tl.program_id(0)
+    m = pid * BM + tl.arange(0, BM)
+    q = tl.arange(0, BQ)
+    r = tl.arange(0, BP)
+    if WIDE:
+        mi = m.to(tl.int64)
+        qi = q.to(tl.int64)
+        ri = r.to(tl.int64)
+    else:
+        mi = m
+        qi = q
+        ri = r
+    xbase = (
+        x_ptr + mi[:, None, None] * sM + ri[None, :, None] * sP + qi[None, None, :] * sQ
+    )
+    ybase = (
+        y_ptr
+        + mi[:, None, None] * ysM
+        + ri[None, :, None] * ysP
+        + qi[None, None, :] * ysQ
+    )
+    dt = y_ptr.dtype.element_ty
+    if KEEP:
+        if EVEN:
+            x = tl.load(xbase).to(tl.float32)
+        else:
+            mask = (
+                (m < M)[:, None, None] & (r < P)[None, :, None] & (q < Q)[None, None, :]
+            )
+            x = tl.load(xbase, mask=mask, other=0.0).to(tl.float32)
+        if P_MODE == 4:
+            acc = tl.max(tl.max(tl.abs(x), axis=2), axis=1)
+        else:
+            acc = tl.sum(tl.sum(_renorm_term(x, P_MODE, p), axis=2), axis=1)
+        norm = _renorm_norm(acc, P_MODE, inv_p)
+        scale = tl.where(norm > maxnorm, maxnorm / norm, 1.0)
+        y = (x * scale[:, None, None]).to(dt)
+        if EVEN:
+            tl.store(ybase, y)
+        else:
+            # P15 workaround: flatten partial-mask 3D tile stores to 1D.
+            yoff = tl.reshape(
+                mi[:, None, None] * ysM
+                + ri[None, :, None] * ysP
+                + qi[None, None, :] * ysQ,
+                [BM * BP * BQ],
+            )
+            tl.store(
+                y_ptr + yoff,
+                tl.reshape(y, [BM * BP * BQ]),
+                mask=tl.reshape(mask, [BM * BP * BQ]),
+            )
+    else:
+        acc = tl.zeros([BM], dtype=tl.float32)
+        for p0 in range(0, P, BP):
+            for q0 in range(0, Q, BQ):
+                if EVEN:
+                    x = tl.load(xbase + p0 * sP + q0 * sQ).to(tl.float32)
+                else:
+                    mask = (
+                        (m < M)[:, None, None]
+                        & (p0 + r < P)[None, :, None]
+                        & (q0 + q < Q)[None, None, :]
+                    )
+                    x = tl.load(xbase + p0 * sP + q0 * sQ, mask=mask, other=0.0).to(
+                        tl.float32
+                    )
+                if P_MODE == 4:
+                    acc = tl.maximum(acc, tl.max(tl.max(tl.abs(x), axis=2), axis=1))
+                else:
+                    acc += tl.sum(tl.sum(_renorm_term(x, P_MODE, p), axis=2), axis=1)
+        norm = _renorm_norm(acc, P_MODE, inv_p)
+        scale = tl.where(norm > maxnorm, maxnorm / norm, 1.0)
+        for p0 in range(0, P, BP):
+            for q0 in range(0, Q, BQ):
+                yoff = ybase + p0 * ysP + q0 * ysQ
+                if EVEN:
+                    x = tl.load(xbase + p0 * sP + q0 * sQ).to(tl.float32)
+                    tl.store(yoff, (x * scale[:, None, None]).to(dt))
+                else:
+                    mask = (
+                        (m < M)[:, None, None]
+                        & (p0 + r < P)[None, :, None]
+                        & (q0 + q < Q)[None, None, :]
+                    )
+                    x = tl.load(xbase + p0 * sP + q0 * sQ, mask=mask, other=0.0).to(
+                        tl.float32
+                    )
+                    # P15 workaround: flatten partial-mask 3D tile stores to 1D.
+                    yv = (x * scale[:, None, None]).to(dt)
+                    yoff_f = (
+                        tl.reshape(
+                            mi[:, None, None] * ysM
+                            + ri[None, :, None] * ysP
+                            + qi[None, None, :] * ysQ,
+                            [BM * BP * BQ],
+                        )
+                        + p0 * ysP
+                        + q0 * ysQ
+                    )
+                    tl.store(
+                        y_ptr + yoff_f,
+                        tl.reshape(yv, [BM * BP * BQ]),
+                        mask=tl.reshape(mask, [BM * BP * BQ]),
+                    )
+
+
+def _group_stride(sizes, strides):
+    """Collapsed stride for one leading/trailing axis group, or None."""
+    s = None
+    step = 1
+    for sz, st in zip(reversed(sizes), reversed(strides)):
+        if sz == 1:
+            continue
+        if s is None:
+            s = st
+        if st != s * step:
+            return None
+        step *= sz
+    return s if s is not None else 0
+
+
+def _renorm_axes(t, d, swap):
+    """(M, Q, P, sM, sQ, sP) of t in the active (possibly swapped) frame."""
+    shape = t.shape
+    strides = t.stride()
+    M = shape[d]
+    sM = strides[d]
+    lead_sizes = shape[:d]
+    trail_sizes = shape[d + 1 :]
+    sP = _group_stride(lead_sizes, strides[:d])
+    sQ = _group_stride(trail_sizes, strides[d + 1 :])
+    if sP is None or sQ is None:
+        return None
+    P = 1
+    for sz in lead_sizes:
+        P *= sz
+    Q = 1
+    for sz in trail_sizes:
+        Q *= sz
+    if swap:
+        return M, P, 1, sM, sP, 0
+    return M, Q, P, sM, sQ, sP
+
+
+def _max_off(t):
+    off = 0
+    for sz, st in zip(t.shape, t.stride()):
+        off += (sz - 1) * st
+    return off
+
+
+def _pow2_divisor(n, cap):
+    """Largest power-of-two divisor of n, capped (>=1)."""
+    d = 1
+    while d * 2 <= cap and n % (d * 2) == 0:
+        d *= 2
+    return d
+
+
+def _renorm_pick2d(M, Q, esz):
+    """BQ/BM for the P==1 kernel, chosen so every tile op is exact-fit.
+
+    Divisibility (BQ | Q, BM | M) keeps all loads/stores on the unmasked
+    EVEN path: partial-mask 2D tile stores miscompile on this backend (P15),
+    and the 1D flat-store workaround trips MLIR asserts for some
+    (P_MODE, num_warps) combos.  Power-of-two Q <= 128 fits one whole-slice
+    tile (KEEP, no re-read of x).
+    """
+    if Q <= 128 and (Q & (Q - 1)) == 0:
+        BQ = Q
+    else:
+        BQ = _pow2_divisor(Q, 128)
+    bm_cap = min(16, max(1, _TILE_BYTES // (BQ * esz)))
+    BM = _pow2_divisor(M, bm_cap)
+    while triton.cdiv(M, BM) > 65535:
+        BM *= 2
+    keep = Q <= BQ
+    nw = 1 if (BQ * BM) < 128 else 4
+    return BQ, BM, keep, nw
+
+
+def _renorm_pick3d(M, Q, P, esz):
+    """BQ/BP/BM for the P>1 kernel: one slice per program, num_warps=1.
+
+    Same divisibility discipline as _renorm_pick2d (P15).
+    """
+    if Q <= 128 and (Q & (Q - 1)) == 0:
+        BQ = Q
+    else:
+        BQ = _pow2_divisor(Q, 128)
+    if P <= 64 and (P & (P - 1)) == 0:
+        BP = P
+    else:
+        BP = _pow2_divisor(P, 64)
+    BM = 1
+    while triton.cdiv(M, BM) > 65535:
+        BM *= 2
+    keep = Q <= BQ and P <= BP
+    return BQ, BP, BM, keep, 1
+
+
+def _renorm_fused(x, y, d, p_mode, pf, inv_p, maxn):
+    """Launch the fused kernel; False = layout needs the permute fallback."""
+    numel = x.numel()
+    if numel == 0:
+        return True
+    lead_prod = 1
+    for sz in x.shape[:d]:
+        lead_prod *= sz
+    trail_prod = 1
+    for sz in x.shape[d + 1 :]:
+        trail_prod *= sz
+    swap = trail_prod == 1 and lead_prod > 1
+    xa = _renorm_axes(x, d, swap)
+    ya = _renorm_axes(y, d, swap)
+    if xa is None or ya is None:
+        return False
+    M, Q, P, sM, sQ, sP = xa
+    _, _, _, ysM, ysQ, ysP = ya
+    wide = _max_off(x) > _INT32_LIMIT or _max_off(y) > _INT32_LIMIT
+    esz = x.element_size()
+    if P == 1:
+        BQ, BM, keep, nw = _renorm_pick2d(M, Q, esz)
+        _renorm2d_kernel[(triton.cdiv(M, BM),)](
+            x,
+            y,
+            M,
+            Q,
+            sM,
+            sQ,
+            ysM,
+            ysQ,
+            pf,
+            inv_p,
+            maxn,
+            P_MODE=p_mode,
+            BQ=BQ,
+            BM=BM,
+            WIDE=wide,
+            KEEP=keep,
+            EVEN=(Q % BQ == 0) and (M % BM == 0),
+            num_warps=nw,
+            num_stages=1,
+        )
+    else:
+        BQ, BP, BM, keep, nw = _renorm_pick3d(M, Q, P, esz)
+        _renorm3d_kernel[(triton.cdiv(M, BM),)](
+            x,
+            y,
+            M,
+            Q,
+            P,
+            sM,
+            sQ,
+            sP,
+            ysM,
+            ysQ,
+            ysP,
+            pf,
+            inv_p,
+            maxn,
+            P_MODE=p_mode,
+            BQ=BQ,
+            BP=BP,
+            BM=BM,
+            WIDE=wide,
+            KEEP=keep,
+            EVEN=(Q % BQ == 0) and (P % BP == 0) and (M % BM == 0),
+            num_warps=nw,
+            num_stages=1,
+        )
+    return True
+
+
+def _renorm_prepare(p):
+    pf = float(p)
+    if not (pf > 0.0):
+        raise RuntimeError("renorm: non-positive-p norm is not supported")
+    if pf == _PINF:
+        return 4, pf, 0.0
+    if pf == 1.0:
+        return 1, pf, 1.0
+    if pf == 2.0:
+        return 2, pf, 0.5
+    if pf == 3.0:
+        return 3, pf, 1.0 / 3.0
+    return 0, pf, 1.0 / pf
+
+
+def _renorm_dim(x, dim):
+    ndim = x.dim()
+    if ndim == 0:
+        raise IndexError("renorm expects a tensor with at least one dimension")
+    d = int(dim)
+    if d < 0:
+        d += ndim
+    if d < 0 or d >= ndim:
+        raise IndexError(
+            "Dimension out of range (expected to be in range of [{}, {}], "
+            "but got {})".format(-ndim, ndim - 1, dim)
+        )
+    return d
 
 
 def renorm(input, p, dim, maxnorm):
-    logger.debug("GEMS_ENFLAME_GCU400 RENORM")
-
-    if dim < 0:
-        dim = input.ndim + dim
-
-    # Handle dim 0 case efficiently with single-kernel-per-row approach
-    if dim == 0:
-        M = input.shape[0]
-        N = input.numel() // M
-
-        input = input.contiguous()
-        norms = torch.empty((M,), dtype=torch.float32, device=input.device)
-
-        BLOCK = min(triton.next_power_of_2(N), 128)
-        grid = (M,)
-
-        with torch_device_fn.device(input.device):
-            renorm_kernel_norms[grid](
-                input,
-                norms,
-                M,
-                N,
-                p,
-                BLOCK_SIZE=BLOCK,
-            )
-
-        output = torch.empty_like(input)
-
-        with torch_device_fn.device(input.device):
-            renorm_kernel_scale[grid](
-                input,
-                norms,
-                output,
-                M,
-                N,
-                p,
-                maxnorm,
-                BLOCK_SIZE=BLOCK,
-            )
-
+    logger.debug("GEMS_ENFLAME RENORM")
+    logger.debug("GEMS_ENFLAME RENORM_")
+    d = _renorm_dim(input, dim)
+    p_mode, pf, inv_p = _renorm_prepare(p)
+    maxn = float(maxnorm)
+    output = torch.empty(input.shape, dtype=input.dtype, device=input.device)
+    if _renorm_fused(input, output, d, p_mode, pf, inv_p, maxn):
         return output
-    else:
-        # For non-zero dim, use permute to make dim=0
-        ndim = input.ndim
-        perm = list(range(ndim))
-        perm.remove(dim)
-        perm.insert(0, dim)
-        inv_perm = [perm.index(i) for i in range(ndim)]
-
-        x_perm = input.permute(perm)
-        result = renorm(x_perm, p, 0, maxnorm)
-        return result.permute(inv_perm)
+    # Non-collapsible layout: renorm a permuted contiguous copy, view back.
+    ndim = input.dim()
+    perm = [d] + [i for i in range(ndim) if i != d]
+    inv_perm = [0] * ndim
+    for i, pi in enumerate(perm):
+        inv_perm[pi] = i
+    x_perm = input.permute(perm).contiguous()
+    out_perm = renorm(x_perm, p, 0, maxnorm)
+    return out_perm.permute(inv_perm)
 
 
 def renorm_(input, p, dim, maxnorm):
-    logger.debug("GEMS_ENFLAME_GCU400 RENORM_")
-
-    if dim < 0:
-        dim = input.ndim + dim
-
-    if dim == 0:
-        M = input.shape[0]
-        N = input.numel() // M
-
-        input = input.contiguous()
-        norms = torch.empty((M,), dtype=torch.float32, device=input.device)
-
-        BLOCK = min(triton.next_power_of_2(N), 128)
-        grid = (M,)
-
-        with torch_device_fn.device(input.device):
-            renorm_kernel_norms[grid](
-                input,
-                norms,
-                M,
-                N,
-                p,
-                BLOCK_SIZE=BLOCK,
-            )
-
-        with torch_device_fn.device(input.device):
-            renorm_kernel_scale[grid](
-                input,
-                norms,
-                input,
-                M,
-                N,
-                p,
-                maxnorm,
-                BLOCK_SIZE=BLOCK,
-            )
-
+    d = _renorm_dim(input, dim)
+    p_mode, pf, inv_p = _renorm_prepare(p)
+    maxn = float(maxnorm)
+    if _renorm_fused(input, input, d, p_mode, pf, inv_p, maxn):
         return input
-    else:
-        # For non-zero dim, use permute to make dim=0
-        ndim = input.ndim
-        perm = list(range(ndim))
-        perm.remove(dim)
-        perm.insert(0, dim)
-        inv_perm = [perm.index(i) for i in range(ndim)]
-
-        x_perm = input.permute(perm)
-        result = renorm_(x_perm, p, 0, maxnorm)
-        input.copy_(result.permute(inv_perm))
-        return input
+    ndim = input.dim()
+    perm = [d] + [i for i in range(ndim) if i != d]
+    inv_perm = [0] * ndim
+    for i, pi in enumerate(perm):
+        inv_perm[pi] = i
+    x_perm = input.permute(perm).contiguous()
+    renorm_(x_perm, p, 0, maxnorm)
+    input.copy_(x_perm.permute(inv_perm))
+    return input

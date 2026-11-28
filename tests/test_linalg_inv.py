@@ -57,9 +57,11 @@ def _reference_inv(inp):
         and inp.device.type == "cpu"
         and not torch._C.has_lapack
     ):
+        # The MUSA PyTorch distribution builds CPU ATen without LAPACK.
         import numpy as np
 
-        return torch.from_numpy(np.linalg.inv(inp.detach().numpy()))
+        values = inp.detach().resolve_conj().resolve_neg().numpy()
+        return torch.from_numpy(np.linalg.inv(values))
     return torch.ops.aten.linalg_inv.default(inp)
 
 

@@ -55,18 +55,13 @@ def _copy_kernel(src_ptr, dst_ptr, n, BLOCK: tl.constexpr):
             tl.store(dst_ptr + tail, tl.load(src_ptr + tail, mask=mask), mask=mask)
 
 
-@triton.jit
-def _next_pow2(n):
-    return 1 if n <= 1 else 1 << (n - 1).bit_length()
-
-
 def _copy_values(values):
     """Allocate the owned destination and fill it with a Triton device copy."""
     n = values.numel()
     out = torch.empty_like(values)
     if n <= _BLOCK_MAX:
         # One program, no dispatch tail: cheapest possible launch.
-        block = _next_pow2(n)
+        block = triton.next_power_of_2(n)
         grid = 1
         exact = block == n
     else:

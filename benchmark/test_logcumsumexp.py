@@ -25,6 +25,10 @@ def logcumsumexp_input_fn(shape, cur_dtype, device):
     yield inp, 1
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.logcumsumexp
 def test_logcumsumexp():
     bench = base.GenericBenchmark2DOnly(
@@ -64,6 +68,10 @@ def test_logcumsumexp_backward():
     bench.run()
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.logcumsumexp_out
 def test_logcumsumexp_out():
     bench = base.GenericBenchmark2DOnly(
