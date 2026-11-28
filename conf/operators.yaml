@@ -15620,7 +15620,7 @@ ops:
   kind:
   - Tensor
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: nested_tensor_from_mask_left_aligned
   description: 'Checks whether a 3D tensor `t` (N * L * D) combined with a 2D boolean
     padding
