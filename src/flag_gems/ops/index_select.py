@@ -59,6 +59,8 @@ def index_select(inp, dim, index):
 
     if index.ndim == 0:
         index = index.unsqueeze(0)
+    # prevent non-contiguous index tensors from accessing out-of-bounds elements
+    index = index.contiguous()
     dim = dim % inp.ndim
     inp_shape = list(inp.shape)
     index_len = index.numel()
