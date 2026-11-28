@@ -12,17 +12,34 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
+#include <ATen/ATen.h>
 #include <pybind11/pybind11.h>
 #include <pybind11/stl.h>
+#include <tuple>
 #include "torch/python.h"
 
 #include "flag_gems/operators.h"
 
 namespace py = pybind11;
 
+namespace {
+std::tuple<at::Tensor, at::Tensor, at::Tensor> allocate_layer_norm_outputs_1d(const at::Tensor& input) {
+  TORCH_CHECK(input.dim() >= 1, "layer_norm input must have at least one dimension");
+  c10::DimVector stats_shape(input.sizes());
+  stats_shape.back() = 1;
+  const auto options = input.options();
+  auto output = at::empty(input.sizes(), options);
+  const auto stats_options = options.dtype(at::kFloat);
+  auto mean = at::empty(stats_shape, stats_options);
+  auto rstd = at::empty(stats_shape, stats_options);
+  return std::make_tuple(output, mean, rstd);
+}
+}  // namespace
+
 // TODO: use pytorch's argparse utilities to generate CPython bindings, since it is more efficient than
 // bindings provided by torch library, since it is in a boxed fashion
 PYBIND11_MODULE(c_operators, m) {
+  m.def("allocate_layer_norm_outputs_1d", &allocate_layer_norm_outputs_1d);
 #ifdef FLAGGEMS_POINTWISE_DYNAMIC
   // add
   m.def(
