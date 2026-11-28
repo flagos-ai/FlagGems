@@ -14633,6 +14633,20 @@ ops:
   - LinearAlg
   stages:
   - beta: '5.3'
+- id: mode_backward
+  description: The backward computation of `mode()`, exercised through the autograd
+    of the forward operator. `indices` is an integer output with no gradient, so the
+    only differentiable output is `values`.
+  for:
+  - mode
+  labels:
+  - aten
+  - KernelGen
+  - Reduction
+  kind:
+  - LinearAlg
+  stages:
+  - beta: '5.4'
 - id: moe_load_balance_loss
   description: 'Top-K Mixture-of-Experts load-balancing auxiliary loss L_ib = N_e
     * sum_i f_i P_i, where f_i is expert i''s Top-K assignment frequency and P_i its
