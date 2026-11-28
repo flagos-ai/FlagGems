@@ -35,6 +35,26 @@ _cosh_backward:
       BLOCK: 8192
     num_warps: 8
 
+_clamp_min_backward:
+  - META:
+      BLOCK: 512
+    num_warps: 2
+  - META:
+      BLOCK: 1024
+    num_warps: 4
+  - META:
+      BLOCK: 2048
+    num_warps: 4
+  - META:
+      BLOCK: 2048
+    num_warps: 8
+  - META:
+      BLOCK: 4096
+    num_warps: 8
+  - META:
+      BLOCK: 8192
+    num_warps: 8
+
 _conj_copy:
   - META:
       BLOCK_SIZE: 512
