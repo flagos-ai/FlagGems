@@ -451,6 +451,9 @@ from flag_gems.ops._sparse_sum_backward import (
 )
 from flag_gems.ops._spsolve import spsolve
 from flag_gems.ops._stack import _stack
+from flag_gems.ops._standard_gamma import (
+    _standard_gamma_backward as standard_gamma_backward,
+)
 from flag_gems.ops._standard_gamma import standard_gamma
 from flag_gems.ops._standard_gamma_grad import standard_gamma_grad
 from flag_gems.ops._thnn_differentiable_gru_cell_backward import (
@@ -3489,6 +3492,7 @@ __all__ = [
     "sspaddmm_out",
     "stack",
     "standard_gamma",
+    "standard_gamma_backward",
     "standard_gamma_grad",
     "std",
     "std_mean",

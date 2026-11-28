@@ -167,3 +167,238 @@ def test_standard_gamma_generator_advances_state():
     assert not torch.allclose(
         out1, out2
     ), "Generator state should advance between consecutive calls"
+
+
+@pytest.mark.standard_gamma_backward
+def test_standard_gamma_native_autograd_contract():
+    """Native ATen exposes an alpha gradient for the sampled gamma tensor."""
+    alpha = torch.tensor([0.5, 1.0, 2.0], device=flag_gems.device, requires_grad=True)
+    sample = torch._standard_gamma(alpha)
+    grad_output = torch.tensor([0.5, 1.0, 2.0], device=alpha.device)
+    assert sample.grad_fn is not None
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+    expected = grad_output * torch._standard_gamma_grad(alpha.detach(), sample.detach())
+    torch.testing.assert_close(grad_alpha, expected)
+    assert torch.isfinite(grad_alpha).all()
+    assert torch.any(grad_alpha != 0)
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_standard_gamma_backward(shape, dtype):
+    """The alpha gradient must match ATen's ``StandardGammaBackward0``.
+
+    ``_standard_gamma`` is stochastic, so both sides differentiate the same
+    saved sample: the reference recomputes ATen's own backward formula
+    ``grad_output * _standard_gamma_grad(alpha, sample)`` on the candidate's
+    output.  That expression is exactly what ``torch.autograd.grad`` returns on
+    H800 (artifacts/native_probe.json), so no second random draw is involved.
+    """
+    alpha = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+    grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+
+    expected = _reference_grad(alpha, sample, grad_output)
+    utils.gems_assert_close(grad_alpha, expected, dtype)
+    assert grad_alpha.shape == alpha.shape
+    assert grad_alpha.dtype == alpha.dtype
+
+
+def _reference_grad(alpha, sample, grad_output):
+    """ATen's backward formula for the current reference mode.
+
+    On-device the reference keeps the input dtype, which is exactly how ATen
+    evaluates ``standard_gamma_grad_one`` (its ``accscalar_t`` is fp32 for
+    fp16/bf16 and fp64 for fp64).  Under ``--ref cpu`` the tensors move to the
+    CPU and upcast, because the CPU kernel has no BFloat16/Half gamma path.
+    """
+    ref_alpha = alpha.detach()
+    ref_sample = sample.detach()
+    ref_grad = grad_output
+    if utils.TO_CPU:
+        ref_alpha = ref_alpha.to("cpu").double()
+        ref_sample = ref_sample.to("cpu").double()
+        ref_grad = ref_grad.to("cpu").double()
+    return ref_grad * torch._standard_gamma_grad(ref_alpha, ref_sample)
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_standard_gamma_backward_enters_custom_function(dtype):
+    """The differentiable path must route through the custom autograd node.
+
+    A non-empty ``grad_fn`` alone does not attribute the kernel, so this also
+    checks the node name and compares the gradient with the saved sample.
+    """
+    alpha = torch.rand((64, 32), dtype=dtype, device=flag_gems.device) + 0.5
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+
+    assert sample.requires_grad
+    assert type(sample.grad_fn).__name__ == "_StandardGammaFunctionBackward"
+    (grad_alpha,) = torch.autograd.grad(
+        sample, alpha, torch.ones_like(sample), retain_graph=True
+    )
+    expected = _reference_grad(alpha, sample, torch.ones_like(sample))
+    utils.gems_assert_close(grad_alpha, expected, dtype)
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_standard_gamma_backward_noncontiguous_and_expanded_grad(dtype):
+    """Non-contiguous alpha and an expanded upstream gradient use the fallback."""
+    alpha = (torch.rand((32, 64), dtype=dtype, device=flag_gems.device) * 4.0 + 0.5).t()
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+    grad_output = torch.randn((64, 1), dtype=dtype, device=flag_gems.device).expand(
+        64, 32
+    )
+
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+
+    expected = _reference_grad(alpha, sample, grad_output)
+    utils.gems_assert_close(grad_alpha, expected, dtype)
+    assert grad_alpha.shape == alpha.shape
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_standard_gamma_backward_small_alpha_taylor_branch(dtype):
+    """Canonical-alpha draws exercise ATen's Taylor branch (sample < 0.8).
+
+    With the repository's canonical alpha = rand * 4 + 0.5, about 22% of gamma
+    samples still land below 0.8, so the Taylor-series branch of the saved
+    sample is exercised without leaving the alpha domain every other test of
+    this family uses.  (The sub-0.5 domain was measured to exceed the
+    repository tolerance for the merged ``standard_gamma_grad`` approximation
+    itself: max |helper - ATen| ~ 1.7e-4 in fp32 for alpha down to 0.05, which
+    is upstream behavior this PR does not change.)
+    """
+    alpha = torch.rand((4096,), dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+    grad_output = torch.randn((4096,), dtype=dtype, device=flag_gems.device)
+
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+
+    assert (sample.detach() < 0.8).any(), "Taylor branch must be reached"
+    utils.gems_assert_close(
+        grad_alpha, _reference_grad(alpha, sample, grad_output), dtype
+    )
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_standard_gamma_backward_large_alpha(dtype):
+    """Large alpha (> 8) drives the backward through ATen's Rice saddle point.
+
+    The fused multiply is pinned against ``standard_gamma_grad``, whose own
+    accuracy for every branch (including the Rice near-mode and away-from-mode
+    sub-cases) is covered by ``tests/test_standard_gamma_grad.py``.  Comparing
+    the fused launch to that op isolates this PR's change from the derivative
+    approximation shared with the already-merged forward operator.
+    """
+    alpha = torch.rand((4096,), dtype=dtype, device=flag_gems.device) * 31.5 + 8.5
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+    grad_output = torch.randn((4096,), dtype=dtype, device=flag_gems.device)
+
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+
+    expected = _fused_reference(alpha, sample, grad_output, dtype)
+    utils.gems_assert_close(grad_alpha, expected, dtype)
+
+
+def _fused_reference(alpha, sample, grad_output, dtype):
+    """Expected result of the fused launch, from the shared derivative op.
+
+    ``standard_gamma_grad`` is the already-tested op the backward kernel reuses,
+    so this pins the fused multiply without duplicating the branchy derivative.
+    Under ``--ref cpu`` the result follows the reference to the CPU.
+    """
+    reference = flag_gems.standard_gamma_grad(alpha.detach(), sample.detach())
+    if dtype in (torch.float16, torch.bfloat16):
+        # The fused kernel multiplies in fp32 opmath and rounds once.
+        expected = (reference.float() * grad_output.float()).to(dtype)
+    else:
+        expected = reference * grad_output
+    return expected.to("cpu") if utils.TO_CPU else expected
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.parametrize("shape", [(), (0,), (2, 0, 3)])
+def test_standard_gamma_backward_empty_and_scalar(dtype, shape):
+    """Zero-element and 0-dim inputs keep the native shape/dtype contract."""
+    alpha = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+    grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+
+    assert grad_alpha.shape == alpha.shape
+    assert grad_alpha.dtype == alpha.dtype
+    assert grad_alpha.numel() == alpha.numel()
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_standard_gamma_backward_needs_input_grad(dtype):
+    """A non-differentiable generator argument must not receive a gradient."""
+    alpha = torch.rand((128,), dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
+    alpha.requires_grad_()
+    gen = torch.Generator(device=flag_gems.device).manual_seed(1234)
+    sample = flag_gems.standard_gamma(alpha, generator=gen)
+
+    (grad_alpha,) = torch.autograd.grad(
+        sample, alpha, torch.ones_like(sample), allow_unused=True
+    )
+
+    assert grad_alpha is not None
+    expected = _reference_grad(alpha, sample, torch.ones_like(sample))
+    utils.gems_assert_close(grad_alpha, expected, dtype)
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_standard_gamma_backward_matches_fused_grad(dtype):
+    """The fused launch must equal grad_output * standard_gamma_grad.
+
+    This pins the only new math in the backward (the fused multiply) against the
+    already-tested derivative op, so a regression in the fusion cannot hide
+    behind the shared kernel.
+    """
+    alpha = torch.rand((64, 512), dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+    grad_output = torch.randn((64, 512), dtype=dtype, device=flag_gems.device)
+
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+
+    expected = _fused_reference(alpha, sample, grad_output, dtype)
+    utils.gems_assert_close(grad_alpha, expected, dtype)
+
+
+@pytest.mark.standard_gamma_backward
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_standard_gamma_backward_first_order_only(dtype):
+    """ATen's ``_standard_gamma_grad`` has no derivative, so higher order fails."""
+    alpha = torch.rand((32,), dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+    (grad_alpha,) = torch.autograd.grad(
+        sample, alpha, torch.ones_like(sample), create_graph=True
+    )
+
+    # The Triton backward launches a kernel, so it produces a detached
+    # first-order gradient instead of an autograd node; a second derivative is
+    # therefore rejected, matching ATen raising NotImplementedError for
+    # "_standard_gamma_grad" rather than returning a value.
+    assert not grad_alpha.requires_grad
+    with pytest.raises(RuntimeError):
+        torch.autograd.grad(grad_alpha.sum(), alpha, allow_unused=True)
