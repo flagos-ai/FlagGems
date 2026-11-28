@@ -575,6 +575,12 @@ def topk(x, k, dim=-1, largest=True, sorted=True):
             torch.empty(out_shape, device=x.device, dtype=torch.int64),
         )
 
+    # The kernels below assume a dense (batch, dim) layout: the batch stride is
+    # the last-dim size and the last-dim stride is 1. Materialise strided views
+    # (e.g. ``x.t().contiguous().t()``) first, otherwise they read elements at
+    # the wrong offsets and return wrong values/indices (issue #7829).
+    x = x.contiguous()
+
     descending = True
     if not largest:
         descending = False
