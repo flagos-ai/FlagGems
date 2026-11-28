@@ -1264,9 +1264,9 @@ _FULL_CONFIG = (
     ("cholesky_solve", cholesky_solve, None, (CONJUGATE_DISPATCH_KEY,)),
     ("cholesky_solve.out", cholesky_solve_out, None, (CONJUGATE_DISPATCH_KEY,)),
     ("choose_qparams_optimized", choose_qparams_optimized),
-    # Autograd fallthrough: the ClampFunction wrapper owns
-    # the differentiable path. Without it the device-key override drops ATen's
-    # autograd formula and the backward falls back to the native kernel.
+    # Autograd fallthrough: the ClampFunction wrapper owns the differentiable
+    # path. Without it the device-key override drops ATen's autograd formula
+    # and torch.clamp() takes the native backward.
     (
         "clamp",
         clamp,
@@ -1276,6 +1276,12 @@ _FULL_CONFIG = (
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
+    # clamp_backward has no aten schema of its own: ATen's clamp VJP is
+    # ThresholdBackward/ClampBackward, which this library does not replace.
+    # The Triton clamp_backward kernel is therefore reached from
+    # ClampFunction.backward rather than from an entry of its own; adding one
+    # would register an implementation for an operator the dispatcher does not
+    # define.
     # Autograd fallthrough: the ClampMaxFunction wrapper owns
     # the differentiable path. Without it the device-key override drops ATen's
     # autograd formula and the backward falls back to the native kernel.

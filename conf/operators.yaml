@@ -3555,6 +3555,21 @@ ops:
   - Math
   stages:
   - stable: '2.2'
+- id: clamp_backward
+  description: The backward computation of `clamp()`, exercised through the autograd
+    of the forward operator. ATen has no `clamp_backward` schema, so this is reached
+    via `ClampFunction.backward` in `flag_gems.ops.clamp` rather than a standalone
+    dispatch entry.
+  for:
+  - clamp
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.4'
 - id: clamp_max
   description: 'Clamps all elements in `input` to be smaller or equal `max`.
 
