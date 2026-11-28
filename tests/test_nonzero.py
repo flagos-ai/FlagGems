@@ -19,6 +19,7 @@ import pytest
 import torch
 
 import flag_gems
+from flag_gems.ops.nonzero import nonzero as generic_nonzero
 
 from . import accuracy_utils as utils
 from . import conftest as cfg
@@ -52,3 +53,22 @@ def test_nonzero(shape, dtype):
     res_out = flag_gems.nonzero(inp)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.nonzero
+@pytest.mark.parametrize("shape", [(0,), (3, 0), (2, 0, 3)])
+@pytest.mark.parametrize("as_tuple", [False, True])
+def test_nonzero_empty(shape, as_tuple):
+    inp = torch.empty(shape, dtype=torch.bool, device=flag_gems.device)
+    ref = torch.nonzero(utils.to_reference(inp), as_tuple=as_tuple)
+    out = generic_nonzero(inp, as_tuple=as_tuple)
+
+    if as_tuple:
+        assert isinstance(out, tuple)
+        assert len(out) == len(ref)
+        for actual, expected in zip(out, ref):
+            assert actual.device == inp.device
+            utils.gems_assert_equal(actual, expected)
+    else:
+        assert out.device == inp.device
+        utils.gems_assert_equal(out, ref)
