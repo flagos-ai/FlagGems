@@ -895,6 +895,7 @@ from flag_gems.ops.feature_alpha_dropout import feature_alpha_dropout
 from flag_gems.ops.feature_alpha_dropout_ import feature_alpha_dropout_
 from flag_gems.ops.feature_dropout import feature_dropout, feature_dropout_
 from flag_gems.ops.fft import fft
+from flag_gems.ops.fft_1d import fft_fft, fft_irfft
 from flag_gems.ops.fft_ifftshift import fft_ifftshift
 from flag_gems.ops.fft_irfftn import fft_irfftn
 from flag_gems.ops.fft_rfft import fft_rfft
@@ -2641,7 +2642,9 @@ __all__ = [
     "feature_dropout",
     "feature_dropout_",
     "fft",
+    "fft_fft",
     "fft_ifftshift",
+    "fft_irfft",
     "fft_irfftn",
     "fft_rfft",
     "fill_diagonal_",

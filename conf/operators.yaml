@@ -6700,6 +6700,16 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.3'
+- id: fft_fft
+  description: Computes the one-dimensional discrete Fourier transform.
+  for:
+  - fft_fft
+  labels:
+  - aten
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: fft_ifftshift
   description: Shifts the zero-frequency component to the beginning of the tensor,
     the inverse of torch.fft.fftshift().
@@ -6708,6 +6718,16 @@ ops:
   labels:
   - aten
   - KernelGen
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
+- id: fft_irfft
+  description: Computes the one-dimensional inverse real Fourier transform.
+  for:
+  - fft_irfft
+  labels:
+  - aten
   kind:
   - Math
   stages:
