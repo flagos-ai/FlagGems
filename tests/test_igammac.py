@@ -429,3 +429,35 @@ def test_igammac_composed_baseline_matches_torch(shape):
     ref_g = torch.special.gammaincc(ga.double().cpu(), gx.double().cpu())
     err_g = (res_g.double().cpu() - ref_g).abs().max().item()
     assert err_g < 1e-4, f"composed grid corner off by {err_g:.2e}"
+
+
+@pytest.mark.igammac_backward
+@pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
+@pytest.mark.parametrize("dtype", _IGAMMAC_DTYPES)
+def test_igammac_backward(shape, dtype):
+    a = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+    x = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 10 + 0.1
+    x.requires_grad_(True)
+
+    out = flag_gems.igammac(a, x)
+    out_grad = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    (res_dx,) = torch.autograd.grad(out, x, out_grad)
+
+    ref_a = utils.to_reference(a, True)
+    ref_x = utils.to_reference(x.detach(), True)
+    ref_g = utils.to_reference(out_grad, True)
+
+    # aten registers no gradient for igammac, so compare against the analytic
+    # derivative d/dx Q(a, x) = -x^(a-1) e^(-x) / Gamma(a).
+    ref_dx = -ref_g * torch.exp(
+        (ref_a - 1.0) * torch.log(ref_x) - ref_x - torch.lgamma(ref_a)
+    )
+    utils.gems_assert_close(res_dx, ref_dx, dtype)
+
+    # Independent finite-difference cross-check on the CPU in fp64.
+    a_cpu = ref_a.detach().cpu().double()
+    x_cpu = ref_x.detach().cpu().double()
+    g_cpu = ref_g.detach().cpu().double()
+    h = 1e-6
+    fd = (torch.igammac(a_cpu, x_cpu + h) - torch.igammac(a_cpu, x_cpu - h)) / (2.0 * h)
+    utils.gems_assert_close(res_dx, fd * g_cpu, dtype, atol=1e-4)
