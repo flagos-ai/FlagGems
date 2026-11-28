@@ -166,3 +166,67 @@ def test_softmax_backward(shape, dtype, dim, neg_inf):
     utils.gems_assert_close(
         res_in_grad, ref_in_grad, dtype, reduce_dim=shape[dim], equal_nan=True
     )
+
+
+@pytest.mark.softmax
+@pytest.mark.softmax_out
+@pytest.mark.parametrize("dim", [1, -1])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_softmax_noncontiguous_layout(dim, use_out):
+    cpu = torch.randn(2, 4, 5, 5).permute(0, 2, 3, 1)
+    inp = cpu.permute(0, 3, 1, 2).to(flag_gems.device).permute(0, 2, 3, 1)
+    assert not inp.is_contiguous()
+    expected = torch.softmax(cpu, dim=dim)
+
+    if use_out:
+        out = torch.empty((2, 5, 5, 8), device=inp.device, dtype=inp.dtype)[..., ::2]
+        stride = out.stride()
+        actual = flag_gems.softmax_out(inp, dim, out=out)
+        assert actual is out
+        assert actual.stride() == stride
+    else:
+        actual = flag_gems.softmax(inp, dim)
+        assert actual.is_contiguous()
+
+    torch.testing.assert_close(actual.cpu(), expected)
+
+
+@pytest.mark.softmax_backward_data
+@pytest.mark.softmax_backward_out
+@pytest.mark.parametrize("dim", [1, -1])
+@pytest.mark.parametrize("use_out", [False, True])
+def test_softmax_backward_noncontiguous_layout(dim, use_out):
+    cpu = torch.randn(2, 5, 5, 4)
+    expected_out = torch.softmax(cpu, dim=dim)
+    expected_grad = torch.randn_like(expected_out)
+    expected = torch.ops.aten._softmax_backward_data(
+        expected_grad, expected_out, dim, cpu.dtype
+    )
+
+    def to_strided_device(tensor):
+        return (
+            tensor.permute(0, 3, 1, 2)
+            .contiguous()
+            .to(flag_gems.device)
+            .permute(0, 2, 3, 1)
+        )
+
+    out = to_strided_device(expected_out)
+    grad = to_strided_device(expected_grad)
+    assert not out.is_contiguous() and not grad.is_contiguous()
+
+    if use_out:
+        grad_input = torch.empty(
+            (2, 5, 5, 8), device=out.device, dtype=out.dtype
+        )[..., ::2]
+        stride = grad_input.stride()
+        actual = flag_gems.softmax_backward_out(
+            grad, out, dim, cpu.dtype, grad_input=grad_input
+        )
+        assert actual is grad_input
+        assert actual.stride() == stride
+    else:
+        actual = flag_gems.softmax_backward(grad, out, dim, cpu.dtype)
+        assert actual.is_contiguous()
+
+    torch.testing.assert_close(actual.cpu(), expected)
