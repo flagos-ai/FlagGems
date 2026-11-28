@@ -30,6 +30,17 @@ logger = logging.getLogger(__name__)
 device_ = device
 
 
+@triton.jit
+def _uint_to_uniform_float_for_dtype(x, dtype: tl.constexpr):
+    # A significand-sized integer grid stays below one after the output cast.
+    if dtype == tl.float16:
+        return (x >> 21).to(tl.float32) * (1.0 / 2048.0)
+    elif dtype == tl.bfloat16:
+        return (x >> 24).to(tl.float32) * (1.0 / 256.0)
+    else:
+        return uint_to_uniform_float(x)
+
+
 @triton.heuristics(runtime.get_heuristic_config("rand"))
 @triton.jit(do_not_specialize=["philox_seed", "philox_offset"])
 def rand_kernel(
@@ -47,10 +58,10 @@ def rand_kernel(
     c0 += i4
     _O = c0 * 0
     r0, r1, r2, r3 = tl.philox(philox_seed, c0, c1, _O, _O)
-    r0 = uint_to_uniform_float(r0)
-    r1 = uint_to_uniform_float(r1)
-    r2 = uint_to_uniform_float(r2)
-    r3 = uint_to_uniform_float(r3)
+    r0 = _uint_to_uniform_float_for_dtype(r0, out_ptr.dtype.element_ty)
+    r1 = _uint_to_uniform_float_for_dtype(r1, out_ptr.dtype.element_ty)
+    r2 = _uint_to_uniform_float_for_dtype(r2, out_ptr.dtype.element_ty)
+    r3 = _uint_to_uniform_float_for_dtype(r3, out_ptr.dtype.element_ty)
     off_0 = tl.program_id(0) * BLOCK * 4 + tl.arange(0, BLOCK)
     off_1 = off_0 + BLOCK
     off_2 = off_1 + BLOCK
