@@ -72,10 +72,12 @@ def embedding_renorm_kernel(
             tl.store(row_start + offset, x * scale, mask=mask)
 
 
-def embedding_renorm_(weight, indices, max_norm, norm_type):
-    logger.debug("GEMS EMBEDDING_RENORM_")
-    assert weight.dim() == 2, "embedding_renorm_ expects a 2D weight matrix"
+def _embedding_renorm_impl(weight, indices, max_norm, norm_type):
+    """Forward kernel without the autograd bridge.
 
+    ``EmbeddingRenormFunction.forward`` calls this directly so the autograd
+    wrapper does not re-enter itself.
+    """
     # ATen renormalizes each embedding row at most once. Rather than collapse
     # duplicates with a host-synchronizing torch.unique (which dominated the
     # runtime), sort the indices on-device so equal rows are adjacent and let
@@ -106,3 +108,23 @@ def embedding_renorm_(weight, indices, max_norm, norm_type):
         )
 
     return weight
+
+
+def embedding_renorm_(weight, indices, max_norm, norm_type):
+    logger.debug("GEMS EMBEDDING_RENORM_")
+    assert weight.dim() == 2, "embedding_renorm_ expects a 2D weight matrix"
+
+    # This Torch build has no standalone ``aten::embedding_renorm_backward``
+    # schema, so a differentiable input is routed through the FlagGems
+    # ``autograd.Function`` bridge to reach the Triton backward kernel
+    # (the deg2rad_backward pattern merged in #9331). Non-differentiable
+    # calls keep their previous behaviour.
+    if (
+        isinstance(weight, torch.Tensor)
+        and weight.requires_grad
+        and torch.is_grad_enabled()
+    ):
+        from flag_gems.ops.embedding_renorm_backward import EmbeddingRenormFunction
+
+        return EmbeddingRenormFunction.apply(weight, indices, max_norm, norm_type)
+    return _embedding_renorm_impl(weight, indices, max_norm, norm_type)

@@ -847,6 +847,7 @@ from flag_gems.ops.embedding_bag import (
 from flag_gems.ops.embedding_bag_backward import _embedding_bag_backward
 from flag_gems.ops.embedding_dense_backward import embedding_dense_backward
 from flag_gems.ops.embedding_renorm_ import embedding_renorm_
+from flag_gems.ops.embedding_renorm_backward import embedding_renorm_backward
 from flag_gems.ops.embedding_sparse_backward import embedding_sparse_backward
 from flag_gems.ops.embedding_spmdm import embedding_spmdm
 from flag_gems.ops.embedding_spmdm_grad import embedding_spmdm_grad
@@ -2599,6 +2600,7 @@ __all__ = [
     "embedding_bag",
     "embedding_dense_backward",
     "embedding_renorm_",
+    "embedding_renorm_backward",
     "embedding_sparse_backward",
     "embedding_spmdm",
     "embedding_spmdm_grad",
