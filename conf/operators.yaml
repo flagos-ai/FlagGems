@@ -9988,6 +9988,26 @@ ops:
   - BLAS
   stages:
   - beta: '5.3'
+- id: grouped_mm_backward
+  description: |
+    Backward pass for ``_grouped_mm``: the grouped-GEMM input gradients
+    ``grad_mat1 = grad_output @ mat2^T`` (rows partitioned by the int32
+    cumulative ``offs``) and ``grad_mat2[i] = mat1_seg^T @ grad_output_seg``,
+    accumulated in float32 and cast to the bf16 input dtype, matching the
+    row-major fast paths of ATen's ``_grouped_mm_mat1_backward`` /
+    ``_grouped_mm_mat2_backward``.  Exposed through a
+    ``torch.autograd.Function`` bridge because this Torch build has no
+    standalone ``aten::_grouped_mm_backward`` schema.
+  for:
+  - grouped_mm_backward
+  labels:
+  - aten
+  - NoCPU
+  - KernelGen
+  kind:
+  - BLAS
+  stages:
+  - alpha: '5.6'
 - id: gru
   description: Gated recurrent unit (GRU). At each time step, computes a new hidden
     state from the input and the previous hidden state using a reset gate and an update
