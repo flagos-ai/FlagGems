@@ -17,7 +17,7 @@ import torch
 
 import flag_gems
 
-from . import base, consts
+from . import base, consts, utils
 
 
 @pytest.mark.remainder
@@ -147,5 +147,21 @@ def test_remainder_scalar_tensor():
         torch_op=torch.remainder,
         input_fn=scalar_tensor_remainder_input_fn,
         dtypes=consts.INT_DTYPES,
+    )
+    bench.run()
+
+
+def _scalar_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    yield inp, 3.14
+
+
+@pytest.mark.remainder_scalar
+def test_remainder_scalar_float():
+    bench = base.GenericBenchmark(
+        input_fn=_scalar_input_fn,
+        op_name="remainder_scalar",
+        torch_op=torch.remainder,
+        dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
