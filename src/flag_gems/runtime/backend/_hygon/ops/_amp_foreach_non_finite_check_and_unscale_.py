@@ -99,7 +99,9 @@ def _amp_foreach_non_finite_check_and_unscale_fused_kernel(
     inp_fp32 = inp.to(tl.float32)
 
     # Detect inf / nan in float32 to cover fp16 / bf16 inputs.
-    is_non_finite = ~tl_extra_shim.finitef(inp_fp32)
+    # finitef() may lower to a wider int, where bitwise-not is not logical
+    # negation; compare against zero so the predicate is right everywhere.
+    is_non_finite = tl_extra_shim.finitef(inp_fp32) == 0
 
     # Fuse the finite-check into the kernel. Every writer stores the same
     # value (1.0) and the host-side 0.0 is written before launch, so a plain
@@ -136,7 +138,7 @@ def _amp_foreach_non_finite_check_and_unscale_kernel(
     inp_fp32 = inp.to(tl.float32)
 
     # Detect inf / nan in float32 to cover fp16 / bf16 inputs.
-    is_non_finite = ~tl_extra_shim.finitef(inp_fp32)
+    is_non_finite = tl_extra_shim.finitef(inp_fp32) == 0
 
     # Same conditional-store scheme as the fused kernel: benign race, since
     # the only value ever written by the kernel is 1.0.
