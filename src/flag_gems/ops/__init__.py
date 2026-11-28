@@ -1363,7 +1363,7 @@ from flag_gems.ops.pad import constant_pad_nd, pad
 from flag_gems.ops.pad_sequence import pad_sequence
 from flag_gems.ops.padded_dense_to_jagged_forward import _padded_dense_to_jagged_forward
 from flag_gems.ops.pairwise_distance import pairwise_distance
-from flag_gems.ops.pdist import pdist
+from flag_gems.ops.pdist import pdist, pdist_backward
 from flag_gems.ops.per_token_group_quant_fp8 import (
     SUPPORTED_FP8_DTYPE,
     per_token_group_quant_fp8,
@@ -3149,6 +3149,7 @@ __all__ = [
     "pad_sequence",
     "pairwise_distance",
     "pdist",
+    "pdist_backward",
     "per_token_group_quant_fp8",
     "permute_copy",
     "pin_memory",
