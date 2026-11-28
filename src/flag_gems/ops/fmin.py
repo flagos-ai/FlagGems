@@ -19,7 +19,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.sum_to_size import sum_to_size
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 
@@ -70,7 +72,54 @@ def _prepare_inputs(a, b, out=None):
     return a_c, b_c, out_dtype, compute_dtype
 
 
+@pointwise_dynamic(
+    promotion_methods=[(0, 1, 2, "DEFAULT"), (0, 1, 2, "DEFAULT")],
+    num_outputs=2,
+)
+@triton.jit
+def _fmin_backward_kernel(grad, a, b):
+    # Installed PyTorch assigns equal values (and two NaNs) entirely to self;
+    # some newer PyTorch versions split ties, so this matches the target version.
+    take_a = (a <= b) | (b != b)
+    return tl.where(take_a, grad, 0), tl.where(take_a, 0, grad)
+
+
+def fmin_backward(grad_output, a, b):
+    """Return gradients for both inputs, reducing any broadcast dimensions."""
+    # Empty broadcast outputs contribute zero to nonempty broadcast inputs.
+    if grad_output.numel() == 0:
+        return torch.zeros_like(a), torch.zeros_like(b)
+    grad_a, grad_b = _fmin_backward_kernel(grad_output, a, b)
+    if grad_a.shape != a.shape:
+        grad_a = sum_to_size(grad_a, a.shape)
+    if grad_b.shape != b.shape:
+        grad_b = sum_to_size(grad_b, b.shape)
+    return grad_a, grad_b
+
+
+class _Fmin(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, a, b):
+        ctx.save_for_backward(a, b)
+        return _fmin_forward(a, b)
+
+    @staticmethod
+    def backward(ctx, grad_output):
+        a, b = ctx.saved_tensors
+        grad_a, grad_b = fmin_backward(grad_output, a, b)
+        return grad_a if ctx.needs_input_grad[0] else None, (
+            grad_b if ctx.needs_input_grad[1] else None
+        )
+
+
 def fmin(a, b):
+    if isinstance(a, torch.Tensor) and isinstance(b, torch.Tensor):
+        if torch.is_grad_enabled() and (a.requires_grad or b.requires_grad):
+            return _Fmin.apply(a, b)
+    return _fmin_forward(a, b)
+
+
+def _fmin_forward(a, b):
     logger.debug("GEMS FMIN")
     a_c, b_c, out_dtype, compute_dtype = _prepare_inputs(a, b, out=None)
     out_shape = a_c.shape
@@ -82,8 +131,9 @@ def fmin(a, b):
         out_c = torch.empty(out_shape, dtype=compute_dtype, device=a_c.device)
     n_elements = out_c.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(a_c.device):
-        fmin_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=1024)
+    if n_elements:
+        with torch_device_fn.device(a_c.device):
+            fmin_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=1024)
     if out_c.dtype != out.dtype:
         out.copy_(out_c.to(out_dtype))
     return out
@@ -109,8 +159,9 @@ def fmin_out(a, b, out):
         out_c = torch.empty(expected_shape, dtype=compute_dtype, device=out.device)
     n_elements = out_c.numel()
     grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(out.device):
-        fmin_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=1024)
+    if n_elements:
+        with torch_device_fn.device(out.device):
+            fmin_kernel[grid](a_c, b_c, out_c, n_elements, BLOCK_SIZE=1024)
     if out_c is not out:
         if out_c.dtype != out.dtype:
             out.copy_(out_c.to(out.dtype))

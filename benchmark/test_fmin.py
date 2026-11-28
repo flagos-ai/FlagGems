@@ -33,6 +33,18 @@ def test_fmin():
     bench.run()
 
 
+@pytest.mark.fmin_backward
+def test_fmin_backward():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="fmin",
+        torch_op=torch.fmin,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.fmin)
+    bench.run()
+
+
 def fmin_out_input_fn(shape, dtype, device):
     inp1 = utils.generate_tensor_input(shape, dtype, device)
     inp2 = utils.generate_tensor_input(shape, dtype, device)

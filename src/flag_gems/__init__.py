@@ -1571,7 +1571,12 @@ _FULL_CONFIG = (
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("fmax.out", fmax_out),
-    ("fmin", fmin),
+    (
+        "fmin",
+        fmin,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("fmin.out", fmin_out),
     ("fmod.Scalar", fmod_scalar),
     ("fmod.Tensor", fmod_tensor),

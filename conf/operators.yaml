@@ -7261,6 +7261,17 @@ ops:
   stages:
   - beta: '5.0'
   - stable: '5.3'
+- id: fmin_backward
+  description: Triton autograd gradient for fmin with NaN-aware tie handling and broadcast reduction.
+  for:
+  - fmin
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: fmin_out
   description: A variant of `fmin()` that assigns the output to the `out` tensor.
   for:
