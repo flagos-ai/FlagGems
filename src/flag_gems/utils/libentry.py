@@ -227,6 +227,8 @@ class ConfigCache(Cache):
         self, table_name: str, model: PersistantModel, *args, **kwargs
     ) -> ConfigCache:
         super().__init__(table_name, model, *args, **kwargs)
+        # In-process memo of known configs, keyed identically to the persistent store.
+        self._local: Dict[Tuple[Union[int, float, str], ...], triton.Config] = {}
 
     def __contains__(self, key: Tuple[Union[int, float, str], ...]) -> bool:
         return self.get(key) is not None
@@ -243,11 +245,23 @@ class ConfigCache(Cache):
         self.set(key, config)
 
     def get(self, key: Tuple[Union[int, float, str], ...]) -> Optional[triton.Config]:
-        return self.model.get_config(self.table_name, key)
+        # Serve from an in-process memo first. `LibEntry.run` queries the cache on
+        # every kernel launch, and the persistent backend performs a SQL round-trip
+        # per query, which dominates wall time for short kernels (see PR body).
+        ret = self._local.get(key)
+        if ret is not None:
+            return ret
+        ret = self.model.get_config(self.table_name, key)
+        if ret is not None:
+            # Only memoize hits: a miss must keep consulting the persistent store so
+            # that configs tuned by another process are still picked up.
+            self._local[key] = ret
+        return ret
 
     def set(
         self, key: Tuple[Union[int, float, str], ...], config: triton.Config
     ) -> None:
+        self._local[key] = config
         return self.model.put_config(self.table_name, key, config)
 
 
