@@ -114,3 +114,38 @@ def test_kthvalue_empty_tensor():
         torch.kthvalue(ref_inp, 1, dim=1)
     with pytest.raises(IndexError, match="Expected reduction dim"):
         flag_gems.kthvalue(inp, 1, dim=1)
+
+
+@pytest.mark.kthvalue
+@pytest.mark.parametrize("k", [513, (1 << 20) + 1])
+def test_kthvalue_large_k(k):
+    inp = torch.randperm(1 << 21, generator=torch.Generator().manual_seed(0)).float()
+    ref_values, ref_indices = torch.kthvalue(inp, k)
+    res_values, res_indices = flag_gems.kthvalue(inp.to(flag_gems.device), k)
+
+    utils.gems_assert_equal(res_values, ref_values)
+    utils.gems_assert_equal(res_indices, ref_indices)
+
+
+@pytest.mark.kthvalue
+@pytest.mark.parametrize("k", [1025, 4097])
+def test_kthvalue_large_k_strided(k):
+    # A non-last reduction dimension with ties and nonfinite values.
+    inp = torch.arange(4097, dtype=torch.float32).repeat(2, 1).t()
+    inp[0, :] = float("-inf")
+    inp[1024, :] = inp[1023, :]
+    inp[-2, :] = float("inf")
+    inp[-1, :] = float("nan")
+    ref_values, _ = torch.kthvalue(inp, k, dim=0, keepdim=True)
+    res_values, res_indices = flag_gems.kthvalue(
+        inp.to(flag_gems.device), k, dim=0, keepdim=True
+    )
+
+    assert res_indices.shape == ref_values.shape
+    assert res_indices.dtype == torch.int64
+    torch.testing.assert_close(
+        res_values.cpu(), ref_values, rtol=0, atol=0, equal_nan=True
+    )
+    torch.testing.assert_close(
+        inp.gather(0, res_indices.cpu()), ref_values, rtol=0, atol=0, equal_nan=True
+    )
