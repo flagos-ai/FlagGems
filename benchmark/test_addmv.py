@@ -17,6 +17,8 @@ from typing import Generator
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -63,6 +65,33 @@ def test_addmv_out():
         op_name="addmv_out",
         input_fn=_input_fn_out,
         torch_op=torch.addmv,
+        dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def _torch_addmv_backward(grad_output, mat, vec, beta=1.0, alpha=1.0):
+    return (
+        grad_output * beta,
+        grad_output[:, None] * vec[None, :] * alpha,
+        torch.mv(mat.t(), grad_output) * alpha,
+    )
+
+
+def _backward_input_fn(m, n, cur_dtype, device):
+    grad_output = torch.randn([m], dtype=cur_dtype, device=device)
+    mat = torch.randn([m, n], dtype=cur_dtype, device=device)
+    vec = torch.randn([n], dtype=cur_dtype, device=device)
+    yield grad_output, mat, vec, {"alpha": 0.75, "beta": -0.5}
+
+
+@pytest.mark.addmv_backward
+def test_addmv_backward():
+    bench = AddmvBenchmark(
+        op_name="addmv_backward",
+        input_fn=_backward_input_fn,
+        torch_op=_torch_addmv_backward,
+        gems_op=flag_gems.addmv_backward,
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()

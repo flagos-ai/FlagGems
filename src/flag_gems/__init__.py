@@ -1087,7 +1087,12 @@ _FULL_CONFIG = (
     ("addmm.dtype_out", addmm_dtype_out),
     ("addmm.out", addmm_out),
     ("addmm_", addmm_),
-    ("addmv", addmv),
+    (
+        "addmv",
+        addmv,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("addmv.out", addmv_out),
     ("addmv_", addmv_),
     ("addr", addr),

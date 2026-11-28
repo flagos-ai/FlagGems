@@ -552,7 +552,7 @@ from flag_gems.ops.addcdiv import addcdiv, addcdiv_, addcdiv_out
 from flag_gems.ops.addcmul import addcmul, addcmul_, addcmul_out
 from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmm_ import addmm_
-from flag_gems.ops.addmv import addmv, addmv_out
+from flag_gems.ops.addmv import addmv, addmv_backward, addmv_out
 from flag_gems.ops.addmv_ import addmv_
 from flag_gems.ops.addr import addr
 from flag_gems.ops.addr_ import addr_
@@ -2301,6 +2301,7 @@ __all__ = [
     "addmm_out",
     "addmv",
     "addmv_",
+    "addmv_backward",
     "addmv_out",
     "addr",
     "addr_",

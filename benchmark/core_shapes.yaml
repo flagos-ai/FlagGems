@@ -1479,6 +1479,13 @@ addmm:
   shape_desc: B, M, N, K
   accuracy_shapes: *id002
   quick_shapes: *id003
+addmv_backward:
+  # Aligned, rectangular and tail tiles cover both fused backward regions.
+  shapes:
+  - [64, 64]
+  - [65, 129]
+  - [256, 192]
+  - [1024, 1024]
 amin_backward:
   # Row, tail, square and batched reductions exercise the fused tie-count path.
   shapes:
