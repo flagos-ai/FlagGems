@@ -361,6 +361,7 @@ from .replication_pad2d_backward import (
 from .replication_pad3d_backward import replication_pad3d_backward
 from .rms_norm_w8a16_fp8 import rms_norm_w8a16_fp8
 from .rrelu_with_noise import rrelu_with_noise, rrelu_with_noise_
+from .rsqrt import rsqrt
 from .scalar_tensor import scalar_tensor
 from .scatter import scatter, scatter_
 from .scatter_add import scatter_add
@@ -754,6 +755,7 @@ __all__ = [
     "rms_norm_w8a16_fp8",
     "rrelu_with_noise",
     "rrelu_with_noise_",
+    "rsqrt",
     "scalar_tensor",
     "scaled_dot_product_attention",
     "scaled_dot_product_attention_backward",
