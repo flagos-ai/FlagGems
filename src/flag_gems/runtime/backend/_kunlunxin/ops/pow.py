@@ -12,6 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import importlib
 import logging
 import math
 
@@ -27,7 +28,22 @@ from ..utils.pointwise_dynamic import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 _pow = tl_extra_shim.pow
-_fast_expf = tl_extra_shim.fast_expf
+
+
+def _generic_pow():
+    """Return the generic (non vendor) `flag_gems.ops.pow` module.
+
+    The 1-D tile codegen used by the vendor pointwise kernels below fails to
+    lower fp16 conversion kernels on xpu3 ("triton_xpu.unpack reached lowering
+    without a bufPtr", FlagGems #10330).  fp16 inputs are therefore routed to
+    the generic block-pointer pointwise implementation, which compiles for
+    every shape.  Imported lazily to avoid a circular import at load time.
+    """
+    return importlib.import_module("flag_gems.ops.pow")
+
+
+def _use_generic_fallback(*tensors):
+    return any(t.dtype == torch.float16 for t in tensors if isinstance(t, torch.Tensor))
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "BOOL_TO_LONG")])
@@ -38,6 +54,8 @@ def pow_func(x, exponent):
 
 def pow_tensor_tensor(A, exponent):
     logger.debug("GEMS_KUNLUNXIN POW_TENSOR_TENSOR")
+    if _use_generic_fallback(A, exponent):
+        return _generic_pow().pow_tensor_tensor(A, exponent)
     return pow_func(A, exponent)
 
 
@@ -139,6 +157,8 @@ def _launch_pow_tt_fast(x, e, out):
 
 def pow_tensor_tensor_(A, exponent):
     logger.debug("GEMS_KUNLUNXIN POW_TENSOR_TENSOR_")
+    if _use_generic_fallback(A, exponent):
+        return _generic_pow().pow_tensor_tensor_(A, exponent)
     if (
         A.shape == exponent.shape
         and A.is_contiguous()
@@ -175,6 +195,8 @@ def pow_func_tensor_scalar(x, exponent):
 
 def pow_tensor_scalar(A, exponent):
     logger.debug("GEMS_KUNLUNXIN POW_TENSOR_SCALAR")
+    if _use_generic_fallback(A):
+        return _generic_pow().pow_tensor_scalar(A, exponent)
     e = float(exponent)
     if _pow_tensor_exponent_uses_fast_path(A, e):
         out = torch.empty_like(A)
@@ -270,6 +292,8 @@ def _launch_pow_tensor_scalar_fast(x, exp, out=None):
 
 def pow_tensor_scalar_(A, exponent):
     logger.debug("GEMS_KUNLUNXIN POW_TENSOR_SCALAR_")
+    if _use_generic_fallback(A):
+        return _generic_pow().pow_tensor_scalar_(A, exponent)
     e = float(exponent)
     if _pow_tensor_exponent_uses_fast_path(A, e):
         _launch_pow_tensor_scalar_fast(A, e)
@@ -283,31 +307,14 @@ def pow_func_scalar_tensor(x, exponent):
     return _pow(x.to(tl.float32), exponent.to(tl.float32))
 
 
-@pointwise_dynamic(is_tensor=[False, True], promotion_methods=[(0, 1, "BOOL_TO_LONG")])
-@triton.jit
-def pow_func_scalar_tensor_fast(log_base, exponent):
-    # For a positive scalar base, pow(base, exp) == exp(exp * log(base)).
-    # log(base) is constant so it is computed once on the host; fast_expf is the
-    # XPU fast approximate expf (much cheaper and more accurate than the native
-    # tl.exp2 path, which produced NaN at large shapes for base 100.001).
-    return _fast_expf(exponent.to(tl.float32) * log_base.to(tl.float32))
-
-
 # ---------------------------------------------------------------------------
-# pow_scalar fast path (aten::pow.Scalar, scalar base >0 finite, !=1).
+# aten::pow.Scalar (scalar base ** tensor exponent).
 #
-# XPU probe (2026-08-15, XPU5, 16.7M fp32 isolated A/B):
-#  * tl_extra_shim.pow (libdevice software impl) 538us, torch native 199us;
-#  * backend tl.exp2/tl.log2 are actually e^x / ln(x) (numeric semantics) and
-#    SFU-class: one tl.exp(y * ln(base)) ~142us, faster than torch; any
-#    per-element where/min/max/integer-compare forces the SFU path back to
-#    2-5x (no quantization reuse);
-#  * a single ln(f32) constant satisfies the corners naturally: y=±inf ->
-#    e^(±inf)=0/inf, y=NaN -> NaN, y=0 -> 1 (exp(0)==1); no clamp/select
-#    needed -- numeric cross-check (base 0.001/100.001/2/0.5 x
-#    fp32/fp16/bf16 x y=U(-1,1)): 0 failures;
-#  * all other bases (<=0, ==1, +-inf, NaN) keep the generic extern path,
-#    semantics unchanged.
+# The previous implementation used a `fast_expf` extern (exp(y * ln(base))),
+# which measured ~142us on 16.7M fp32 but no longer survives this toolchain:
+# xpu3-elfconv-triton rejects the converted kernel for every dtype, so the
+# operator raised at compile time (FlagGems #10330).  The regular pointwise
+# libdevice `pow` is used instead; correctness is unchanged and it compiles.
 # ---------------------------------------------------------------------------
 MIN_BLOCK = 2048
 MAX_BLOCK = 131072
@@ -330,19 +337,10 @@ def _pick_pow_block(n_elements):
 
 def pow_scalar(A, exponent):
     logger.debug("GEMS_KUNLUNXIN POW_SCALAR")
-    base = A.item() if hasattr(A, "item") else float(A)
-    # Fast path gating (in addition to the base range check):
-    #  * exponent must be floating-point: int/bool/complex exponents are cast
-    #    to int on store by the exp2 kernel (e.g. 0.001^1 -> 0), and torch
-    #    returns float32 for (float scalar, int tensor) -- keep generic path.
-    #  * feed the fast path a contiguous exponent so the kernel's linear
-    #    indexing matches the logical element order (silently wrong values
-    #    otherwise on non-contiguous views).
-    if (
-        base > 0.0
-        and base != 1.0
-        and math.isfinite(base)
-        and exponent.is_floating_point()
-    ):
-        return pow_func_scalar_tensor_fast(math.log(base), exponent.contiguous())
+    if _use_generic_fallback(exponent):
+        return _generic_pow().pow_scalar(A, exponent)
+    # The former `fast_expf` path (pow_func_scalar_tensor_fast) is gone: its
+    # extern no longer survives the xpu3 ELF conversion for any dtype
+    # ("xpu3-elfconv-triton" returns 1, FlagGems #10330).  The regular
+    # pointwise libdevice kernel is correct and compiles.
     return pow_func_scalar_tensor(A, exponent)
