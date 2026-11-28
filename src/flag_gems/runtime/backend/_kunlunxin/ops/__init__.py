@@ -155,8 +155,6 @@ from ._foreach_ternary_scalar import (  # noqa: F401
     _foreach_lerp_ScalarList,
 )
 from ._foreach_unary import (  # noqa: F401
-    _foreach_cos,
-    _foreach_cos_,
     _foreach_exp,
     _foreach_log10,
     _foreach_log10_,
@@ -1021,6 +1019,7 @@ from .to import to_copy
 from .topk import topk
 from .trace import trace
 from .trapezoid import trapezoid_x  # noqa: F401
+from .trapz import trapz  # noqa: F401
 from .triangular_solve import triangular_solve, triangular_solve_out  # noqa: F401
 from .tril import tril, tril_, tril_out
 from .tril_indices import tril_indices  # noqa: F401
@@ -2152,6 +2151,7 @@ __all__ = [
     "topk",
     "trace",
     "trapezoid_x",
+    "trapz",
     "triangular_solve",
     "triangular_solve_out",
     "tril",
