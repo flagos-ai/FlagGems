@@ -1379,6 +1379,16 @@ swiglu:
     - [15000, 2048]
   shape_desc: "M, 2H (last dim is split in half)"
 
+amax_backward:
+  # Row, tail, square and batched reductions exercise the fused tie-count path.
+  shapes:
+  - [64, 64]
+  - [65, 129]
+  - [256, 512]
+  - [1024, 1024]
+  - [64, 512, 64]
+  shape_desc: M, N
+
 unique2:
   shapes:
     - [1024]

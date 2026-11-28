@@ -1103,7 +1103,12 @@ _FULL_CONFIG = (
     ("allclose", allclose),
     ("alpha_dropout", alpha_dropout),
     ("alpha_dropout_", alpha_dropout_),
-    ("amax", amax),
+    (
+        "amax",
+        amax,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     (
         "amin",
         amin,

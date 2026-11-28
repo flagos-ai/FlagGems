@@ -1475,6 +1475,18 @@ ops:
   - LinearAlg
   stages:
   - stable: '2.0'
+- id: amax_backward
+  description: Computes tie-aware input gradients for amax in one Triton launch.
+  for:
+  - amax
+  labels:
+  - aten
+  - KernelGen
+  - reduction
+  kind:
+  - Math
+  stages:
+  - alpha: '5.5'
 - id: amin
   description: Returns the minimum value of each row of the input tensor in the given
     dimension dim.
