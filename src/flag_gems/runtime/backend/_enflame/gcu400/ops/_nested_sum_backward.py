@@ -19,32 +19,285 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
+
 logger = logging.getLogger(__name__)
 
+# GCU400 caps grid.x at 65535 while the generic kernel launches one program
+# per 1024 elements (`cdiv(numel, 1024)`); the core-level benchmark's
+# 2**30-element shapes abort with ``out of resource: grid.x, Required:
+# 1048576``. All kernels below launch a fixed 48-CTA grid and walk the
+# output with a grid-stride tile loop instead, removing the grid.x
+# dependency from numel entirely (48 CTAs = 4 DIE x 6 SIP concurrency
+# sweet spot, same GCU_NUM_GRID judgement as this backend's mul kernels).
+_GRID_SIZE = 48
 
+# Probe-validated tile budgets (2026-11-18, GCU400, do_bench median):
+# stores must be >= 8KB wide and tiles >= 16K elements to stream at the
+# ~3.2TB/s fill floor; narrow tiles collapse to ~0.6TB/s. 2-byte dtypes
+# need more tile elements because the (TR, DC) broadcast store of the
+# flat kernel vectorizes along DC only. 131072-element tiles sit at the
+# DSM budget edge and swing 683<->921us run to run; 65536 is stable.
+_TILE_ELEMS = {4: 32768, 2: 65536}
+_MIN_COL_BLOCK = {4: 2048, 2: 4096}
+
+# F2D tile element cap: TR*DC elements must stay under the 917504B DSM
+# budget (~4B/element for the broadcast value + pointers); 262144-element
+# tiles are rejected at compile time with OutOfResources (probe-verified).
+_F2D_MAX_TILE_ELEMS = 131072
+
+# Flat 1-D path block: 4KB tiles stall at ~0.6TB/s, 16KB tiles reach the
+# fill floor; the block must also stay <= dim_size so a tile spans at most
+# two broadcast runs.
+_FLAT_BLOCK_MAX = 32768
+
+# Flat offsets must stay below 2**31 in the 32-bit kernels; masked lanes
+# overshoot by up to one block, so switch to 64-bit addressing early.
+_INT32_SAFE_NUMEL = (1 << 31) - (1 << 16)
+
+
+@libentry()
 @triton.jit
-def _nested_sum_backward_kernel(
+def _nested_sum_backward_slab_kernel(
+    grad_ptr,
+    out_ptr,
+    n_tiles,
+    n_groups,
+    C: tl.constexpr,
+    D: tl.constexpr,
+    CC: tl.constexpr,
+    RT: tl.constexpr,
+    BC: tl.constexpr,
+    TR: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
+    WIDE: tl.constexpr,
+):
+    # inner >= 2 path. The output viewed as [n_groups * D, C] replicates
+    # grad row ``r // D`` into D consecutive rows; a tile is one
+    # (row-run, column-chunk) pair: a single BC-wide load broadcast into
+    # TR stores of BC contiguous elements. All divisors are constexpr so
+    # the per-tile index math lowers to shifts/multiplies.
+    pid = tl.program_id(0)
+    TPC: tl.constexpr = CC * RT
+    for tile in tl.range(pid, n_tiles, GRID_SIZE, num_stages=NUM_STAGES):
+        if WIDE:
+            t = tile.to(tl.int64)
+        else:
+            t = tile
+        g = t // TPC
+        rem = t - g * TPC
+        run = rem // CC
+        chunk = rem - run * CC
+        c0 = chunk * BC
+        lanes = tl.arange(0, BC)
+        cmask = (c0 + lanes) < C
+        v = tl.load(grad_ptr + g * C + c0 + lanes, mask=cmask)
+        base = (g * D + run * TR) * C + c0
+        for i in tl.static_range(TR):
+            rmask = (run * TR + i) < D
+            tl.store(out_ptr + base + i * C + lanes, v, mask=cmask & rmask)
+
+
+@libentry()
+@triton.jit
+def _nested_sum_backward_flat2d_kernel(
+    grad_ptr,
+    out_ptr,
+    n_tiles,
+    n_groups,
+    D: tl.constexpr,
+    DC: tl.constexpr,
+    TR: tl.constexpr,
+    NDC: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
+    WIDE: tl.constexpr,
+):
+    # inner == 1 path with multiple grad values: out[i] = grad[i // D],
+    # i.e. output row g (D contiguous elements) is a fill of the scalar
+    # grad[g]. A tile loads TR scalars at once and stores a (TR, DC)
+    # broadcast block -- no per-element division, no scalar-load
+    # dependency chain. TR must stay >= 2: a (1, DC) tile degenerates to
+    # a narrow 2-D store that halves effective bandwidth.
+    pid = tl.program_id(0)
+    for tile in tl.range(pid, n_tiles, GRID_SIZE, num_stages=NUM_STAGES):
+        gt = tile // NDC
+        dc = tile - gt * NDC
+        g0 = gt * TR
+        rows = g0 + tl.arange(0, TR)
+        rmask = rows < n_groups
+        v = tl.load(grad_ptr + rows, mask=rmask)
+        cols = dc * DC + tl.arange(0, DC)
+        cmask = cols < D
+        if WIDE:
+            rows64 = rows.to(tl.int64)
+            cols64 = cols.to(tl.int64)
+            ptrs = out_ptr + rows64[:, None] * D + cols64[None, :]
+        else:
+            ptrs = out_ptr + rows[:, None] * D + cols[None, :]
+        tl.store(ptrs, v[:, None], mask=rmask[:, None] & cmask[None, :])
+
+
+@libentry()
+@triton.jit
+def _nested_sum_backward_flat_kernel(
     grad_ptr,
     out_ptr,
     numel,
-    dim_size,
-    inner_size,
-    BLOCK_SIZE: tl.constexpr,
+    n_grad,
+    D: tl.constexpr,
+    BLOCK: tl.constexpr,
+    GRID_SIZE: tl.constexpr,
+    NUM_STAGES: tl.constexpr,
+    EVEN: tl.constexpr,
+    IDENTITY: tl.constexpr,
+    WIDE: tl.constexpr,
 ):
+    # inner == 1 path with a single (or huge-D) broadcast source: one
+    # scalar grad value owns a contiguous run of D outputs, so a tile is
+    # a single-value fill. BLOCK <= D keeps a tile inside at most two
+    # runs; the ragged tail stitches the boundary with one where-select.
+    # D == 1 degenerates to a plain flat copy (IDENTITY).
     pid = tl.program_id(0)
+    n_tiles = (numel + BLOCK - 1) // BLOCK
+    for tile in tl.range(pid, n_tiles, GRID_SIZE, num_stages=NUM_STAGES):
+        if WIDE:
+            t = tile.to(tl.int64)
+            lanes = tl.arange(0, BLOCK).to(tl.int64)
+        else:
+            t = tile
+            lanes = tl.arange(0, BLOCK)
+        base = t * BLOCK
+        off = base + lanes
+        if IDENTITY:
+            mask = off < numel
+            v = tl.load(grad_ptr + off, mask=mask)
+            tl.store(out_ptr + off, v, mask=mask)
+        elif EVEN:
+            v = tl.load(grad_ptr + base // D)
+            tl.store(out_ptr + off, v)
+        else:
+            g0 = base // D
+            boundary = (g0 + 1) * D
+            g1 = tl.minimum(g0 + 1, n_grad - 1)
+            v0 = tl.load(grad_ptr + g0)
+            v1 = tl.load(grad_ptr + g1)
+            val = tl.where(off < boundary, v0, v1)
+            mask = off < numel
+            tl.store(out_ptr + off, val, mask=mask)
 
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < numel
 
-    # Decompose the flattened output index into (outer, dim, inner) where the
-    # reduced `dim` has been broadcast from `grad`, which stores a single value
-    # per (outer, inner) pair. `grad` is laid out as [outer, inner] in memory.
-    outer_idx = offsets // (dim_size * inner_size)
-    inner_idx = offsets % inner_size
-    grad_offset = outer_idx * inner_size + inner_idx
+def _prev_pow2(value):
+    result = 1
+    while result * 2 <= value:
+        result *= 2
+    return result
 
-    grad = tl.load(grad_ptr + grad_offset, mask=mask)
-    tl.store(out_ptr + offsets, grad, mask=mask)
+
+def _largest_pow2_divisor(value, upper):
+    block = _prev_pow2(min(value, upper))
+    while block > 1 and value % block != 0:
+        block //= 2
+    return block
+
+
+def _launch_slab(grad, out, numel, inner, dim_size, wide):
+    n_groups = numel // (dim_size * inner)
+    # The slab stores are 1-D BC-wide (byte-bound for every dtype), so a
+    # fixed 32768-element tile budget is optimal for fp32 and 16-bit alike
+    # (probes: TR=64 configs regress up to 36%; 2-byte tiles only pay off
+    # in the flat2d broadcast store, which is element-bound).
+    tile_elems = 32768
+    min_bc = _MIN_COL_BLOCK.get(out.element_size(), 2048)
+    bc = min(tile_elems, triton.next_power_of_2(inner))
+    while bc > min_bc and tile_elems // bc < min(dim_size, 16):
+        bc //= 2
+    # static_range unrolls TR store instructions; 32 is the largest TR the
+    # probe sweep validated and keeps compile time/code size bounded.
+    tr = max(1, min(tile_elems // bc, dim_size, 32))
+    cc = triton.cdiv(inner, bc)
+    rt = triton.cdiv(dim_size, tr)
+    n_tiles = n_groups * rt * cc
+    grid = (min(n_tiles, _GRID_SIZE),)
+    # Multi-chunk rows on few groups favour 4 warps (probe: 525.7us vs
+    # 584.4us on (8, 4096, 11008) dim=1); every other shape is warp-neutral.
+    num_warps = 4 if cc >= 3 and n_groups <= 64 else 1
+    with torch_device_fn.device(out.device):
+        _nested_sum_backward_slab_kernel[grid](
+            grad,
+            out,
+            n_tiles,
+            n_groups,
+            C=inner,
+            D=dim_size,
+            CC=cc,
+            RT=rt,
+            BC=bc,
+            TR=tr,
+            GRID_SIZE=grid[0],
+            NUM_STAGES=2,
+            WIDE=wide,
+            num_warps=num_warps,
+        )
+
+
+def _launch_flat2d(grad, out, numel, dim_size, n_groups, wide):
+    tile_elems = _TILE_ELEMS.get(out.element_size(), 32768)
+    # Prefer a power-of-two chunk that divides dim_size exactly; otherwise
+    # fall back to 1024, which keeps ragged lane waste under ~25% for any
+    # dim_size (probe: D=11008 with DC=1024 loses only ~4% to masking).
+    dc = _largest_pow2_divisor(dim_size, 16384)
+    if dc < 1024:
+        dc = min(1024, triton.next_power_of_2(dim_size))
+    # tl.arange requires a power-of-2 TR; the row mask absorbs any excess.
+    tr = max(
+        2, min(min(tile_elems, _F2D_MAX_TILE_ELEMS) // dc, _prev_pow2(max(n_groups, 2)))
+    )
+    ndc = triton.cdiv(dim_size, dc)
+    n_tiles = triton.cdiv(n_groups, tr) * ndc
+    grid = (min(n_tiles, _GRID_SIZE),)
+    with torch_device_fn.device(out.device):
+        _nested_sum_backward_flat2d_kernel[grid](
+            grad,
+            out,
+            n_tiles,
+            n_groups,
+            D=dim_size,
+            DC=dc,
+            TR=tr,
+            NDC=ndc,
+            GRID_SIZE=grid[0],
+            NUM_STAGES=2,
+            WIDE=wide,
+            num_warps=4,
+        )
+
+
+def _launch_flat(grad, out, numel, dim_size, wide, identity=False):
+    if identity:
+        block = _FLAT_BLOCK_MAX
+    else:
+        block = min(_FLAT_BLOCK_MAX, _prev_pow2(max(dim_size, 1)))
+    even = (not identity) and dim_size % block == 0
+    n_tiles = triton.cdiv(numel, block)
+    grid = (min(n_tiles, _GRID_SIZE),)
+    with torch_device_fn.device(out.device):
+        _nested_sum_backward_flat_kernel[grid](
+            grad,
+            out,
+            numel,
+            grad.numel(),
+            D=dim_size,
+            BLOCK=block,
+            GRID_SIZE=grid[0],
+            NUM_STAGES=2,
+            EVEN=even,
+            IDENTITY=identity,
+            WIDE=wide,
+            num_warps=1,
+        )
 
 
 def _nested_sum_backward(grad, self, dim=None, keepdim=False):
@@ -64,15 +317,27 @@ def _nested_sum_backward(grad, self, dim=None, keepdim=False):
     Returns:
         Tensor: the gradient broadcast back to the shape of `self`.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _NESTED_SUM_BACKWARD")
+    logger.debug("GEMS_ENFLAME _NESTED_SUM_BACKWARD")
 
     shape = list(self.shape)
     ndim = self.dim()
 
     if dim is None:
         # Full reduction: `grad` is a scalar (or an all-ones keepdim shape).
-        # Broadcasting a 0-d/1-d tensor to `shape` is a no-data-copy edge case
-        # that never occurs for nested tensors (which always reduce a dim).
+        # A single-element gradient is the flat fill this backend's kernels
+        # already implement; anything else (a broadcastable non-scalar,
+        # e.g. self=(1, N) with grad=(N,)) never occurs for nested tensors
+        # and keeps the generic aten behaviour verbatim.
+        grad = grad.contiguous()
+        out = torch.empty(shape, dtype=grad.dtype, device=grad.device)
+        numel = out.numel()
+        if numel == 0:
+            return out
+        if grad.numel() == 1:
+            _launch_flat(
+                grad, out, numel, numel, numel > _INT32_SAFE_NUMEL, identity=False
+            )
+            return out
         return torch.broadcast_to(grad, shape).contiguous()
 
     if isinstance(dim, (list, tuple)):
@@ -94,16 +359,20 @@ def _nested_sum_backward(grad, self, dim=None, keepdim=False):
     if numel == 0:
         return out
 
-    # 1024 threads covers 32 full warps, enough to saturate memory bandwidth for
-    # this elementwise broadcast without needing an autotuned block size.
-    _BLOCK = 1024
-    grid = (triton.cdiv(numel, _BLOCK),)
-    _nested_sum_backward_kernel[grid](
-        grad,
-        out,
-        numel,
-        dim_size,
-        inner_size,
-        BLOCK_SIZE=_BLOCK,
-    )
+    wide = numel > _INT32_SAFE_NUMEL
+
+    if inner_size >= 2:
+        _launch_slab(grad, out, numel, inner_size, dim_size, wide)
+        return out
+
+    # inner_size == 1: out[i] = grad[i // dim_size].
+    n_groups = numel // dim_size
+    if dim_size == 1:
+        # Reduce over a size-1 trailing dim: the gradient is a plain copy.
+        _launch_flat(grad, out, numel, 1, wide, identity=True)
+    elif n_groups == 1 or dim_size > _FLAT_BLOCK_MAX:
+        # Single broadcast source or runs wider than one tile: scalar fill.
+        _launch_flat(grad, out, numel, dim_size, wide)
+    else:
+        _launch_flat2d(grad, out, numel, dim_size, n_groups, wide)
     return out

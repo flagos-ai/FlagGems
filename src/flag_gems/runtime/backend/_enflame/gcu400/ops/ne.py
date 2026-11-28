@@ -20,7 +20,8 @@ grid-stride loop, fp32 up-cast compare) leaves the medium/large shapes at
 2^24). Same-shaped comparison ops were already fixed this way
 (greater_equal / copysign); ``ne`` reuses the probe-validated flat tiers:
 
-* tensor & tensor:   n < 2^16 generic; 2^16..2^22 flat BLOCK=16384;
+* tensor & tensor:   n < 2^16 shape-matched flat tile (launch floor);
+                     2^16..2^22 flat BLOCK=16384;
                      2^22..2^28 f16/bf16 flat BLOCK=131072, f32 loop
                      COV=262144/CHUNK=65536 nw8; >= 2^28 f16/bf16 loop
                      COV=524288/CHUNK=131072 nw4 st2. f32 >= 2^26 falls
@@ -61,41 +62,37 @@ def ne_func_scalar(x, y):
 
 
 @triton.jit
-def _ne_cmp_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
+def _ne_cmp_kernel(A, B, OUT, N, BLOCK: tl.constexpr, EVEN: tl.constexpr):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    x = tl.load(A + off, mask=m, other=0)
-    y = tl.load(B + off, mask=m, other=0)
-    r = x != y
-    tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
-
-
-@triton.jit
-def _ne_cmp_loop_kernel(A, B, OUT, N, COV: tl.constexpr, CHUNK: tl.constexpr):
-    base = tl.program_id(0) * COV
-    for j in range(0, COV // CHUNK):
-        off = base + j * CHUNK + tl.arange(0, CHUNK)
+    if EVEN:
+        x = tl.load(A + off)
+        y = tl.load(B + off)
+        tl.store(OUT + off, (x != y).to(OUT.dtype.element_ty))
+    else:
         m = off < N
         x = tl.load(A + off, mask=m, other=0)
         y = tl.load(B + off, mask=m, other=0)
-        r = x != y
-        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+        tl.store(OUT + off, (x != y).to(OUT.dtype.element_ty), mask=m)
 
 
 @triton.jit
-def _ne_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr):
+def _ne_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr, EVEN: tl.constexpr):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
-    m = off < N
-    x = tl.load(A + off, mask=m, other=0)
-    r = x != Y.to(x.dtype)
-    tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+    if EVEN:
+        x = tl.load(A + off)
+        tl.store(OUT + off, (x != Y.to(x.dtype)).to(OUT.dtype.element_ty))
+    else:
+        m = off < N
+        x = tl.load(A + off, mask=m, other=0)
+        tl.store(OUT + off, (x != Y.to(x.dtype)).to(OUT.dtype.element_ty), mask=m)
 
 
 _FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 _SMALL_N = 2**16
-_MID_N = 2**22
+_MID_N = 2**20
+_WIDE_N = 2**22
 _LATE_N = 2**26
-_BIG_N = 2**28
+_HUGE_N = 2**28
 _INT32_SAFE_LIMIT = 0x7FFFFFFF
 _GRID_LIMIT = 65535
 
@@ -106,37 +103,33 @@ def _ne_flat_launch(A, B, out, n, block, nw):
     grid = triton.cdiv(n, block)
     if grid > _GRID_LIMIT:
         return False
-    _ne_cmp_kernel[(grid,)](A, B, out, n, BLOCK=block, num_warps=nw)
+    _ne_cmp_kernel[(grid,)](
+        A, B, out, n, BLOCK=block, EVEN=(n < _HUGE_N and n % block == 0), num_warps=nw
+    )
     return True
 
 
 def _ne_cmp_run(A, B, out):
     """Launch the tuned comparison kernel; False falls back to pointwise."""
     n = A.numel()
-    if n < _SMALL_N:
+    if n == 0:
         return False
+    if n < _SMALL_N:
+        # Launch-floor shapes ((64,64)-class, n=4096): the generic pointwise tile
+        # costs ~20us here while a shape-matched single tile lands at ~5us, the
+        # same trick the scalar overload already uses.
+        return _ne_flat_launch(
+            A, B, out, n, max(256, min(16384, triton.next_power_of_2(n))), 4
+        )
     if A.dtype == torch.float32:
         if n >= _LATE_N:
             return False
         if n < _MID_N:
-            return _ne_flat_launch(A, B, out, n, 16384, 4)
-        cov, chunk, nw, st = 262144, 65536, 8, 1
-        if n > _INT32_SAFE_LIMIT - cov:
-            return False
-        _ne_cmp_loop_kernel[(triton.cdiv(n, cov),)](
-            A, B, out, n, COV=cov, CHUNK=chunk, num_warps=nw, num_stages=st
-        )
-        return True
-    if n >= _BIG_N:
-        cov, chunk, nw, st = 524288, 131072, 4, 2
-        if n > _INT32_SAFE_LIMIT - cov:
-            return False
-        _ne_cmp_loop_kernel[(triton.cdiv(n, cov),)](
-            A, B, out, n, COV=cov, CHUNK=chunk, num_warps=nw, num_stages=st
-        )
-        return True
-    block = 131072 if n >= _MID_N else 16384
-    return _ne_flat_launch(A, B, out, n, block, 4)
+            return _ne_flat_launch(A, B, out, n, 8192, 4)
+        return _ne_flat_launch(A, B, out, n, 32768, 4 if n < _WIDE_N else 2)
+    if n < _MID_N:
+        return _ne_flat_launch(A, B, out, n, 16384, 4)
+    return _ne_flat_launch(A, B, out, n, 65536, 2)
 
 
 def ne(A, B):
@@ -157,21 +150,44 @@ def ne(A, B):
 def _ne_scalar_tier(dtype, n):
     """(BLOCK, num_warps) for the scalar overload, None -> generic path."""
     if dtype == torch.float32:
-        return (131072, 8) if n < _LATE_N else None
-    return (262144, 4) if n >= _MID_N else (16384, 4)
+        if n >= _LATE_N:
+            return None
+        if n < _MID_N:
+            return (8192, 4)
+        if n < _WIDE_N:
+            return (32768, 4)
+        # masked B65536 regresses ~21% on odd n (probe 2^24+4k), so the
+        # small block is EVEN-only; odd n keeps the old flat131072 nw8.
+        return (65536, 4) if n % 65536 == 0 else (131072, 8)
+    if n < _MID_N:
+        return (16384, 4)
+    if n < _WIDE_N:
+        return (65536, 4)
+    return (262144, 4)
 
 
 def ne_scalar(A, B):
     logger.debug("GEMS_ENFLAME NE_SCALAR")
     if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES and A.is_contiguous():
         n = A.numel()
-        tier = _ne_scalar_tier(A.dtype, n) if n >= _SMALL_N else None
+        if 0 < n < _SMALL_N:
+            # shape-matched tile for launch-floor shapes: the generic pointwise
+            # tile costs 11.0us on (64,64)-class inputs vs 3.2us here.
+            tier = (max(256, min(16384, triton.next_power_of_2(n))), 4)
+        else:
+            tier = _ne_scalar_tier(A.dtype, n) if n >= _SMALL_N else None
         if tier is not None:
             block, nw = tier
             if n <= _INT32_SAFE_LIMIT - block and triton.cdiv(n, block) <= _GRID_LIMIT:
                 out = torch.empty_like(A, dtype=torch.bool)
                 _ne_cmp_scalar_kernel[(triton.cdiv(n, block),)](
-                    A, out, n, float(B), BLOCK=block, num_warps=nw
+                    A,
+                    out,
+                    n,
+                    float(B),
+                    BLOCK=block,
+                    EVEN=(n < _HUGE_N and n % block == 0),
+                    num_warps=nw,
                 )
                 return out
     return ne_func_scalar(A, B)

@@ -145,14 +145,28 @@ def test_max_pool2d_with_indices_backward(
         dilation,
         ceil_mode,
     )
-    res_out, res_indices = torch.ops.aten.max_pool2d_with_indices(
-        inp,
-        kernel_size,
-        stride,
-        padding,
-        dilation,
-        ceil_mode,
-    )
+    if flag_gems.vendor_name == "ascend":
+        # The backward candidate needs canonical flat indices, while the
+        # native NPU forward produces packed indices for its own kernel.
+        fixture_out, fixture_indices = torch.ops.aten.max_pool2d_with_indices(
+            inp.detach().to(device="cpu", dtype=torch.float32),
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            ceil_mode,
+        )
+        res_out = fixture_out.to(device=inp.device, dtype=inp.dtype)
+        res_indices = fixture_indices.to(device=inp.device)
+    else:
+        res_out, res_indices = torch.ops.aten.max_pool2d_with_indices(
+            inp,
+            kernel_size,
+            stride,
+            padding,
+            dilation,
+            ceil_mode,
+        )
 
     # Create gradient
     out_grad = torch.randn_like(res_out, device=flag_gems.device)

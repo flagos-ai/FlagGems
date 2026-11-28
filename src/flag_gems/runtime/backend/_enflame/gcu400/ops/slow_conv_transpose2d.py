@@ -140,6 +140,139 @@ def _sct2d_dot(
 
 
 # ---------------------------------------------------------------------------
+# forward: residue-phase implicit gemm (GCU400 fast path)
+# ---------------------------------------------------------------------------
+# The upstream dot kernel above does not compile on the enflame backend: its
+# flattened-M decomposition makes the gcuir PassManager fail ("Pipeline run
+# failed", no diagnostics).  This variant reuses the residue-phase structure
+# of the GCU-adapted conv_transpose2d: output positions are partitioned by
+# their (oh % sh, ow % sw) phase so each program only visits the taps whose
+# back-projection lands on an input sample, every shape-dependent value is a
+# constexpr, and contiguous addressing is built by nested dimension math.
+# fp16/bf16 run the dot in fp32 after an in-register upcast: native low
+# precision dots are intermittently wrong on this backend (see the conv_
+# transpose2d adaptation notes), while the fp32 ieee dot is deterministic.
+_DOT_PRECISION = tl.constexpr("ieee")
+
+
+@triton.jit
+def _sct2d_residue_dot(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    o_ptr,
+    N: tl.constexpr,
+    Cin: tl.constexpr,
+    Hin: tl.constexpr,
+    Win: tl.constexpr,
+    Cout: tl.constexpr,
+    Hout: tl.constexpr,
+    Wout: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    sh: tl.constexpr,
+    sw: tl.constexpr,
+    ph: tl.constexpr,
+    pw: tl.constexpr,
+    dh: tl.constexpr,
+    dw: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    n_subgrids: tl.constexpr,
+    F32_UPCAST: tl.constexpr,
+    BLOCK_NHW: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_m = tl.program_id(0)
+    pid_co = tl.program_id(1)
+    pid_subgrid = tl.program_id(2)
+    residue_h = pid_subgrid // sw
+    residue_w = pid_subgrid % sw
+
+    compact_height: tl.constexpr = (Hout + sh - 1) // sh
+    compact_width: tl.constexpr = (Wout + sw - 1) // sw
+    compact_plane: tl.constexpr = compact_height * compact_width
+
+    compact_offsets = pid_m * BLOCK_NHW + tl.arange(0, BLOCK_NHW)
+    compact_nh = compact_offsets // compact_width
+    compact_h = compact_nh % compact_height
+    compact_w = compact_offsets % compact_width
+    n = compact_offsets // compact_plane
+    oh = compact_h * sh + residue_h
+    ow = compact_w * sw + residue_w
+
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    valid_co = co < Cout
+
+    acc = tl.zeros((BLOCK_NHW, BLOCK_CO), dtype=tl.float32)
+    if HAS_BIAS:
+        bias = tl.load(b_ptr + co, mask=valid_co, other=0.0).to(tl.float32)
+        acc = acc + bias[None, :]
+
+    ci_blocks: tl.constexpr = tl.cdiv(Cin, BLOCK_CI)
+    height_residue = (residue_h + ph) % sh
+    width_residue = (residue_w + pw) % sw
+    for kh in tl.static_range(0, KH):
+        kh_residue = (kh * dh) % sh
+        if kh_residue == height_residue:
+            ih_unstrided = oh + ph - kh * dh
+            ih = ih_unstrided // sh
+            valid_h = (n < N) & (ih_unstrided >= 0) & (ih < Hin)
+            for kw in tl.static_range(0, KW):
+                kw_residue = (kw * dw) % sw
+                if kw_residue == width_residue:
+                    iw_unstrided = ow + pw - kw * dw
+                    iw = iw_unstrided // sw
+                    valid_hw = (
+                        valid_h
+                        & (iw_unstrided >= 0)
+                        & (iw < Win)
+                        & (oh < Hout)
+                        & (ow < Wout)
+                    )
+                    for ci_base in range(ci_blocks):
+                        kk = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
+                        a = tl.load(
+                            x_ptr
+                            + ((n[:, None] * Cin + kk[None, :]) * Hin + ih[:, None])
+                            * Win
+                            + iw[:, None],
+                            mask=valid_hw[:, None] & (kk[None, :] < Cin),
+                            other=0.0,
+                        )
+                        b = tl.load(
+                            w_ptr
+                            + ((kk[:, None] * Cout + co[None, :]) * KH + kh) * KW
+                            + kw,
+                            mask=(kk[:, None] < Cin) & valid_co[None, :],
+                            other=0.0,
+                        )
+                        if F32_UPCAST:
+                            acc += tl.dot(
+                                a.to(tl.float32),
+                                b.to(tl.float32),
+                                input_precision=_DOT_PRECISION,
+                            )
+                        else:
+                            acc += tl.dot(a, b, input_precision=_DOT_PRECISION)
+
+    optr = (
+        o_ptr
+        + (n[:, None] * Cout + co[None, :]) * Hout * Wout
+        + oh[:, None] * Wout
+        + ow[:, None]
+    )
+    tl.store(
+        optr,
+        acc.to(o_ptr.dtype.element_ty),
+        mask=(n[:, None] < N)
+        & (oh[:, None] < Hout)
+        & (ow[:, None] < Wout)
+        & valid_co[None, :],
+    )
+
+
+# ---------------------------------------------------------------------------
 # forward: scalar FMA kernel (fp64, non-CUDA tensors, degenerate channel counts)
 # ---------------------------------------------------------------------------
 @triton.jit
@@ -438,6 +571,99 @@ def _fwd_tile(dtype, cout, mtotal):
     return 256, 32, 8, 2
 
 
+def _fwd_tile_residue(dtype, cout, kh, kw, sh, sw):
+    """Pick (BLOCK_NHW, BLOCK_CI, BLOCK_CO, num_warps) for the residue kernel.
+
+    Measured on a GCU400 over the benchmark shape matrix (4-config sweep per
+    dtype, plus a focused st=1 follow-up; see the conv_transpose2d sibling for
+    the arm structure):
+      * fp16/bf16 (fp32 ieee dot after an in-register upcast): a wide
+        BLOCK_CO=64 tile with 8 warps wins when Cout >= 64, the 5x5 kernels
+        drop most taps per residue class and want a narrow BLOCK_CO=16 so the
+        tile is not padded, everything else takes 128/32/32.
+      * fp32: the 5x5 kernels want (128, 16, 16); stride-1 convolutions have
+        every tap live and amortize the doubled load traffic best with a
+        BLOCK_CI=64 tile; the strided cases prefer (64, 32, 32).
+    """
+    if dtype == torch.float32:
+        if kh * kw >= 25:
+            return 128, 16, 16, 4
+        if sh == 1 and sw == 1:
+            return 64, 64, 32, 4
+        return 64, 32, 32, 4
+    if cout >= 64:
+        return 128, 16, 64, 8
+    if kh * kw >= 25:
+        # The 5x5 cells are the only ones where taps drop out, so the dot is starved for work
+        # per tap: a 64-wide BLOCK_CO on a 16-channel Cout pads 4x and spends the tile on
+        # registers. (128, 16, 16) keeps every tap wide enough to pay for itself and measured
+        # 2.35 ms against 4.16 ms for (64, 16, 64) on the (8,16,64,64) k5 benchmark cell.
+        return 128, 16, 16, 4
+    return 128, 32, 32, 4
+
+
+def _forward_residue(
+    x,
+    weight,
+    bias,
+    out,
+    st,
+    pd,
+    dl,
+    kh,
+    kw,
+    cin,
+    cout,
+    hin,
+    win,
+    hout,
+    wout,
+    has_bias,
+):
+    """Run the GCU fast path: one residue-phase dot kernel, contiguous I/O."""
+    n = x.shape[0]
+    bm, bci, bco, warps = _fwd_tile_residue(x.dtype, cout, kh, kw, st[0], st[1])
+    n_subgrids = st[0] * st[1]
+    compact_h = (hout + st[0] - 1) // st[0]
+    compact_w = (wout + st[1] - 1) // st[1]
+    grid = (
+        triton.cdiv(n * compact_h * compact_w, bm),
+        triton.cdiv(cout, bco),
+        n_subgrids,
+    )
+    b_ptr = bias if has_bias else x
+    _sct2d_residue_dot[grid](
+        x,
+        weight,
+        b_ptr,
+        out,
+        n,
+        cin,
+        hin,
+        win,
+        cout,
+        hout,
+        wout,
+        kh,
+        kw,
+        st[0],
+        st[1],
+        pd[0],
+        pd[1],
+        dl[0],
+        dl[1],
+        has_bias,
+        n_subgrids,
+        F32_UPCAST=(x.dtype != torch.float32),
+        BLOCK_NHW=bm,
+        BLOCK_CI=bci,
+        BLOCK_CO=bco,
+        num_warps=warps,
+        num_stages=2,
+    )
+    return out
+
+
 def _pair(value, name):
     """Normalize a 2-element parameter; scalars raise TypeError like ATen does."""
     try:
@@ -484,6 +710,39 @@ def _forward(
     else:
         bs = 1
         b_ptr = x
+
+    if (
+        x.device.type == "gcu"
+        and x.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and cin >= 16
+        and cout >= 16
+        and hout * wout >= 16
+        and x.is_contiguous()
+        and weight.is_contiguous()
+        and out.is_contiguous()
+        and (not has_bias or bias.is_contiguous())
+    ):
+        # GCU400 fast path: the upstream dot kernel does not lower on this
+        # backend, and the scalar FMA kernel is orders of magnitude slower.
+        # Route every well-formed contiguous case to the residue-phase dot.
+        return _forward_residue(
+            x,
+            weight,
+            bias,
+            out,
+            st,
+            pd,
+            dl,
+            kh,
+            kw,
+            cin,
+            cout,
+            hin,
+            win,
+            hout,
+            wout,
+            has_bias,
+        )
 
     if (
         x.device.type != "cuda"
@@ -752,7 +1011,7 @@ def slow_conv_transpose2d(
     dilation=(1, 1),
     out=None,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_TRANSPOSE2D")
+    logger.debug("GEMS_ENFLAME SLOW_CONV_TRANSPOSE2D")
     if not isinstance(input, torch.Tensor) or not isinstance(weight, torch.Tensor):
         raise TypeError("slow_conv_transpose2d(): input and weight must be Tensors")
 

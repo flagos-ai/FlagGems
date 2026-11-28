@@ -33,6 +33,38 @@ REDUCE_AMIN = 3
 # program walk blocks with a grid-stride loop.
 _INDEX_REDUCE_MAX_GRID_X = 32768
 
+# gcu400 scattered atomics run ~3.3ns/element (vs ~0.06-0.2ns for plain
+# scattered stores), so index_reduce is atomic-bound whenever the flat kernel
+# uses tl.atomic_*. When the index vector has no duplicates, every output
+# slot is touched at most once and the reduction collapses to a single
+# load-combine-store with no atomics, no count buffer and no finalize pass.
+# The duplicate-free check itself costs a device-side unique() call whose
+# runtime grows super-linearly with the index length, so only pay it while the
+# index is small enough for the check to stay far below the atomic path.
+_INDEX_REDUCE_UNIQUE_CHECK_MAX_ELEMS = 4 * 1024 * 1024
+
+# Exact duplicate detection for short index vectors: one program, one
+# pairwise [BLOCK, BLOCK] compare. Measured DSM at BLOCK=256 is 1705984B >
+# 917504B hardware limit (compile-time OutOfResources), BLOCK=128 scales to
+# ~426KB and fits; longer indexes fall back to the aten unique gate.
+_INDEX_REDUCE_DUP_GATE_MAX_ELEMS = 128
+
+
+@libentry()
+@triton.jit(do_not_specialize=["N"])
+def _index_reduce_dup_gate_kernel(index, flag, N, BLOCK: tl.constexpr):
+    offs = tl.arange(0, BLOCK)
+    valid = offs < N
+    idx = tl.load(index + offs, mask=valid, other=-1).to(tl.int32)
+    eq = (
+        (idx[:, None] == idx[None, :])
+        & (offs[:, None] != offs[None, :])
+        & valid[:, None]
+        & valid[None, :]
+    )
+    dup = tl.sum(eq.to(tl.int32)) > 0
+    tl.store(flag, dup.to(tl.int32))
+
 
 def _heur_block_m(args):
     M = args["M"]
@@ -46,7 +78,19 @@ def _heur_block_n(args):
 
 def _heur_flat_block(args):
     total = args["TOTAL"] if "TOTAL" in args else args["N"]
-    return max(1, min(256, triton.next_power_of_2(total)))
+    if args.get("DISTINCT"):
+        # duplicate-free fast path is a scattered load-combine-store; wide
+        # blocks amortize the per-program index/pre-post arithmetic and push
+        # the store wall (measured 16G elem-stores/s at BLOCK=4096).
+        return max(1, min(4096, triton.next_power_of_2(total)))
+    # atomic scatter path, 1D-2^30 sweep (ms): REDUCE!=prod (atomic_add /
+    # atomic_max): B256 7186/4188, B1024 6969/3885, B4096 6515/3629,
+    # B8192 7877/3633 -> 4096. REDUCE==prod (atomic_cas retry loop): the
+    # per-round BLOCK-wide stop reduction taxes wide blocks, B256 2331 vs
+    # B4096 3044 -> keep 256. num_warps 4 vs 8 WITHIN-NOISE.
+    if args.get("REDUCE") == 0:
+        return max(1, min(256, triton.next_power_of_2(total)))
+    return max(1, min(4096, triton.next_power_of_2(total)))
 
 
 @libentry()
@@ -137,6 +181,8 @@ def _index_reduce_flat_kernel(
     USE_TOUCHED: tl.constexpr,
     USE_CAS: tl.constexpr,
     INDEX_MAJOR: tl.constexpr,
+    DISTINCT: tl.constexpr,
+    INCLUDE_SELF: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -158,7 +204,26 @@ def _index_reduce_flat_kernel(
         out_offsets = rows * OUT_N + dst_cols
         values = tl.load(src + src_offsets, mask=mask, other=0.0)
 
-        if REDUCE == 1:
+        if DISTINCT:
+            values_f = values.to(tl.float32)
+            if INCLUDE_SELF:
+                base_f = tl.load(out + out_offsets, mask=mask, other=0.0).to(tl.float32)
+                if REDUCE == 0:
+                    acc_f = base_f * values_f
+                elif REDUCE == 1:
+                    acc_f = (base_f + values_f) * 0.5
+                elif REDUCE == 2:
+                    acc_f = tl.maximum(base_f, values_f)
+                else:
+                    acc_f = tl.minimum(base_f, values_f)
+            else:
+                acc_f = values_f
+            tl.store(
+                out + out_offsets,
+                acc_f.to(out.dtype.element_ty),
+                mask=mask,
+            )
+        elif REDUCE == 1:
             tl.atomic_add(out + out_offsets, values, mask=mask, sem="relaxed")
             ones_i = tl.full((BLOCK,), 1, dtype=tl.int32)
             tl.atomic_add(count + out_offsets, ones_i, mask=mask, sem="relaxed")
@@ -217,6 +282,8 @@ def _index_reduce_contiguous_flat_kernel(
     USE_TOUCHED: tl.constexpr,
     USE_CAS: tl.constexpr,
     INDEX_MAJOR: tl.constexpr,
+    DISTINCT: tl.constexpr,
+    INCLUDE_SELF: tl.constexpr,
     BLOCK: tl.constexpr,
 ):
     pid = tl.program_id(axis=0)
@@ -242,7 +309,26 @@ def _index_reduce_contiguous_flat_kernel(
         out_offsets = pre * OUT_N * POST + dst_cols * POST + post
         values = tl.load(src + src_offsets, mask=mask, other=0.0)
 
-        if REDUCE == 1:
+        if DISTINCT:
+            values_f = values.to(tl.float32)
+            if INCLUDE_SELF:
+                base_f = tl.load(out + out_offsets, mask=mask, other=0.0).to(tl.float32)
+                if REDUCE == 0:
+                    acc_f = base_f * values_f
+                elif REDUCE == 1:
+                    acc_f = (base_f + values_f) * 0.5
+                elif REDUCE == 2:
+                    acc_f = tl.maximum(base_f, values_f)
+                else:
+                    acc_f = tl.minimum(base_f, values_f)
+            else:
+                acc_f = values_f
+            tl.store(
+                out + out_offsets,
+                acc_f.to(out.dtype.element_ty),
+                mask=mask,
+            )
+        elif REDUCE == 1:
             tl.atomic_add(out + out_offsets, values, mask=mask, sem="relaxed")
             ones_i = tl.full((BLOCK,), 1, dtype=tl.int32)
             tl.atomic_add(count + out_offsets, ones_i, mask=mask, sem="relaxed")
@@ -579,7 +665,7 @@ def _restore_dim(out, inp, dim):
 
 
 def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
-    logger.debug("GEMS_ENFLAME_GCU400 INDEX_REDUCE_")
+    logger.debug("GEMS_ENFLAME INDEX_REDUCE_")
     return _index_reduce_impl(
         inp,
         dim,
@@ -588,6 +674,112 @@ def index_reduce_(inp, dim, index, source, reduce, *, include_self=True):
         reduce,
         include_self=include_self,
     )
+
+
+def _index_distinct_gate(index, out_dim):
+    # Exact duplicate-free test with a cost model: metadata shortcut first
+    # (pigeonhole), then the single-program pairwise gate for short indexes,
+    # then a device-side unique composition for medium ones. Any gate failure
+    # falls back to the conservative atomic path (duplicate assumption).
+    n = index.numel()
+    if n > out_dim:
+        return False
+    if n <= 1:
+        return True
+    if n <= _INDEX_REDUCE_DUP_GATE_MAX_ELEMS:
+        flag = torch.empty(1, dtype=torch.int32, device=index.device)
+        _index_reduce_dup_gate_kernel[(1,)](
+            index, flag, n, BLOCK=triton.next_power_of_2(n)
+        )
+        return flag.item() == 0
+    # Medium indexes: device-side aten unique (measured 0.146ms @ N=2048 vs
+    # 0.556ms for flag_gems.unique_dim, which also raises on 1-D inputs and
+    # would silently kill the fast path through the except-fallback). The
+    # aten entry follows the _index_is_unique precedent in this file.
+    return index.unique().numel() == n
+
+
+def _index_reduce_distinct(inp, dim, index, source, reduce_id, include_self):
+    # Duplicate-free index: every output slot is written at most once, so the
+    # reduction collapses to a single load-combine-store kernel. No atomics
+    # (gcu400 scattered atomics cost ~3.3ns/element vs ~0.2ns for stores),
+    # no count buffer, no finalize pass, and no fp32 round-trip copies for
+    # 16-bit dtypes (the combine promotes to fp32 in registers instead).
+    dummy = torch.empty(1, dtype=torch.int32, device=inp.device)
+    if inp.is_contiguous() and source.is_contiguous():
+        pre = _prod(inp.shape[:dim])
+        post = _prod(inp.shape[dim + 1 :])
+        N = index.numel()
+        out_n = inp.size(dim)
+        total = pre * post * N
+        index_major = post > 1 or dim == 0
+        with torch_device_fn.device(inp.device):
+            _index_reduce_contiguous_flat_kernel[
+                (
+                    lambda meta: (
+                        min(
+                            triton.cdiv(total, meta["BLOCK"]),
+                            _INDEX_REDUCE_MAX_GRID_X,
+                        ),
+                    )
+                )
+            ](
+                inp,
+                index,
+                source,
+                dummy,
+                dummy,
+                total,
+                pre,
+                post,
+                N,
+                out_n,
+                reduce_id,
+                False,
+                False,
+                False,
+                index_major,
+                True,
+                include_self,
+            )
+        return inp
+
+    inp_work = dim_compress(inp, dim)
+    source_work = dim_compress(source, dim)
+    M = source_work.numel() // index.numel()
+    N = index.numel()
+    out_n = inp_work.size(-1)
+    total = M * N
+    index_major = dim == 0
+    with torch_device_fn.device(inp.device):
+        _index_reduce_flat_kernel[
+            (
+                lambda meta: (
+                    min(
+                        triton.cdiv(total, meta["BLOCK"]),
+                        _INDEX_REDUCE_MAX_GRID_X,
+                    ),
+                )
+            )
+        ](
+            inp_work,
+            index,
+            source_work,
+            dummy,
+            dummy,
+            total,
+            M,
+            N,
+            out_n,
+            reduce_id,
+            False,
+            False,
+            False,
+            index_major,
+            True,
+            include_self,
+        )
+    return _restore_dim(inp_work, inp, dim)
 
 
 def _index_reduce_impl(
@@ -605,6 +797,17 @@ def _index_reduce_impl(
     if index.numel() == 0:
         return inp
 
+    dim = dim % inp.ndim
+    index = index.contiguous()
+    reduce_id = _reduce_id(reduce)
+
+    if (
+        inp.dtype in (torch.float16, torch.bfloat16, torch.float32)
+        and index.numel() <= _INDEX_REDUCE_UNIQUE_CHECK_MAX_ELEMS
+        and _index_distinct_gate(index, inp.size(dim))
+    ):
+        return _index_reduce_distinct(inp, dim, index, source, reduce_id, include_self)
+
     if inp.dtype in (torch.float16, torch.bfloat16):
         # gcu400: tl.atomic_max/min reject fp16/bf16 and tl.atomic_cas only
         # lowers for 32/64-bit elements, so 16-bit atomics cannot run.
@@ -621,9 +824,6 @@ def _index_reduce_impl(
         inp.copy_(res32.to(inp.dtype))
         return inp
 
-    dim = dim % inp.ndim
-    index = index.contiguous()
-    reduce_id = _reduce_id(reduce)
     use_fp32_workspace = (
         reduce == "mean"
         and inp.dtype == torch.bfloat16
@@ -707,6 +907,8 @@ def _index_reduce_impl(
                 not include_self,
                 use_cas,
                 index_major,
+                False,
+                include_self,
             )
 
         if reduce == "mean":
@@ -790,6 +992,8 @@ def _index_reduce_impl(
             not include_self,
             use_cas,
             index_major,
+            False,
+            include_self,
         )
 
     if reduce == "mean":
@@ -851,14 +1055,14 @@ def _index_reduce_out(
 
 
 def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
-    logger.debug("GEMS_ENFLAME_GCU400 INDEX_REDUCE")
+    logger.debug("GEMS_ENFLAME INDEX_REDUCE")
     return _index_reduce_functional(
         index_reduce_, inp, dim, index, source, reduce, include_self=include_self
     )
 
 
 def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 INDEX_REDUCE_OUT")
+    logger.debug("GEMS_ENFLAME INDEX_REDUCE_OUT")
     return _index_reduce_out(
         index_reduce_,
         inp,
@@ -869,56 +1073,3 @@ def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=
         include_self=include_self,
         out=out,
     )
-
-
-# gcu400 native topsatenIndexReduce hard-CHECKs int32 index tensors and aborts
-# the process (rc=134) on the PyTorch-default int64 index (P21 family; see
-# compiler_problems/P21_torch_gcu_aten_runtime_defects). Route aten-dispatched
-# index_reduce* calls on this backend to the FlagGems kernels instead, the same
-# pattern as values_copy/sparse_resize_/_upsample_nearest_exact1d_backward in
-# this directory. index_reduce_/index_reduce have no direct native kernel (they
-# resolve through the composite fallback into the aborting .out kernel), while
-# index_reduce.out carries a direct torch_gcu PrivateUse1 kernel, so every
-# registration uses allow_override=True to replace whatever is registered.
-_INDEX_REDUCE_ATEN_FLAG = "_flag_gems_gcu400_index_reduce_aten_registered"
-_INDEX_REDUCE_ATEN_LIBRARY = None
-
-
-def _register_index_reduce_aten_impls():
-    global _INDEX_REDUCE_ATEN_LIBRARY
-    if getattr(torch, _INDEX_REDUCE_ATEN_FLAG, False):
-        return
-
-    from flag_gems.runtime import device as _device_info
-
-    dispatch_key = _device_info.dispatch_key
-    library = torch.library.Library("aten", "IMPL")
-    for op_name, kernel in (
-        ("index_reduce_", index_reduce_),
-        ("index_reduce", index_reduce),
-        ("index_reduce.out", index_reduce_out),
-    ):
-        try:
-            library.impl(op_name, kernel, dispatch_key, allow_override=True)
-        except TypeError:
-            try:
-                library.impl(op_name, kernel, dispatch_key)
-            except RuntimeError as error:
-                logger.warning(
-                    "index_reduce: aten registration %s@%s skipped: %s",
-                    op_name,
-                    dispatch_key,
-                    error,
-                )
-        except RuntimeError as error:
-            logger.warning(
-                "index_reduce: aten registration %s@%s skipped: %s",
-                op_name,
-                dispatch_key,
-                error,
-            )
-    _INDEX_REDUCE_ATEN_LIBRARY = library
-    setattr(torch, _INDEX_REDUCE_ATEN_FLAG, True)
-
-
-_register_index_reduce_aten_impls()

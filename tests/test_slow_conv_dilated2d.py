@@ -33,6 +33,13 @@ import flag_gems
 
 from . import accuracy_utils as utils
 
+
+def _reference_input(tensor, upcast=False):
+    if flag_gems.vendor_name == "mthreads" and tensor is not None:
+        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
+    return utils.to_reference(tensor, upcast)
+
+
 # (input shape, weight shape, kernel_size) triples. The first two keep the
 # kernel smaller than the input under every stride/padding/dilation combination
 # exercised below; the third is a non-square plane with a matching 1 x 2 kernel
@@ -65,12 +72,6 @@ def _atol(dtype):
     if dtype == torch.float64:
         return FP64_ATOL
     return DEFAULT_ATOL
-
-
-def _reference_input(tensor, upcast=False):
-    if flag_gems.vendor_name == "mthreads" and tensor is not None:
-        return tensor.to(device="cpu", dtype=torch.float64 if upcast else tensor.dtype)
-    return utils.to_reference(tensor, upcast)
 
 
 @pytest.mark.slow_conv_dilated2d

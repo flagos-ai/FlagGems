@@ -33,18 +33,18 @@ def addcdiv_kernel(x, t1, t2, value):
 
 def addcdiv(inp, tensor1, tensor2, value=1.0):
     """Functional entry; CUDA may dispatch here without hitting ``addcdiv.out``."""
-    logger.debug("GEMS_ENFLAME_GCU400 ADDCDIV")
+    logger.debug("GEMS_ENFLAME ADDCDIV")
     out = torch.empty_like(inp)
     return addcdiv_kernel(inp, tensor1, tensor2, value, out0=out)
 
 
 def addcdiv_out(inp, tensor1, tensor2, *, value=1.0, out):
-    logger.debug("GEMS_ENFLAME_GCU400 ADDCDIV_OUT")
+    logger.debug("GEMS_ENFLAME ADDCDIV_OUT")
     addcdiv_kernel(inp, tensor1, tensor2, value, out0=out)
     return out
 
 
 def addcdiv_(inp, tensor1, tensor2, value=1.0):
-    logger.debug("GEMS_ENFLAME_GCU400 ADDCDIV_")
+    logger.debug("GEMS_ENFLAME ADDCDIV_")
     addcdiv_kernel(inp, tensor1, tensor2, value, out0=inp)
     return inp

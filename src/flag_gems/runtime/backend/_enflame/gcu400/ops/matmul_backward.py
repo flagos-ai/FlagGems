@@ -44,9 +44,18 @@ from .sum import sum_dim
 
 logger = logging.getLogger(__name__)
 
-# 2-D GEMMs at or above this many multiply-accumulates saturate the device
-# and run faster on the native pipeline (mirror of bmm's dispatch line).
-_2D_NATIVE_DELEGATE_WORK = 1 << 29
+# 2-D GEMMs at or above this many multiply-accumulates run faster on the native
+# pipeline. Re-measured on 2026-11-18 (bench do_bench median, sum of 2 GEMMs):
+#   fp32 2048^3 Triton mm 648us vs native bmm 925~980us (native 1.5x slower)
+#   fp32 4096^3 native 4376us vs Triton mm 8326us (native 1.9x faster)
+# The crossover lies between 2048^3 (8.6e9 MAC) and 4096^3 (6.9e10 MAC), so raise the threshold from 2^29 to
+# 2^34, letting 2048^3 use Triton mm while 4096^3 still uses native.
+_2D_NATIVE_DELEGATE_WORK = 1 << 34
+
+# The backend may replace mm/bmm only after import, so keep lazy resolution; but cache the result
+# to avoid going through the import machinery on every forward (for small shapes like 512^3 this accounts for over 30%
+# of wall-clock time).
+_MM_BMM_CACHE = None
 
 
 def _lookup_matmul_entries():
@@ -62,9 +71,12 @@ def _lookup_matmul_entries():
     Returns:
         The (mm, bmm) callables for the active backend.
     """
-    from flag_gems import bmm, mm
+    global _MM_BMM_CACHE
+    if _MM_BMM_CACHE is None:
+        from flag_gems import bmm, mm
 
-    return mm, bmm
+        _MM_BMM_CACHE = (mm, bmm)
+    return _MM_BMM_CACHE
 
 
 def _matmul_2d_or_batched(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
@@ -121,7 +133,7 @@ def matmul_backward(
     returns ``(grad_self, grad_other)``. Each is ``None`` when the
     corresponding entry of ``mask`` is False.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 MATMUL_BACKWARD")
+    logger.debug("GEMS_ENFLAME MATMUL_BACKWARD")
 
     need_self, need_other = bool(mask[0]), bool(mask[1])
 

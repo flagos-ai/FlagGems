@@ -481,6 +481,23 @@ def _int32_safe(N_total, BLOCK):
     return triton.cdiv(N_total, BLOCK) * BLOCK <= INT32_MAX
 
 
+def _pow_table_value(ax, exponent):
+    """``abs(base) ** exponent`` for the host-side int-bit table.
+
+    The entries are only consumed by ``_pow_st_pos_f32_kernel`` when the
+    matching exponent bit is set, i.e. when ``base ** bit`` is actually part
+    of the result.  Python's float pow raises ``OverflowError`` past
+    ~1.8e308, and a rope base such as ``1e7`` already overflows at
+    ``ax ** 64``, even though a fp32 result is ``inf`` there anyway.
+    Mapping the overflow to ``+inf`` keeps every bit pattern correct and
+    keeps the host path from raising for ordinary rope bases (> 2**16).
+    """
+    try:
+        return float(ax**exponent)
+    except OverflowError:
+        return math.inf
+
+
 def _pow_scalar_base(base, exponent):
     """base: python float scalar; exponent: tensor."""
     if not exponent.is_contiguous():
@@ -508,7 +525,7 @@ def _pow_scalar_base(base, exponent):
         l_hi = float(lx)
         l_lo = float(lx - l_hi)
         ax = abs(base)
-        tbl = [float(ax ** (1 << i)) for i in range(7)]
+        tbl = [_pow_table_value(ax, 1 << i) for i in range(7)]
         BLOCK = _choose_block_1r1w(N_total, itemsize)
         kern = _pow_st_pos_f32_kernel if base > 0 else _pow_st_neg_f32_kernel
         _launch(

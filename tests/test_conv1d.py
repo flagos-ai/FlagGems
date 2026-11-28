@@ -59,10 +59,6 @@ else:
     flag_gems.vendor_name in ("tsingmicro"),
     reason="Issue #4131 on tsingmicro",
 )
-@pytest.mark.skipif(
-    flag_gems.vendor_name in ("enflame",),
-    reason="Aten gcu backend not supported on enflame",
-)
 def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
     ref_inp = utils.to_reference(inp, True)
@@ -86,10 +82,6 @@ def test_conv1d(monkeypatch, shape, kernel, stride, padding, dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name in ("tsingmicro"),
     reason="Issue #4131 on tsingmicro",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name in ("enflame",),
-    reason="Aten gcu backend not supported on enflame",
 )
 def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device, requires_grad=True)
@@ -115,10 +107,6 @@ def test_conv1d_padding(monkeypatch, shape, kernel, stride, padding, dtype):
 @pytest.mark.skipif(
     flag_gems.vendor_name in ("tsingmicro"),
     reason="Issue #4131 on tsingmicro",
-)
-@pytest.mark.skipif(
-    flag_gems.vendor_name in ("enflame",),
-    reason="Aten gcu backend not supported on enflame",
 )
 def test_conv1d_dilation(shape, kernel, stride, padding, dtype, dilation):
     """Test conv1d with various dilation values, including tuple form.

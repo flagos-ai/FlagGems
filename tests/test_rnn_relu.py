@@ -42,7 +42,7 @@ def _metax_full_precision():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads"
+    flag_gems.vendor_name not in ("mthreads", "enflame")
     and (
         (cfg.TO_CPU and flag_gems.vendor_name != "metax")
         or flag_gems.device != "cuda"
@@ -100,7 +100,7 @@ def test_rnn_relu(seq_len, batch_size, input_size, hidden_size, dtype, batch_fir
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads"
+    flag_gems.vendor_name not in ("mthreads", "enflame")
     and (
         (cfg.TO_CPU and flag_gems.vendor_name != "metax")
         or flag_gems.device != "cuda"
@@ -160,7 +160,7 @@ def test_rnn_relu_direct_wrapper(
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads"
+    flag_gems.vendor_name not in ("mthreads", "enflame")
     and (
         (cfg.TO_CPU and flag_gems.vendor_name != "metax")
         or flag_gems.device != "cuda"
@@ -196,9 +196,11 @@ def test_rnn_relu_direct_backward():
     (out_g.sum() + hid_g.sum()).backward()
 
     # Side 2: Native PyTorch recompute (same as backward internals)
-    inp_r = inp_data.detach().clone().requires_grad_(True)
-    hx_r = hx_data.detach().clone().requires_grad_(True)
-    params_r = tuple(p.detach().clone().requires_grad_(True) for p in params_data)
+    inp_r = utils.to_reference(inp_data).detach().clone().requires_grad_(True)
+    hx_r = utils.to_reference(hx_data).detach().clone().requires_grad_(True)
+    params_r = tuple(
+        utils.to_reference(p).detach().clone().requires_grad_(True) for p in params_data
+    )
     weight_ih, weight_hh, bias_ih, bias_hh = _params_unpack(params_r, True)
     h = hx_r[0].clone()
     outputs = []
@@ -219,7 +221,7 @@ def test_rnn_relu_direct_backward():
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name != "mthreads"
+    flag_gems.vendor_name not in ("mthreads", "enflame")
     and (
         (cfg.TO_CPU and flag_gems.vendor_name != "metax")
         or flag_gems.device != "cuda"
@@ -243,7 +245,17 @@ def test_rnn_relu_large_hidden(hidden_size):
     )
     params = tuple(p.detach() for p in rnn._flat_weights)
 
-    ref = torch.rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
+    ref = torch.rnn_relu(
+        utils.to_reference(inp),
+        utils.to_reference(hx),
+        tuple(utils.to_reference(p) for p in params),
+        True,
+        1,
+        0.0,
+        False,
+        False,
+        False,
+    )
     out_gems = gems_rnn_relu(inp, hx, params, True, 1, 0.0, False, False, False)
 
     atol = 2e-3

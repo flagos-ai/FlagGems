@@ -203,7 +203,7 @@ def fractional_max_pool3d(
         return_indices: Whether to return the max indices.
         _random_samples: Optional tensor of shape (N, C, 3) with values in [0, 1).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FRACTIONAL_MAX_POOL3D")
+    logger.debug("GEMS_ENFLAME FRACTIONAL_MAX_POOL3D")
     assert input.dim() == 5, f"Expected 5D input, got {input.dim()}D"
 
     in_n, in_c, in_d, in_h, in_w = input.shape

@@ -18,17 +18,9 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
-from flag_gems.utils import libentry, libtuner
-
 logger = logging.getLogger(__name__)
 
 
-@libentry()
-@libtuner(
-    configs=runtime.get_tuned_config("fp8_fp4_mqa_logits"),
-    key=["M", "N", "H", "D"],
-)
 @triton.jit
 def _fp8_fp4_mqa_logits_kernel(
     Q_ptr,
@@ -54,40 +46,27 @@ def _fp8_fp4_mqa_logits_kernel(
     CLEAN_LOGITS: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
-    HEAD_BLOCK: tl.constexpr,
+    HEAD_GROUP: tl.constexpr,
+    PAD_M: tl.constexpr,
 ):
-    """GCU400 adaptation of the fused FP8 MQA logits kernel.
+    """GCU400 fused FP8 MQA logits.
 
-    Computes logits[m, n] = sum_h(ReLU(sum_d(q[m,h,d]*k[n,d]) * k_scale[n])
-                                  * weights[m, h])
-    and, when CLEAN_LOGITS is set, fills positions outside the per-row
-    [cu_seqlen_ks, cu_seqlen_ke) K range with -inf in the same launch.
-
-    GCU-specific deviations from the generic version (validated op-by-op):
-      * Per-head loop with 2D [rows, D] dot operands converted to fp32
-        before `tl.dot`. The generic head-batched 3D-load -> reshape ->
-        dot -> reshape -> sum(axis=1) chain silently miscompiles for
-        BLOCK_M=1 tiles (all values wrong), and bare fp8 `tl.dot` is not
-        reliable on this backend.
-      * The dot row count is padded to at least 16 via PAD_M: `tl.dot`
-        with an M-dim of 1 produces silently wrong results on GCU (both
-        fp8 and fp32 operands), so BLOCK_M in {1, 2, 4, 8} must not map
-        1:1 onto the dot M-dim.
-      * HEAD_BLOCK is kept (unused) so the shared generic tune-config
-        space and cached tuning records stay launch-compatible.
+    logits[m, n] = sum_h( ReLU(dot(q[m,h,:], k[n,:]) * k_scale[n]) * w[m,h] );
+    when CLEAN_LOGITS is true, positions outside [cu_seqlen_ks, cu_seqlen_ke)
+    are written as -inf within the same kernel, saving a separate launch.
     """
-    PAD_M: tl.constexpr = 16 if BLOCK_M < 16 else BLOCK_M
     pid_m = tl.program_id(0)
     pid_n = tl.program_id(1)
 
-    row = tl.arange(0, PAD_M)
-    m_offs = pid_m * BLOCK_M + row
-    n_offs = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
-    d_offs = tl.arange(0, D)
+    stacked = tl.arange(0, HEAD_GROUP * PAD_M)
+    head_off = stacked // PAD_M
+    row_off = stacked % PAD_M
+    m_offs = pid_m * BLOCK_M + row_off
+    stack_mask = (row_off < BLOCK_M) & (m_offs < M)
 
-    row_active = row < BLOCK_M
-    m_mask = row_active & (m_offs < M)
+    n_offs = pid_n * BLOCK_N + tl.arange(0, BLOCK_N)
     n_mask = n_offs < N
+    d_offs = tl.arange(0, D)
 
     k = tl.load(
         K_ptr + n_offs[:, None] * stride_kn + d_offs[None, :] * stride_kd,
@@ -97,30 +76,41 @@ def _fp8_fp4_mqa_logits_kernel(
     k_scale = tl.load(K_scale_ptr + n_offs, mask=n_mask, other=0.0)
 
     acc = tl.zeros([PAD_M, BLOCK_N], dtype=tl.float32)
-    for h in range(0, H):
+    for h0 in range(0, H, HEAD_GROUP):
         q = tl.load(
             Q_ptr
             + m_offs[:, None] * stride_qm
-            + h * stride_qh
+            + (h0 + head_off)[:, None] * stride_qh
             + d_offs[None, :] * stride_qd,
-            mask=m_mask[:, None],
+            mask=stack_mask[:, None],
             other=0.0,
         ).to(tl.float32)
 
         dot = tl.dot(q, tl.trans(k), out_dtype=tl.float32)
         dot = tl.maximum(dot * k_scale[None, :], 0.0)
 
-        w = tl.load(W_ptr + m_offs * stride_wm + h * stride_wh, mask=m_mask, other=0.0)
-        acc += dot * w[:, None]
+        w = tl.load(
+            W_ptr + m_offs * stride_wm + (h0 + head_off) * stride_wh,
+            mask=stack_mask,
+            other=0.0,
+        )
+        if HEAD_GROUP == 1:
+            acc += dot * w[:, None]
+        else:
+            acc += tl.sum(
+                tl.reshape(dot * w[:, None], [HEAD_GROUP, PAD_M, BLOCK_N]), axis=0
+            )
 
+    out_rows = pid_m * BLOCK_M + tl.arange(0, PAD_M)
+    row_ok = out_rows < M
     if CLEAN_LOGITS:
-        ks = tl.load(KS_ptr + m_offs, mask=m_mask, other=0)
-        ke = tl.load(KE_ptr + m_offs, mask=m_mask, other=0)
+        ks = tl.load(KS_ptr + out_rows, mask=row_ok, other=0)
+        ke = tl.load(KE_ptr + out_rows, mask=row_ok, other=N)
         n_valid = (n_offs[None, :] >= ks[:, None]) & (n_offs[None, :] < ke[:, None])
         acc = tl.where(n_valid, acc, float("-inf"))
 
-    write_mask = m_mask[:, None] & n_mask[None, :]
-    out_ptrs = O_ptr + m_offs[:, None] * stride_om + n_offs[None, :] * stride_on
+    write_mask = row_ok[:, None] & n_mask[None, :]
+    out_ptrs = O_ptr + out_rows[:, None] * stride_om + n_offs[None, :] * stride_on
     tl.store(out_ptrs, acc, mask=write_mask)
 
 
@@ -149,7 +139,7 @@ def fp8_fp4_mqa_logits(
     Returns:
         logits: [M, N] fp32 output tensor.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 FP8_FP4_MQA_LOGITS")
+    logger.debug("GEMS_ENFLAME FP8_FP4_MQA_LOGITS")
 
     q_values, _ = q
     k_values, k_scales = kv
@@ -159,10 +149,8 @@ def fp8_fp4_mqa_logits(
 
     logits = torch.empty((M, N), dtype=torch.float32, device=q_values.device)
 
-    grid = lambda META: (
-        triton.cdiv(M, META["BLOCK_M"]),
-        triton.cdiv(N, META["BLOCK_N"]),
-    )
+    block_m, block_n, head_group, pad_m = _select_tile(M)
+    grid = (triton.cdiv(M, block_m), triton.cdiv(N, block_n))
 
     _fp8_fp4_mqa_logits_kernel[grid](
         q_values,
@@ -186,6 +174,26 @@ def fp8_fp4_mqa_logits(
         weights.stride(0),
         weights.stride(1),
         clean_logits,
+        BLOCK_M=block_m,
+        BLOCK_N=block_n,
+        HEAD_GROUP=head_group,
+        PAD_M=pad_m,
+        num_warps=4,
     )
 
     return logits
+
+
+def _select_tile(m: int) -> tuple:
+    """Select the tile based on the row count (optimal as measured on GCU400; see the kernel docstring).
+
+    Decode (few rows) stacks 8 heads on the row axis with a 128-column tile to
+    keep the MMA row dimension busy; prefill (many rows) falls back to a
+    per-head loop with a 64x256 tile for better reuse.
+    Returns (BLOCK_M, BLOCK_N, HEAD_GROUP, PAD_M).
+    """
+    if m <= 16:
+        return 16, 128, 8, 16
+    if m <= 64:
+        return 16, 256, 4, 16
+    return 64, 256, 1, 64

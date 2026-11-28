@@ -277,7 +277,7 @@ def _grad_bias(grad_output, out, rows, out_c):
 
 
 def conv_tbc_backward(grad_output, input, weight, bias, pad):
-    logger.debug("GEMS_ENFLAME_GCU400 CONV_TBC_BACKWARD")
+    logger.debug("GEMS_ENFLAME CONV_TBC_BACKWARD")
 
     ilen, batch, in_c = input.shape
     kw, _, out_c = weight.shape

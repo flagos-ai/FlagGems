@@ -81,6 +81,14 @@ class NestedFromPaddedAndNestedExampleBenchmark(base.Benchmark):
 
 
 @pytest.mark.nested_from_padded_and_nested_example
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu registers nested tensors under the NestedTensorgcu dispatch key and "
+        "provides no kernel for aten::_nested_from_padded_and_nested_example, so there "
+        "is no native baseline to time"
+    ),
+)
 def test_nested_from_padded_and_nested_example():
     bench = NestedFromPaddedAndNestedExampleBenchmark(
         op_name="nested_from_padded_and_nested_example",

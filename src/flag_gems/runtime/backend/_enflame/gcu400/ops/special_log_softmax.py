@@ -26,37 +26,79 @@ from flag_gems.utils import triton_lang_extension as tle
 
 logger = logging.getLogger(__name__)
 
+# N cap for the single-pass path: the whole row stays in registers, so the input is read once. At
+# N=1024 a row is 4KB fp32 and BLOCK_M rows form a 4096-element tile; N > 1024 makes one row
+# exceed 16KB and no longer fit in registers (measured crossover between the two is 2^12).
+_SINGLE_PASS_MAX_N = 1024
+# Target elements per tile on the single-pass path: contiguous 4K-element (16KB fp32) moves are best on GCU400.
+_TILE_ELEMS = 4096
+_GRID_CAP = 48
+
+
+@libentry()
+@triton.jit
+def row_log_softmax_kernel(
+    output_ptr,
+    input_ptr,
+    N,
+    stride_m,
+    num_rows,
+    BLOCK_N: tl.constexpr,
+):
+    """Single-row path for very few rows: one CTA per row, avoiding the [1, BLOCK_N] 2-D reduction.
+
+    Shapes like (64,64) have only 64 rows and 4K elements total, where the 2-D tile version
+    degrades along the axis=1 reduction (measured 35% slower than the single-row version).
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    col_offsets = tl.arange(0, BLOCK_N)
+    mask = col_offsets < N
+    for row_id in tl.range(pid, num_rows, num_pids):
+        offsets = row_id * stride_m + col_offsets
+        row = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(
+            tl.float32
+        )
+        row_max = tl.max(row, axis=0)
+        shifted = row - row_max
+        sum_exp = tl.sum(tl.exp(shifted), axis=0)
+        tl.store(output_ptr + offsets, shifted - tl.log(sum_exp), mask=mask)
+
 
 @libentry()
 @triton.jit
 def small_n_log_softmax_kernel(
     output_ptr,
     input_ptr,
-    M,
     N,
     stride_m,
+    num_rows,
+    BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
-    """Kernel for small N (N <= 1024): single warp, single pass scan."""
-    row_id = tl.program_id(0)
+    """Kernel for small N (N <= 1024): one pass, BLOCK_M rows per tile.
+
+    Stitches BLOCK_M adjacent rows into one [BLOCK_M, BLOCK_N] tile moved into registers at once,
+    which (at a 2KB row width) enlarges the DTE transfer granularity to 8~16KB versus one row at a time.
+    """
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    row_offsets = tl.arange(0, BLOCK_M)
     col_offsets = tl.arange(0, BLOCK_N)
-    mask = col_offsets < N
 
-    # Load the entire row in one go
-    row = tl.load(
-        input_ptr + row_id * stride_m + col_offsets, mask=mask, other=-float("inf")
-    ).to(tl.float32)
+    # Grid-stride over row blocks: core shapes have 2^17~2^20 rows, far beyond the 65535 grid.x cap.
+    for block_id in tl.range(pid, tl.cdiv(num_rows, BLOCK_M), num_pids):
+        row_ids = block_id * BLOCK_M + row_offsets
+        mask = (row_ids[:, None] < num_rows) & (col_offsets[None, :] < N)
+        offsets = row_ids[:, None] * stride_m + col_offsets[None, :]
 
-    # Single pass: compute max, then exp and sum
-    row_max = tl.max(row, axis=0)
-    row_shifted = row - row_max
-    exp_row = tl.exp(row_shifted)
-    sum_exp = tl.sum(exp_row, axis=0)
-    log_sum = tl.log(sum_exp)
-    out = row_shifted - log_sum
+        x = tl.load(input_ptr + offsets, mask=mask, other=-float("inf")).to(tl.float32)
+        row_max = tl.max(x, axis=1)
+        shifted = x - row_max[:, None]
+        sum_exp = tl.sum(tl.exp(shifted), axis=1)
+        out = shifted - tl.log(sum_exp)[:, None]
 
-    # Store result
-    tl.store(output_ptr + row_id * stride_m + col_offsets, out, mask=mask)
+        tl.store(output_ptr + offsets, out, mask=mask)
 
 
 @libentry()
@@ -109,7 +151,7 @@ def large_n_log_softmax_kernel(
 
 
 def special_log_softmax(self, dim, dtype=None):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_LOG_SOFTMAX")
+    logger.debug("GEMS_ENFLAME SPECIAL_LOG_SOFTMAX")
 
     assert dim >= -self.ndim and dim < self.ndim, "Invalid dim"
     dim = dim % self.ndim
@@ -129,26 +171,40 @@ def special_log_softmax(self, dim, dtype=None):
     out = torch.empty_like(inp, dtype=dtype)
     K = inp.numel() // M // N
 
-    # Dual-path: small N uses single-warp kernel, large N uses two-pass kernel
+    # Two paths: small N takes the single-pass tile kernel, large N the two-pass online kernel
     with torch_device_fn.device(inp.device):
-        if N <= 1024:
-            # Small N: single warp kernel
-            # For dim=1 (most common case with contiguous tensor), stride is stride(0)
-            # For dim=0, stride is stride(1) which is the full row stride
+        if N <= _SINGLE_PASS_MAX_N:
             BLOCK_N = triton.next_power_of_2(N)
-            grid = (M * K,)
-            # Get the stride of dimension that's one step after the reduction dim
-            # For contiguous tensor, this is inp.stride(dim - 1) when dim > 0
-            # For dim=1, this is inp.stride(0) = shape[1]
+            # BLOCK_M is derived backward from the tile element count to move ~4K elements per pass;
+            # when there are not enough rows to fill 48 CTAs it falls back to the single-row kernel
+            # (the 2-D tile reduction along axis=1 degrades on [1, BLOCK_N], measured 35% slower).
+            num_rows = M * K
+            # Row stride of the reduction dim (stride(dim-1) for dim>0 on a contiguous tensor)
             row_stride = inp.stride(dim - 1) if dim > 0 else inp.stride(inp.ndim - 1)
-            small_n_log_softmax_kernel[grid](
-                out,
-                inp,
-                M,
-                N,
-                row_stride,
-                BLOCK_N=BLOCK_N,
-            )
+            BLOCK_M = max(1, min(16, _TILE_ELEMS // BLOCK_N))
+            BLOCK_M = min(BLOCK_M, max(1, num_rows // _GRID_CAP))
+            if BLOCK_M <= 1:
+                row_log_softmax_kernel[(min(num_rows, 65535),)](
+                    out,
+                    inp,
+                    N,
+                    row_stride,
+                    num_rows,
+                    BLOCK_N=BLOCK_N,
+                    num_warps=4,
+                )
+            else:
+                grid = (min(triton.cdiv(num_rows, BLOCK_M), _GRID_CAP),)
+                small_n_log_softmax_kernel[grid](
+                    out,
+                    inp,
+                    N,
+                    row_stride,
+                    num_rows,
+                    BLOCK_M=BLOCK_M,
+                    BLOCK_N=BLOCK_N,
+                    num_warps=4,
+                )
         else:
             # Large N: two-pass online softmax kernel with autotune
             grid = lambda meta: (

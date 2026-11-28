@@ -107,8 +107,13 @@ def not_equal(A, B):
             num_warps = 4
         else:
             es = A.element_size()
-            block = max(8192, min(65536, 131072 // es))
-            num_warps = 4 if n <= (1 << 20) else 2
+            if n <= (1 << 18):
+                block, num_warps = 8192, 4
+            elif es <= 2 and n <= (3 << 18):
+                block, num_warps = 16384, 4
+            else:
+                block = max(8192, min(65536, 131072 // es))
+                num_warps = 4 if n <= (1 << 20) else 2
         grid = (triton.cdiv(n, block),)
         if n < _INT32_LIMIT and grid[0] <= _GRID_LIMIT:
             out = torch.empty_like(A, dtype=torch.bool)

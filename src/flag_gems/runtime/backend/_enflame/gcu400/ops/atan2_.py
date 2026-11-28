@@ -14,28 +14,34 @@
 
 """GCU400 atan2_ (aten::atan2_, in-place) flat fast path.
 
-This shell originally called the common ``atan2_kernel(A, B, out0=A)`` directly - generic
-pointwise_dynamic codegen lowers atan2 on this backend to a ``__ef_atan2f`` extern SIP
-call (~30x the memory floor under a 48-CTA clamped grid: 2^30 fp16 measured 419ms vs native
-12.9ms, speedup 0.028x; a local rewrite in 2026-11-10 j20261110124825 once reached
-0.89-1.03x and wrote back a bench_json snapshot, but that fix was never committed and was lost;
-this file is rebuilt following the precedent of the same operator family).
+This shell used to call the stock ``atan2_kernel(A, B, out0=A)`` directly -- generic
+pointwise_dynamic codegen lowers atan2 to the ``__ef_atan2f`` extern SIP call on this backend
+(~30x the memory floor under a 48-CTA clamped grid: 2^30 fp16 measured 419ms vs native 12.9ms;
+after rebuilding the local kernel in 831cb12c8 on 2026-11-13 the core 15-case geomean is 1.133x).
+This version recasts the kernel body following the same-family second round of 2026-11-16
+(arctan2.py / atan2.py) and re-sweeps the hyperparameters on the new stack (Triton GCU 4.1.6, TopsRider 20261116):
 
-kernel = the quadrant reduction + K=6 minimax odd polynomial (Estrin
-expansion, maxerr 1.9e-6) body already delivered in ``atan2.py``, plus the IEEE corner guards
-of ``arctan2.py`` (when min==inf the angle is pi/4 (poly placed later - a select inside the
-division chain serializes software pipelining, fp32 4096^2 A/B 0.68x vs 1.11x), explicit NaN mask - this backend's
-min/max
-drops NaN instead of propagating; probes confirm the common extern and native aten are both correct at corners,
-so omitting the guards is a semantic regression). In-place alias launch (per-element load then store at the same
-offset, alias-safe; same contract as arctan2_: write the result back into input itself and return the same object).
+- a K=4 minimax odd polynomial (maxerr 2.3e-5, 1/4 of the fp32 atol 1e-4 gate) replaces K=6,
+  evaluated in a dtype-dispatched order (HALF: 16-bit Horner / fp32 Estrin);
+- the inf/inf corner guard folds into a single leading ``minimum(t, 1.0)`` (exploiting GCU min
+  dropping NaN: the inf/inf ratio NaN collapses to the true ratio 1 -> angle pi/4; finite ratios
+  are always <= 1, so the normal path is a no-op) -- an inline select would serialize the software
+  pipeline (4096^2 fp32 probe: 0.68x vs 1.11x);
+- the negative-y flip becomes a bit-level XOR: ``where(yneg, -a, a)`` loses the -0.0 sign on this
+  backend (atan2(-0, x>0)/atan2(y<0, +inf) give +0 instead of aten's -0.0, proven by 169 corner
+  probes on 2026-11-18; the old version had the same defect), while XOR keeps the sign bit and drops a cmp/select;
+- EVEN predicate-free arm: with N % BLOCK == 0 the ``off < N`` masked load/store is dropped;
+- hyperparameter re-sweep (new stack, do_bench median w1000/r100): 16-bit 1G 65536/nw1 7.13ms
+  (8192/nw4 11.86ms), 16.7M 32768/nw1 132us (old 192us); fp32 32768/nw2 (1G 6.3-6.6ms, 16.7M
+  113us, both better than the old stack's 65536/nw4 sweet spot -- the new stack flips the shape);
+  131072 fp32 exceeds the DSM 917504B hard limit and is rejected at compile time.
 
-Guards and fallbacks: scalar other is wrapped in an fp32 0-dim factory and takes the fast-path broadcast (common
-pointwise_dynamic has no scalar tier); beyond the int32 safe range (numel >= 2^31, flat
-index overflow risk) / non fp16-bf16-fp32 inputs -> common wrapper (the pre-change path, semantics
-unchanged); non-contiguous input is computed on a contiguous copy and written back with copy_ (arctan2_ precedent);
-other is materialized by broadcast rules as a contiguous tensor of input's shape. Launch carries P02 toolchain
-3-attempt cold-compile flake retries (sinh/rad2deg/atan2_ precedent).
+Guards and fallbacks: a scalar other is wrapped by an fp32 0-dim factory and takes the fast-path
+broadcast; inputs beyond the int32 safety domain (numel >= 2^31) or of a non fp16/bf16/fp32 dtype
+go to the stock wrapper (semantics unchanged); a non-contiguous input is computed on a contiguous
+copy and written back with copy_; other is materialized per the broadcast rules into a contiguous
+tensor shaped like input. The in-place aliasing launch is safe (load then store at the same offset
+per element). Launches retry 3 times for P02 toolchain cold-compile flakes (sinh/rad2deg precedent).
 """
 
 import logging
@@ -50,86 +56,121 @@ from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
-NUM_SIPS = 24
+NUM_PROGRAMS = 48
 
-# Odd minimax polynomial for atan(t) on t in [0, 1], fitted by least squares:
-# atan(t) ~= t * (C0 + C1*t^2 + ... + C6*t^12), max abs error 1.9e-6 (fp32).
-_C0 = tl.constexpr(9.999994932e-01)
-_C1 = tl.constexpr(-3.332772185e-01)
-_C2 = tl.constexpr(1.989734582e-01)
-_C3 = tl.constexpr(-1.356217090e-01)
-_C4 = tl.constexpr(8.545280521e-02)
-_C5 = tl.constexpr(-3.853540616e-02)
-_C6 = tl.constexpr(8.408503156e-03)
+# NOTE: module-level constants are referenced from the `_atan2_vec` helper
+# only. This Triton fork's global-drift check deep-copies captured globals
+# and compares them with `!=` on every `JITFunction.run`, so a NaN-valued
+# constexpr referenced directly in a launched kernel body raises
+# "Global variable _NAN has changed" (constexpr[NaN] != constexpr[NaN]) on
+# the very first launch. The helper is inlined at compile time and never
+# launched on its own, so its captured globals stay out of the check.
+_P0 = tl.constexpr(0.9999693036)
+_P1 = tl.constexpr(-0.3316778839)
+_P2 = tl.constexpr(0.1851029694)
+_P3 = tl.constexpr(-0.09174843878)
+_P4 = tl.constexpr(0.02377510071)
+_PI_OVER_2 = tl.constexpr(1.5707963267948966)
 _PI = tl.constexpr(3.141592653589793)
-_PIO2 = tl.constexpr(1.5707963267948966)
-_PIO4 = tl.constexpr(0.7853981633974483)
-_INF = tl.constexpr(float("inf"))
+_NAN = tl.constexpr(float("nan"))
+
+
+@triton.jit
+def _atan2_vec(x, y, HALF: tl.constexpr):
+    # ATen: atan2(input, other) = math atan2(y=input, x=other).
+    # Quadrant reduction to [0, pi/2] via min/max, one division, degree-4
+    # odd minimax polynomial (max abs error 2.3e-5), quadrant fixups with
+    # bit-level sign tests so -0.0 is handled like the ATen op.
+    # HALF picks the evaluation order: 16-bit streams are ALU-bound and favor
+    # the short Horner chain, fp32 favors Estrin (dependency chain 5 -> 3).
+    ax = tl.abs(x)
+    ay = tl.abs(y)
+    mn = tl.minimum(ay, ax)
+    mx = tl.maximum(ay, ax)
+    # x == 0 (covers the 0/0 pair) divides by 1, keeping t = 0. inf/inf
+    # yields a NaN ratio; the trailing minimum maps it back to the true
+    # ratio 1 (GCU min drops NaN). For finite pairs the correctly-rounded
+    # ratio never exceeds 1, so the minimum is a no-op there.
+    t = tl.minimum(mn / tl.where(ax == 0.0, 1.0, mx), 1.0)
+    if HALF:
+        s = t * t
+        p = _P4
+        p = p * s + _P3
+        p = p * s + _P2
+        p = p * s + _P1
+        p = p * s + _P0
+    else:
+        s = t * t
+        s2 = s * s
+        e0 = _P0 + s * _P1
+        e1 = _P2 + s * _P3
+        p = e0 + s2 * (e1 + s2 * _P4)
+    a = t * p
+    a = tl.where(ay > ax, _PI_OVER_2 - a, a)
+    xi = x.to(tl.int32, bitcast=True)
+    yi = y.to(tl.int32, bitcast=True)
+    a = tl.where(xi < 0, _PI - a, a)
+    # Sign of y via bit-level XOR: `where(yneg, -a, a)` loses the sign of
+    # -0.0 on this backend (-(+0) folds to +0); the XOR keeps atan2(-0, x>0)
+    # and atan2(y<0, +inf) at -0.0 exactly like aten.
+    a = (a.to(tl.int32, bitcast=True) ^ (yi & -2147483648)).to(tl.float32, bitcast=True)
+    # GCU min/max drop NaN instead of propagating it, so a NaN input
+    # would come out as a finite ratio; restore the aten NaN result.
+    a = tl.where((x != x) | (y != y), _NAN, a)
+    return a
 
 
 @libentry()
 @triton.jit(do_not_specialize=["N"])
-def _atan2_inplace_kernel(X, Y, Out, N, BLOCK: tl.constexpr):
-    # ATen: atan2(input, other) = math atan2(y=input, x=other).
-    # Quadrant reduction to [0, pi/2] via min/max, one division, odd polynomial
-    # in Estrin form, then sign/quadrant fixes with bit-level sign tests so
-    # -0.0 is handled like the ATen op.
+def _atan2_inplace_kernel(
+    X, Y, Out, N, HALF: tl.constexpr, EVEN: tl.constexpr, BLOCK: tl.constexpr
+):
+    # EVEN is set when N % BLOCK == 0: every tile is full, so the `off < N`
+    # compare and the predicated load/store are dropped (~1-2% at 1G on
+    # GCU400). Out aliases X (in-place): load and store share offsets.
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
     num_blocks = (N + BLOCK - 1) // BLOCK
     for block_id in tl.range(pid, num_blocks, num_pids):
         off = block_id * BLOCK + tl.arange(0, BLOCK)
-        mask = off < N
-        ym = tl.load(X + off, mask=mask, other=0.0).to(tl.float32)
-        xm = tl.load(Y + off, mask=mask, other=0.0).to(tl.float32)
-        aym = tl.abs(ym)
-        axm = tl.abs(xm)
-        mn = tl.minimum(aym, axm)
-        mx = tl.maximum(aym, axm)
-        t = mn / tl.where(axm == 0.0, 1.0, mx)
-        t2 = t * t
-        t4 = t2 * t2
-        t8 = t4 * t4
-        q0 = _C0 + t2 * _C1
-        q1 = _C2 + t2 * _C3
-        q2 = _C4 + t2 * _C5
-        r0 = q0 + t4 * q1
-        r1 = q2 + t4 * _C6
-        p = r0 + t8 * r1
-        a = t * p
-        # both operands infinite -> t = inf/inf = NaN; the true ratio is 1, so
-        # the angle is atan(1) = pi/4 (|y| == |x| keeps the swap fixup off).
-        # Guard AFTER the polynomial: a select inside the division->polynomial
-        # chain serializes the software pipeline (fp32 4096^2 probe: 0.68x vs
-        # 1.11x placed here).
-        a = tl.where(mn == _INF, _PIO4, a)
-        a = tl.where(aym > axm, _PIO2 - a, a)
-        xneg = xm.to(tl.int32, bitcast=True) < 0
-        a = tl.where(xneg, _PI - a, a)
-        yneg = ym.to(tl.int32, bitcast=True) < 0
-        a = tl.where(yneg, -a, a)
-        # min/max drop NaN on this backend; propagate it explicitly. The NaN
-        # literal stays inline: a module-level tl.constexpr(nan) fails the
-        # launch-time global-consistency check (deepcopy makes nan != nan).
-        a = tl.where((xm != xm) | (ym != ym), float("nan"), a)
-        tl.store(Out + off, a.to(Out.dtype.element_ty), mask=mask)
+        if EVEN:
+            y = tl.load(X + off).to(tl.float32)
+            x = tl.load(Y + off).to(tl.float32)
+        else:
+            mask = off < N
+            y = tl.load(X + off, mask=mask, other=0.0).to(tl.float32)
+            x = tl.load(Y + off, mask=mask, other=0.0).to(tl.float32)
+        res = _atan2_vec(x, y, HALF)
+        if EVEN:
+            tl.store(Out + off, res.to(Out.dtype.element_ty))
+        else:
+            tl.store(Out + off, res.to(Out.dtype.element_ty), mask=off < N)
 
 
 def _choose_block(N, itemsize):
-    # Mirror the delivered atan2.py ladder: half precision stays at 8192,
-    # fp32 widens to 65536; tiny shapes pad to at least a 128-wide tile
-    # (width-1 vectors are pathological on this backend).
+    # Per-dtype dispatch re-measured on GCU400 with Triton GCU 4.1.6
+    # (do_bench median, w1000/r100):
+    #   16-bit  1G:    65536/nw1 7.13ms vs 8192/nw4 11.86ms
+    #   16-bit  16.7M: 32768/nw1 132µs vs 8192/nw4 192µs (65536/nw1 135µs)
+    #   fp32    1G:    32768/nw2 6.3-6.6ms vs 65536/nw4 6.6-6.8ms
+    #   fp32    16.7M: 32768/nw2 113µs vs 65536/nw4 131µs
+    # nw2 is pathological on wide 16-bit tiles (1G fp16 10.8ms, 2x worse)
+    # and 131072 fp32 exceeds the 917504B DSM limit (compile-time reject).
+    # Tiny N uses a padded power-of-two tile: width-1 vectors are
+    # pathological on this backend.
     if N <= 16384:
-        return max(128, triton.next_power_of_2(max(N, 1)))
-    return 8192 if itemsize <= 2 else 65536
+        return max(128, triton.next_power_of_2(max(N, 1))), 4
+    if itemsize <= 2:
+        return (32768, 1) if N <= 2**24 else (65536, 1)
+    return 32768, 2
 
 
 def _launch_inplace(X, Y, out):
     N = X.numel()
     if N == 0:
         return out
-    BLOCK = _choose_block(N, X.element_size())
-    grid = min(triton.cdiv(N, BLOCK), NUM_SIPS * 2)
+    BLOCK, warps = _choose_block(N, X.element_size())
+    grid = min(triton.cdiv(N, BLOCK), NUM_PROGRAMS)
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic; observed as converterResult=-2 during host-level
     # userland flake windows); retrying the launch recompiles and succeeds.
@@ -138,7 +179,16 @@ def _launch_inplace(X, Y, out):
     for attempt in range(3):
         try:
             with torch_device_fn.device(X.device):
-                _atan2_inplace_kernel[(grid,)](X, Y, out, N, BLOCK=BLOCK, num_warps=4)
+                _atan2_inplace_kernel[(grid,)](
+                    X,
+                    Y,
+                    out,
+                    N,
+                    HALF=X.element_size() <= 2,
+                    BLOCK=BLOCK,
+                    EVEN=N % BLOCK == 0,
+                    num_warps=warps,
+                )
             return out
         except Exception as exc:
             if attempt == 2:

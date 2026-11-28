@@ -108,7 +108,12 @@ def _install_gcu_complex_runtime_shims():
                     and other.device.type == "gcu"
                     and other.is_conj()
                 )
-                if self.is_conj() or other_marked:
+                # batch10: a complex Tensor plus a scalar (Python number or 0-dim constant) on torch_gcu
+                # triggers a device abort (tests/test_pointwise_dynamic.py::
+                # test_complex_elementwise_tensor_scalar, rc=134, with the top of the stack at this line in
+                # current_add). As with _complex_safe_triu, such calls fall back to CPU computation.
+                scalar_operand = not isinstance(other, torch.Tensor)
+                if self.is_conj() or other_marked or scalar_operand:
                     other_arg = (
                         other.cpu() if isinstance(other, torch.Tensor) else other
                     )
@@ -743,7 +748,7 @@ def linalg_eigh(A, UPLO="L", compute_v=True):
     When compute_v is False, only eigenvalues are computed and eigenvectors
     are returned as an empty tensor.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_EIGH")
+    logger.debug("GEMS_ENFLAME LINALG_EIGH")
 
     if A.ndim < 2 or A.shape[-1] != A.shape[-2]:
         raise ValueError(f"Input matrix must be square, got shape {A.shape}")

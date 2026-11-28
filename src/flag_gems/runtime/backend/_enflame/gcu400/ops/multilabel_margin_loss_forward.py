@@ -100,8 +100,8 @@ def _build_is_target_kernel(
 ):
     """Validate every target value and build the active-prefix membership mask.
 
-    ``is_target_ptr`` is both output and scratch: `_fill_zero_kernel` already cleared it before the call,
-    so only 1s are written at hit positions, with no separate int32 membership staging buffer.
+    ``is_target_ptr`` is both output and scratch: `_fill_zero_kernel` zeroes it first, so only
+    hit positions are set to 1 and no separate int32 membership buffer is needed.
     """
     pid = tl.program_id(0)
     n_programs = tl.num_programs(0)
@@ -268,7 +268,8 @@ def _fused_row_loss_kernel(
     n_rows,
     n_classes,
     divisor,
-    target_bound,  # maximum valid target length across all rows; beyond it nothing participates in comparison
+    # Maximum valid target length across all rows; anything beyond it never participates in the comparison
+    target_bound,
     ACC_FP64: tl.constexpr,
     ATOMIC_REDUCE: tl.constexpr,
     SKIP_EMPTY_CLASS_TILE: tl.constexpr,
@@ -689,7 +690,7 @@ def _empty_batch_result(input, n_classes, reduction):
 def multilabel_margin_loss_forward(
     input: torch.Tensor, target: torch.Tensor, reduction=1
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 MULTILABEL_MARGIN_LOSS_FORWARD")
+    logger.debug("GEMS_ENFLAME MULTILABEL_MARGIN_LOSS_FORWARD")
     reduction = _normalize_reduction(reduction)
     n_rows, n_classes = _check_inputs(input, target)
 

@@ -51,6 +51,13 @@ def torch_batch_norm_elemt(inp, weight, bias, mean, invstd, eps):
     return torch.batch_norm_elemt(inp, weight, bias, mean, invstd, eps)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason=(
+        "torch_gcu has no PrivateUse1 kernel for aten::batch_norm_elemt; its CPU fallback "
+        "cannot serve the benchmark, so there is no native baseline"
+    ),
+)
 @pytest.mark.batch_norm_elemt
 def test_batch_norm_elemt():
     bench = BatchNormElemtBenchmark(

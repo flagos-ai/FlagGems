@@ -554,6 +554,14 @@ def _sentinel_coo(shape, dtype):
     return _coo_operand(sentinel, _stored_positions(shape, 2, 0))
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch_gcu defect (aten out=): the sparse copy_ on a clone target only updates the stored "
+        "count, not indices/values, so the reference is untrustworthy (a failing case also makes "
+        "native torch abort while building the mismatch message)"
+    ),
+)
 @pytest.mark.sparse_mask_projection
 @pytest.mark.parametrize("dtype", _OUT_DTYPES)
 @pytest.mark.parametrize("shape,accumulate_matches", _OUT_CASES)
@@ -597,6 +605,14 @@ _OUT_LAYOUT_ROWS = tu.selected_cases(
 )
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch_gcu defect (aten out=): the sparse copy_ on a clone target only updates the stored "
+        "count, not indices/values, so the reference buffer still holds the -99 sentinel; "
+        "all 8 cases of this function fail because of it"
+    ),
+)
 @pytest.mark.sparse_mask_projection
 @pytest.mark.parametrize("dtype", _OUT_LAYOUT_DTYPES)
 @pytest.mark.parametrize(
@@ -720,6 +736,13 @@ def test_sparse_mask_projection_rejects_dense_out(dtype):
 # operator, not from input construction; the coalesced form is not part of this
 # test because torch's own "coalesce_sparse_cuda" is unimplemented for FP8. The
 # parametrization is statically empty when the backend cannot allocate FP8.
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch_gcu defect: building an fp8 sparse COO (torch.sparse_coo_tensor with fp8 "
+        "values) aborts (core dumped) on this backend, so the case never reaches the operator call"
+    ),
+)
 @pytest.mark.sparse_mask_projection
 @pytest.mark.parametrize("dtype", _FP8_DTYPES)
 def test_sparse_mask_projection_rejects_fp8(dtype):

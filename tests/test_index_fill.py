@@ -50,6 +50,15 @@ INDEX_FILL_OPS = [
 INDEX_FILL_OOB_PATHS = ("python_contiguous", "python_strided")
 
 
+# The earlier "core dumped" verdict came from the device-side aten reference of
+# test_index_fill_tensor_value, not from the kernels under test: on enflame GCU,
+# aten index_fill aborts when the 0-dim value tensor stays on the host while the
+# other operands are on the device (see _to_ref_value below). With the
+# reference value moved onto the reference device, the whole module runs on GCU:
+# 230 passed with --ref=cpu (the accuracy gate default) and with the device-side
+# reference, so no module-level skip is needed.
+
+
 def _make_input(shape, dtype):
     if dtype == torch.bool:
         return torch.randint(0, 2, shape, device=flag_gems.device).bool()

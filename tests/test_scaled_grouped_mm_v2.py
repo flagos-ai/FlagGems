@@ -41,6 +41,12 @@ else:
 
 
 def _fp8_available():
+    """Whether ``float8_e4m3fn`` operands can be materialised on this backend.
+
+    The enflame GCU backend reports no CUDA compute capability; its fp8
+    capability comes from the runtime capability table instead.  Every other
+    vendor keeps the original SM89+ CUDA check unchanged.
+    """
     if flag_gems.vendor_name == "enflame":
         return flag_gems.runtime.device.support_fp8 and hasattr(torch, "float8_e4m3fn")
     if flag_gems.device != "cuda" or not torch.cuda.is_available():

@@ -34,12 +34,18 @@ _MAX_GRID = 48
 # Rows per program.  The [BLOCK_M, BLOCK_N] tile is held in registers/DSM, so
 # the row block caps here.
 _BLOCK_M = 32
-# Element width of the load tile along the reduced dimension.  The previous
-# value of 128 issues 512 B loads and saturates near 0.5 TB/s; 1024 keeps the
-# tile inside the DSM budget (2048 still fits, 4096 exceeds it) and reaches
-# ~1.7 TB/s.  It also accumulates more accurately, because fewer fp32 partial
-# sums are chained into the running total.
-_BLOCK_N = 1024
+# Element budget for the [BLOCK_M, BLOCK_N] load tile; it lives in
+# registers/DSM and 65536 elements exceeds that budget.  BLOCK_N takes whatever
+# is left after the row block takes its share, so a single-row (1-D) launch can
+# use a much wider column tile than a 32-row one.
+#   BLOCK_M = 32 -> BLOCK_N = 1024 is optimal (measured on (4096,4096),
+#                  (1024,1024,1024) and (10000,65536); 512 loses 1.4~1.6x)
+#   BLOCK_M = 1  -> BLOCK_N = 16384 is optimal; on a 2^28-element 1-D input this
+#                  took 13.9 ms down to 1.28 ms (10.8x) because each iteration
+#                  then moves a tile large enough to hide the load latency
+#                  behind the serial accumulation.
+_TILE_ELEMENTS = 32768
+_BLOCK_N_MAX = 16384
 # Shortest reduced-dimension chunk a split launch will create.  Below two
 # BLOCK_N iterations the extra launch costs more than the added parallelism
 # returns.
@@ -49,6 +55,9 @@ _MIN_CHUNK_N = 2048
 # reduced dimension would dominate it: measured on gcu400 the crossover sits
 # between N = 8192 (plain wins by 1.8x) and N = 65536 (split wins by 2.7x).
 _SPLIT_MIN_N = 32768
+
+# Hardware grid limit on gcu400: grid.x must fit in 16 bits.
+_GRID_X_LIMIT = 65535
 
 
 @libentry()
@@ -65,6 +74,7 @@ def trapezoid_kernel_dx(
     dx,
     M_STRIDE_Y,
     M_STRIDE_OUT,
+    ROW_BLOCKS,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
 ):
@@ -72,33 +82,41 @@ def trapezoid_kernel_dx(
 
     One program per BLOCK_M rows, walking the reduced dimension serially.  Used
     when there are already enough row blocks to fill the device.
+
+    ``ROW_BLOCKS`` is the width of the first grid dimension; the row-block index
+    is recovered as ``pid0 + pid1 * ROW_BLOCKS`` so that a row count above the
+    hardware grid.x limit can be spread over two dimensions.
     """
     # float32 accumulation only: gcu400 reports support_fp64 == False, so the
     # fp64 accumulator the generic implementation selects is unavailable.
     acc_dtype = tl.float32
-    pid_m = tle.program_id(0)
+    pid_m = tle.program_id(0) + tle.program_id(1) * ROW_BLOCKS
 
     m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     mask_m = m_offsets < M
 
     acc = tl.zeros((BLOCK_M,), dtype=acc_dtype)
 
-    for n_start in range(0, N - 1, BLOCK_N):
+    # Single-pass reformulation of the trapezoidal rule:
+    #   dx * (sum(y) - (y[0] + y[N-1]) / 2)
+    # The literal form sums (y[i] + y[i+1]) / 2, which loads every element
+    # twice, so this variant halves the read traffic.  Only the two endpoints
+    # need a separate scalar load per row.
+    for n_start in range(0, N, BLOCK_N):
         n_offsets = n_start + tl.arange(0, BLOCK_N)
-        mask_n = n_offsets < N - 1
+        mask_n = n_offsets < N
 
         y_offsets = m_offsets[:, None] * M_STRIDE_Y + n_offsets[None, :]
         mask = mask_m[:, None] & mask_n[None, :]
 
         y_i = tl.load(y_ptr + y_offsets, mask=mask, other=0.0).to(acc_dtype)
-        y_next = tl.load(y_ptr + y_offsets + 1, mask=mask, other=0.0).to(acc_dtype)
+        acc += tl.sum(y_i, axis=1)
 
-        # Trapezoidal rule: (y[i] + y[i+1]) / 2
-        trapezoid_sum = (y_i + y_next) * 0.5
+    row_base = m_offsets * M_STRIDE_Y
+    y_first = tl.load(y_ptr + row_base, mask=mask_m, other=0.0).to(acc_dtype)
+    y_last = tl.load(y_ptr + row_base + (N - 1), mask=mask_m, other=0.0).to(acc_dtype)
 
-        acc += tl.sum(trapezoid_sum, axis=1)
-
-    result = acc * dx
+    result = (acc - (y_first + y_last) * 0.5) * dx
     out_offsets = m_offsets * M_STRIDE_OUT
     tl.store(out_ptr + out_offsets, result, mask=mask_m)
 
@@ -116,10 +134,11 @@ def trapezoid_dx_partial_kernel(
 ):
     """First stage of the split reduction: one (chunk, row block) per program.
 
-    Interval ``i`` of the trapezoidal rule spans ``y[i]`` and ``y[i + 1]``, so
-    there are ``N - 1`` of them.  Program ``(c, r)`` sums the disjoint range
-    ``[c * chunk, min((c + 1) * chunk, N - 1))`` for the rows of block ``r`` and
-    writes one partial per row into ``part[c, m]``.
+    Program ``(c, r)`` sums the plain elements of the disjoint range
+    ``[c * chunk, min((c + 1) * chunk, N))`` for the rows of block ``r`` and
+    writes one partial per row into ``part[c, m]``.  The endpoints of the
+    trapezoidal rule are applied once by the merge stage, so this stage only
+    needs a plain (single-load) element sum.
     """
     pid_c = tle.program_id(0)
     pid_m = tle.program_id(1)
@@ -128,7 +147,7 @@ def trapezoid_dx_partial_kernel(
     mask_m = m_offsets < M
 
     lo = pid_c * chunk
-    hi = tl.minimum(lo + chunk, N - 1)
+    hi = tl.minimum(lo + chunk, N)
 
     acc = tl.zeros((BLOCK_M,), dtype=tl.float32)
 
@@ -140,9 +159,8 @@ def trapezoid_dx_partial_kernel(
         mask = mask_m[:, None] & mask_n[None, :]
 
         y_i = tl.load(y_ptr + y_offsets, mask=mask, other=0.0).to(tl.float32)
-        y_next = tl.load(y_ptr + y_offsets + 1, mask=mask, other=0.0).to(tl.float32)
 
-        acc += tl.sum((y_i + y_next) * 0.5, axis=1)
+        acc += tl.sum(y_i, axis=1)
 
     tl.store(part_ptr + pid_c * M + m_offsets, acc, mask=mask_m)
 
@@ -151,15 +169,18 @@ def trapezoid_dx_partial_kernel(
 @triton.jit
 def trapezoid_dx_merge_kernel(
     part_ptr,
+    y_ptr,
     out_ptr,
     M,
+    N,
     n_chunk,
     dx,
     M_STRIDE_OUT,
     BLOCK_M: tl.constexpr,
     BLOCK_P: tl.constexpr,
 ):
-    """Second stage: sum the ``n_chunk`` partials of each row and scale by dx."""
+    """Second stage: sum the ``n_chunk`` partials of each row, apply the
+    trapezoidal endpoint correction and scale by dx."""
     pid_m = tle.program_id(0)
     m_offsets = pid_m * BLOCK_M + tl.arange(0, BLOCK_M)
     mask_m = m_offsets < M
@@ -170,7 +191,12 @@ def trapezoid_dx_merge_kernel(
         part_ptr + p_offsets[:, None] * M + m_offsets[None, :], mask=mask, other=0.0
     )
 
-    result = tl.sum(part, axis=0) * dx
+    row_base = m_offsets * N
+    y_first = tl.load(y_ptr + row_base, mask=mask_m, other=0.0)
+    y_last = tl.load(y_ptr + row_base + (N - 1), mask=mask_m, other=0.0)
+
+    total = tl.sum(part, axis=0)
+    result = (total - (y_first + y_last) * 0.5) * dx
     tl.store(out_ptr + m_offsets * M_STRIDE_OUT, result, mask=mask_m)
 
 
@@ -211,6 +237,25 @@ def _launch(y, out, M, N, dx):
     lanes idle.
     """
     block_m = min(_BLOCK_M, triton.next_power_of_2(M))
+    # Rows and columns share one element budget; a narrow row block therefore
+    # buys a wider column tile, and a column tile never exceeds the reduced
+    # dimension (a wider one would only mask lanes away: N = 64 with BLOCK_N =
+    # 1024 spends 94% of the lanes on padding).
+    # The 128 lower bound matters: shrinking the column tile all the way to
+    # next_pow2(N) for very short rows (N = 64) measured slower than a padded
+    # tile, because the extra iterations cost more than the masked lanes.
+    block_n = max(
+        128,
+        min(_BLOCK_N_MAX, _TILE_ELEMENTS // block_m, triton.next_power_of_2(N)),
+    )
+    # A narrow column tile (short reduced dimension) leaves most of the element
+    # budget idle, and with many rows every program would then reduce a tiny
+    # tile: the launch/retire cost of the programs, not the memory traffic,
+    # becomes the bottleneck (M = 6.5M rows with N = 100 spends 43 ms in 204800
+    # tiny programs).  Spend the leftover budget on more rows per program
+    # instead, which cuts the program count by the same factor.
+    if block_n < _TILE_ELEMENTS // block_m:
+        block_m = min(triton.next_power_of_2(M), _TILE_ELEMENTS // block_n)
     rows = triton.cdiv(M, block_m)
 
     # Aim the chunk grid at one program per compute unit, but never make a
@@ -218,27 +263,43 @@ def _launch(y, out, M, N, dx):
     chunks = 0
     if N >= _SPLIT_MIN_N:
         chunks = min(
-            triton.cdiv(N - 1, _MIN_CHUNK_N),
+            triton.cdiv(N, _MIN_CHUNK_N),
             max(1, triton.cdiv(_MAX_GRID, rows)),
         )
 
     if chunks <= 1:
-        trapezoid_kernel_dx[(rows,)](
-            y, out, M, N, dx, N, 1, BLOCK_M=block_m, BLOCK_N=_BLOCK_N
+        # gcu400 rejects grid.x > 65535 (a 1-D 2^28 input asks for 8M row
+        # blocks), so fold the row-block index into two grid dimensions once it
+        # exceeds the limit. The 1-D case keeps grid = (rows, 1).
+        row_blocks_x = min(rows, _GRID_X_LIMIT)
+        row_blocks_y = triton.cdiv(rows, _GRID_X_LIMIT)
+        trapezoid_kernel_dx[(row_blocks_x, row_blocks_y)](
+            y,
+            out,
+            M,
+            N,
+            dx,
+            N,
+            1,
+            row_blocks_x,
+            BLOCK_M=block_m,
+            BLOCK_N=block_n,
         )
         return
 
-    chunk = triton.cdiv(N - 1, chunks)
+    chunk = triton.cdiv(N, chunks)
     # [chunks, M] float32: partial sums are accumulated in fp32 whatever the
     # input dtype, so the merge reads and writes one dtype.
     part = torch.empty((chunks, M), dtype=torch.float32, device=y.device)
     trapezoid_dx_partial_kernel[(chunks, rows)](
-        y, part, M, N, chunk, BLOCK_M=block_m, BLOCK_N=_BLOCK_N
+        y, part, M, N, chunk, BLOCK_M=block_m, BLOCK_N=block_n
     )
     trapezoid_dx_merge_kernel[(rows,)](
         part,
+        y,
         out,
         M,
+        N,
         chunks,
         dx,
         1,
@@ -257,7 +318,7 @@ class TrapzOp(torch.autograd.Function):
 
     @staticmethod
     def forward(ctx, y, dx, dim):
-        logger.debug("GEMS_ENFLAME_GCU400 TRAPEZOID_DX")
+        logger.debug("GEMS_ENFLAME TRAPEZOID_DX")
 
         dim = _normalize_dim(dim, y.ndim)
         shape = y.shape
@@ -348,7 +409,7 @@ def trapz(y, dx=1.0, dim=-1):
     # reduction dimension integrates to zero of the input dtype and returns
     # before the bool/complex/dx checks run at all. A degenerate N == 1 still
     # goes through those checks (ATen validates dx and rejects bool y for it).
-    logger.debug("GEMS_ENFLAME_GCU400 TRAPZ")
+    logger.debug("GEMS_ENFLAME TRAPZ")
     dim = _normalize_dim(dim, y.ndim)
     if y.shape[dim] == 0:
         out_shape = y.shape[:dim] + y.shape[dim + 1 :]

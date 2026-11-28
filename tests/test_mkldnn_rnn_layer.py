@@ -84,7 +84,8 @@ def _reference_mkldnn_rnn_layer(
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.vendor_name != "enflame"
+    and (cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available()),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
@@ -154,7 +155,8 @@ def test_mkldnn_rnn_layer(seq_len, batch_size, input_size, hidden_size, dtype, r
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.vendor_name != "enflame"
+    and (cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available()),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
@@ -218,7 +220,8 @@ def test_mkldnn_rnn_layer_direct_wrapper(
 
 
 @pytest.mark.skipif(
-    cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available(),
+    flag_gems.vendor_name != "enflame"
+    and (cfg.TO_CPU or flag_gems.device != "cuda" or not torch.cuda.is_available()),
     reason="Triton kernel is CUDA-only",
 )
 @pytest.mark.mkldnn_rnn_layer
