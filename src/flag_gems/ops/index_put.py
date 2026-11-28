@@ -325,6 +325,24 @@ _index_put_func = IndexPutFunction()
 def index_put(inp, indices, values, accumulate=False):
     logger.debug("GEMS INDEX_PUT")
 
+    if (
+        torch.is_grad_enabled()
+        and isinstance(inp, torch.Tensor)
+        and (
+            inp.requires_grad
+            or (isinstance(values, torch.Tensor) and values.requires_grad)
+        )
+    ):
+        # This Torch build has no standalone ``aten::_index_put_impl_backward_``
+        # schema, so a differentiable forward is routed through the FlagGems
+        # autograd bridge to reach the Triton backward kernel.
+        from flag_gems.ops.index_put_impl_backward_ import IndexPutImplBackwardFunction
+
+        out = inp.clone()
+        return IndexPutImplBackwardFunction.apply(
+            out, list(indices), values, accumulate
+        )
+
     out = inp.clone()
     return index_put_(out, indices, values, accumulate)
 

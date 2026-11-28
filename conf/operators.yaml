@@ -10978,6 +10978,26 @@ ops:
   - Tensor
   stages:
   - beta: '5.3'
+- id: index_put_impl_backward_
+  description: |
+    Backward pass of the internal `_index_put_impl_` (the implementation op behind
+    `torch.index_put` / `index_put_`).  Per the ATen derivative, the gradient
+    w.r.t. `self` is `accumulate ? grad : grad.index_put(indices, zeros_like(values), false)`
+    (covered subspaces are zeroed, duplicates idempotent, no atomics) and the
+    gradient w.r.t. `values` is the advanced-indexing gather `grad.index(indices)`.
+    Accepts tensor indices with `None` slots and bool masks, normalizing them
+    exactly like the forward wrapper.  Exposed through an explicit entry point
+    and a `torch.autograd.Function` bridge on the FlagGems forward ops, because
+    this Torch build has no standalone `aten::_index_put_impl_backward_` schema.
+  for:
+  - index_put_impl_backward_
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6.0'
 - id: index_reduce
   description: 'Returns a new tensor after accumulating `source` into `input` at the
     indices
