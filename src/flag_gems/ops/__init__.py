@@ -825,6 +825,7 @@ from flag_gems.ops.dim import dim
 from flag_gems.ops.dim_arange import _dim_arange as dim_arange
 from flag_gems.ops.dimV import _dimV as dimV
 from flag_gems.ops.dist import dist
+from flag_gems.ops.dist_backward import dist_backward
 from flag_gems.ops.div import (
     div_mode,
     div_mode_,
@@ -2581,6 +2582,7 @@ __all__ = [
     "dim_arange",
     "dimV",
     "dist",
+    "dist_backward",
     "div_mode",
     "div_mode_",
     "divide",
