@@ -50,6 +50,73 @@ def test_dense_transpose_detection_matches_torch(kind):
     assert mm._is_transposed_contiguous_2d(value) == expected
 
 
+@pytest.mark.router_gemm
+@pytest.mark.parametrize("nt", [False, True], ids=["nn", "nt"])
+def test_fp16_router_gemm_uses_ppu(monkeypatch, nt):
+    router = importlib.import_module(flag_gems.router_gemm.__module__)
+
+    def reject_fallback(*args, **kwargs):
+        pytest.fail("dense FP16 router GEMM fell back to the generic kernel")
+
+    monkeypatch.setattr(router, "_generic_router_gemm", reject_fallback)
+    x = torch.randn(1, 4096, dtype=torch.float16, device=flag_gems.device)
+    b_shape = (64, 4096) if nt else (4096, 64)
+    b = torch.randn(b_shape, dtype=x.dtype, device=x.device)
+    weight = b if nt else b.t()
+    out = flag_gems.router_gemm(x, weight)
+
+    expected = x.cpu().float() @ weight.cpu().float().t()
+    torch.testing.assert_close(out.cpu(), expected, rtol=1e-4, atol=1e-3)
+
+
+@pytest.mark.mm
+@pytest.mark.parametrize("case", ["column", "wide-row", "narrow-row"])
+@pytest.mark.parametrize("dtype", [torch.float16, torch.bfloat16])
+def test_mm_reuses_column_major_gemv(monkeypatch, case, dtype):
+    device = flag_gems.device
+    if case == "column":
+        a = torch.randn(3073, 42, device=device, dtype=dtype)[:, 1:38].t()
+        b = torch.randn(3073, 1, device=device, dtype=dtype)
+        expected_configs = [(37, 3073, 42)]
+    else:
+        columns = 64 if case == "wide-row" else 8
+        a = torch.randn(1, 4096, device=device, dtype=dtype)
+        b = torch.randn(4096, columns, device=device, dtype=dtype)
+        expected_configs = [(columns, 4096, columns)] if case == "wide-row" else []
+    expected = (a.cpu().float() @ b.cpu().float()).to(dtype)
+    calls = []
+    config = mm._column_major_gemv_config
+
+    def record_config(rows, k, lda):
+        calls.append((rows, k, lda))
+        return config(rows, k, lda)
+
+    monkeypatch.setattr(mm, "_column_major_gemv_config", record_config)
+    actual = flag_gems.mm(a, b)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0.016, atol=0.04)
+    assert calls == expected_configs
+    if case == "column":
+        out = a[:, :1]
+        assert flag_gems.mm_out(a, b, out=out) is out
+        torch.testing.assert_close(out.cpu(), expected, rtol=0.016, atol=0.04)
+
+
+@pytest.mark.addmm
+@pytest.mark.parametrize("beta", [0, 2])
+def test_addmm_column_major_gemv_split_k(beta):
+    device = flag_gems.device
+    a = torch.randn(4096, 64, device=device, dtype=torch.bfloat16).t()
+    b = torch.randn(4096, 1, device=device, dtype=a.dtype)
+    bias = torch.full((64, 1), float("nan"), device=device, dtype=a.dtype)
+    if beta != 0:
+        bias.normal_()
+    expected = torch.addmm(
+        bias.cpu().float(), a.cpu().float(), b.cpu().float(), alpha=-0.5, beta=beta
+    ).to(a.dtype)
+    actual = flag_gems.addmm(bias, a, b, alpha=-0.5, beta=beta)
+    torch.testing.assert_close(actual.cpu(), expected, rtol=0.016, atol=0.04)
+
+
 def test_split_reducer_uses_this_launch_metadata_without_rebuilding_configs(
     monkeypatch,
 ):
