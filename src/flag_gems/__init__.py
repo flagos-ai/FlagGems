@@ -1090,7 +1090,12 @@ _FULL_CONFIG = (
     ("addmv", addmv),
     ("addmv.out", addmv_out),
     ("addmv_", addmv_),
-    ("addr", addr),
+    (
+        "addr",
+        addr,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("addr_", addr_),
     ("adjoint", adjoint),
     ("affine_grid_generator", affine_grid_generator),

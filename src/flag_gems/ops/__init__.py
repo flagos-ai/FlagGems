@@ -554,7 +554,7 @@ from flag_gems.ops.addmm import addmm, addmm_dtype, addmm_dtype_out, addmm_out
 from flag_gems.ops.addmm_ import addmm_
 from flag_gems.ops.addmv import addmv, addmv_out
 from flag_gems.ops.addmv_ import addmv_
-from flag_gems.ops.addr import addr
+from flag_gems.ops.addr import addr, addr_backward
 from flag_gems.ops.addr_ import addr_
 from flag_gems.ops.adjoint import adjoint
 from flag_gems.ops.affine_grid_generator import affine_grid_generator
@@ -2304,6 +2304,7 @@ __all__ = [
     "addmv_out",
     "addr",
     "addr_",
+    "addr_backward",
     "adjoint",
     "affine_grid_generator",
     "affine_grid_generator_backward",
