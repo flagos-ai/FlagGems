@@ -232,6 +232,28 @@ def test_minimum_backward_direct_entry(dtype):
 
 
 @pytest.mark.minimum_backward
+@pytest.mark.skipif(
+    not torch.cuda.is_available() or torch.cuda.device_count() < 2,
+    reason="Requires two CUDA devices to verify the device guard",
+)
+@pytest.mark.parametrize("size", [1024, 65537])
+def test_minimum_backward_device_guard(size):
+    """Launch on the inputs' device even when another device is current."""
+    with torch.cuda.device(1):
+        x = torch.randn(size, device="cuda:1", requires_grad=True)
+        y = torch.randn(size, device="cuda:1", requires_grad=True)
+        grad = torch.randn_like(x)
+        expected_x, expected_y = _reference_minimum_backward(x, y, grad)
+        out = flag_gems.minimum(x, y)
+    with torch.cuda.device(0):
+        gx, gy = torch.autograd.grad(out, (x, y), grad)
+        assert torch.cuda.current_device() == 0
+    assert gx.device == x.device and gy.device == y.device
+    utils.gems_assert_close(gx, expected_x, x.dtype)
+    utils.gems_assert_close(gy, expected_y, y.dtype)
+
+
+@pytest.mark.minimum_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_minimum_backward_zero_numel(dtype):
     shape = (0, 5)

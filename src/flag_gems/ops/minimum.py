@@ -32,8 +32,8 @@ import triton
 import triton.language as tl
 
 from flag_gems.ops.sum import sum_dim
-from flag_gems.runtime import device
-from flag_gems.utils import pointwise_dynamic
+from flag_gems.runtime import device, torch_device_fn
+from flag_gems.utils import libentry, pointwise_dynamic
 
 logger = logging.getLogger(__name__)
 device = device.name
@@ -83,6 +83,7 @@ def minimum_backward_other_kernel(grad, X, Y):
 # because ``pointwise_dynamic`` copies every standalone ``@triton.jit`` function
 # of this module into its generated cache file, which would not carry a
 # module-level constant with it.
+@libentry()
 @triton.autotune(
     configs=[
         triton.Config({"BLOCK": 1024, "LH": 0, "SW": 0}, num_warps=4),
@@ -185,6 +186,7 @@ def minimum_backward_fused_kernel(
 
 # Autotune cache discriminator: fp16, bf16 and fp32 have very different vector
 # widths, so they must not share a tuned config.
+_minimum_backward_fixed_kernel = libentry()(minimum_backward_fused_kernel.jit_function)
 _DTYPE_KEY = {torch.float16: 0, torch.bfloat16: 1, torch.float32: 2}
 
 # Below this size the backward is a handful of CTAs, i.e. launch bound; it runs
@@ -231,16 +233,17 @@ def _minimum_backward_fused(grad, x, y, needs):
     gy_ptr = gy if need_gy else gx
     args = (grad, x, y, gx_ptr, gy_ptr, n, _DTYPE_KEY[x.dtype])
     flags = dict(NEED_GX=need_gx, NEED_GY=need_gy, WIDE=n > _INT32_SAFE)
-    if n <= _SMALL_INPUT:
-        # A few tiles cannot benefit from tile-geometry tuning, and the autotuner
-        # adds per-call key bookkeeping that dominates such a launch.
-        minimum_backward_fused_kernel.fn[(triton.cdiv(n, _SMALL_BLOCK),)](
-            *args, **flags, BLOCK=_SMALL_BLOCK, LH=0, SW=0, num_warps=4
-        )
-    else:
-        minimum_backward_fused_kernel[lambda meta: (triton.cdiv(n, meta["BLOCK"]),)](
-            *args, **flags
-        )
+    with torch_device_fn.device(x.device):
+        if n <= _SMALL_INPUT:
+            # A few tiles cannot benefit from tile-geometry tuning, and the autotuner
+            # adds per-call key bookkeeping that dominates such a launch.
+            _minimum_backward_fixed_kernel[(triton.cdiv(n, _SMALL_BLOCK),)](
+                *args, **flags, BLOCK=_SMALL_BLOCK, LH=0, SW=0, num_warps=4
+            )
+        else:
+            minimum_backward_fused_kernel[
+                lambda meta: (triton.cdiv(n, meta["BLOCK"]),)
+            ](*args, **flags)
     return gx, gy
 
 
