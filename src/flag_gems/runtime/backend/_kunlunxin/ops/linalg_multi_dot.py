@@ -14,10 +14,12 @@
 
 import logging
 import warnings
+from contextlib import contextmanager
 
 import torch
 import triton
 import triton.language as tl
+from triton.runtime import driver as triton_driver
 
 from flag_gems.ops.linalg_multi_dot import _matrix_chain_order, _validate_and_prepare
 from flag_gems.runtime import torch_device_fn
@@ -25,6 +27,29 @@ from flag_gems.utils import libentry
 from flag_gems.utils import triton_lang_extension as ext
 
 logger = logging.getLogger(__name__)
+
+# A multi_dot chain issues N-1 tiny GEMMs back to back; Triton's normal
+# ``kernel[grid](...)`` path redoes argument specialization / binding on every
+# call (~40 us here) and dwarfs the 5-15 us device time.  We cache the
+# ``CompiledKernel`` bound on the *exact* specialization inputs (device, dtype,
+# shape, strides, tile, warps) and replay it through the low-level runner, which
+# costs ~6 us.  Keying on the exact values keeps Triton's default
+# specialization (``tt.divisibility`` hints included) intact -- dropping it
+# with ``do_not_specialize`` would mis-vectorize the masked strided store used
+# for non-contiguous ``out`` tensors.
+_GEMM_RUNNER_CACHE = {}
+_GEMM_RUNNER_CACHE_LIMIT = 512
+
+
+@contextmanager
+def _device_scope(device):
+    """Enter ``device`` once per operator call instead of once per GEMM."""
+    index = device.index
+    if index is None or index == torch_device_fn.current_device():
+        yield
+        return
+    with torch_device_fn.device(device):
+        yield
 
 
 @libentry()
@@ -105,30 +130,84 @@ def _pick_blocks(rows, columns, inner):
     return bm, bn, bk
 
 
+def _aligned_16b(tensor):
+    return tensor.data_ptr() % 16 == 0
+
+
+def _build_gemm_runner(key, args, bm, bn, bk, is_fp64, num_warps, grid_x):
+    """Compile once and return the low-level replay tuple, or None to fall back."""
+    if not all(_aligned_16b(t) for t in args[:3]):
+        # ``warmup`` specializes pointers as 16-byte aligned (MockTensor has
+        # data_ptr 0); a misaligned tensor needs a fresh specialization.
+        return None
+    compiled = _multi_dot_mm_kernel.jit_function.warmup(
+        *args,
+        grid=(grid_x, 1, 1),
+        BLOCK_M=bm,
+        BLOCK_N=bn,
+        BLOCK_K=bk,
+        IS_FP64=is_fp64,
+        num_warps=num_warps,
+    )
+    entry = (compiled.run, compiled.function, compiled.packed_metadata, grid_x)
+    if len(_GEMM_RUNNER_CACHE) >= _GEMM_RUNNER_CACHE_LIMIT:
+        _GEMM_RUNNER_CACHE.clear()
+    _GEMM_RUNNER_CACHE[key] = entry
+    return entry
+
+
 def _launch_gemm(left, right, output, rows, columns, inner, is_fp64):
     bm, bn, bk = _pick_blocks(rows, columns, inner)
     grid = (triton.cdiv(rows, bm) * triton.cdiv(columns, bn),)
     num_warps = 4 if (bm <= 64 and bn <= 64) else 8
-    with torch_device_fn.device(left.device):
+    args = (
+        left,
+        right,
+        output,
+        rows,
+        columns,
+        inner,
+        left.stride(0),
+        left.stride(1),
+        right.stride(0),
+        right.stride(1),
+        output.stride(0),
+        output.stride(1),
+    )
+    device = torch_device_fn.current_device()
+    # The exact shape/stride/dtype/tile values fully determine Triton's
+    # argument specialization (including the "== 1 -> constexpr" strides), so
+    # a cache hit is guaranteed to replay the matching compiled binary.
+    key = (
+        device,
+        left.dtype,
+        rows,
+        columns,
+        inner,
+        *args[6:12],
+        bm,
+        bn,
+        bk,
+        is_fp64,
+        num_warps,
+    )
+    entry = _GEMM_RUNNER_CACHE.get(key)
+    if entry is None:
+        entry = _build_gemm_runner(key, args, bm, bn, bk, is_fp64, num_warps, grid[0])
+    if entry is None:
         _multi_dot_mm_kernel[grid](
-            left,
-            right,
-            output,
-            rows,
-            columns,
-            inner,
-            left.stride(0),
-            left.stride(1),
-            right.stride(0),
-            right.stride(1),
-            output.stride(0),
-            output.stride(1),
+            *args,
             BLOCK_M=bm,
             BLOCK_N=bn,
             BLOCK_K=bk,
             IS_FP64=is_fp64,
             num_warps=num_warps,
         )
+        return output
+
+    run, fn, packed_metadata, grid_x = entry
+    stream = triton_driver.active.get_current_stream(device)
+    run(grid_x, 1, 1, stream, fn, packed_metadata, None, None, None, *args)
     return output
 
 
@@ -210,7 +289,8 @@ def _multi_dot_impl(arrays, out=None):
 def linalg_multi_dot(tensors):
     logger.debug("GEMS_KUNLUNXIN LINALG_MULTI_DOT")
     arrays, output_shape = _validate_and_prepare(tensors)
-    result = _multi_dot_impl(arrays)
+    with _device_scope(arrays[0].device):
+        result = _multi_dot_impl(arrays)
     return result.view(output_shape)
 
 
@@ -245,5 +325,6 @@ def linalg_multi_dot_out(tensors, *, out):
         out.resize_(output_shape)
 
     matrix_out = out.view(arrays[0].shape[0], arrays[-1].shape[1])
-    _multi_dot_impl(arrays, out=matrix_out)
+    with _device_scope(arrays[0].device):
+        _multi_dot_impl(arrays, out=matrix_out)
     return out
