@@ -48,6 +48,11 @@ _TO_COPY_TORCH_OP = _to_copy_ref if _IS_KUNLUNXIN else torch.ops.aten._to_copy
 # which would otherwise dominate the measured latency).
 _TO_COPY_GEMS_OP = flag_gems.to_copy if _IS_KUNLUNXIN else None
 
+_NVIDIA_ONLY = pytest.mark.skipif(
+    flag_gems.vendor_name != "nvidia" or flag_gems.device != "cuda",
+    reason="to_copy_backward is an NVIDIA general-operator implementation",
+)
+
 
 class ToCopyBenchmark(base.Benchmark):
     # The tflops metric divides by candidate latency with NO EPS guard
@@ -104,6 +109,20 @@ class ToCopyBenchmark(base.Benchmark):
     def get_tflops(self, op, *args, **kwargs):
         shape = list(args[0].shape)
         return torch.tensor(shape).prod().item()
+
+
+@pytest.mark.to_copy_backward
+@_NVIDIA_ONLY
+def test_to_copy_backward():
+    for src_dtype in consts.FLOAT_DTYPES:
+        bench = ToCopyBenchmark(
+            op_name="to_copy",
+            torch_op=torch.ops.aten._to_copy,
+            dtypes=consts.FLOAT_DTYPES,
+            src_dtype=src_dtype,
+            is_backward=True,
+        )
+        bench.run()
 
 
 @pytest.mark.to_copy

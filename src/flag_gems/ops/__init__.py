@@ -1738,7 +1738,7 @@ from flag_gems.ops.thnn_fused_gru_cell_backward import (
 from flag_gems.ops.threshold import threshold, threshold_backward
 from flag_gems.ops.threshold_ import threshold_
 from flag_gems.ops.tile import tile
-from flag_gems.ops.to import to_copy
+from flag_gems.ops.to import to_copy, to_copy_backward
 from flag_gems.ops.to_dense_backward import to_dense_backward
 from flag_gems.ops.to_sparse_semi_structured import to_sparse_semi_structured
 from flag_gems.ops.topk import topk
@@ -3537,6 +3537,7 @@ __all__ = [
     "threshold_backward",
     "tile",
     "to_copy",
+    "to_copy_backward",
     "to_dense_backward",
     "to_sparse_semi_structured",
     "topk",
