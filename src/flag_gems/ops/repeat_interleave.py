@@ -88,6 +88,7 @@ def repeat_interleave_tensor_kernel(
 
     tl.device_assert(repeats >= 0, "repeats can not be negative")
 
+    tl.device_assert(out_offset + repeats <= size, "output_size does not match sum(repeats)")
     out_ptr += out_offset
     for start_k in range(0, repeats, BLOCK_SIZE):
         offsets_k = start_k + tl.arange(0, BLOCK_SIZE)
@@ -101,7 +102,13 @@ def repeat_interleave_tensor(repeats, *, output_size=None):
     assert repeats.ndim == 1, "repeat_interleave only accept 1D vector as repeat"
     repeats = repeats.contiguous()
     cumsum = repeats.cumsum(axis=0)
-    result_size = cumsum[-1].item()
+    if output_size is None:
+        # the only device-to-host sync on this path: discovering the output length
+        result_size = cumsum[-1].item()
+    else:
+        # a caller-supplied output_size is the same hint ATen takes and
+        # skips the sync entirely
+        result_size = output_size
 
     assert result_size >= 0, "repeats can not be negative"
 
@@ -157,7 +164,7 @@ def repeat_interleave_self_tensor(inp, repeats, dim=None, *, output_size=None):
             )
         )
 
-    indices = repeat_interleave_tensor(repeats)
+    indices = repeat_interleave_tensor(repeats, output_size=output_size)
     res = torch.index_select(inp, dim, indices)
 
     return res
