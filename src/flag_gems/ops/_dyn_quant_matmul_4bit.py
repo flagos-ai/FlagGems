@@ -151,7 +151,9 @@ def _w4a8_matmul(
         )
 
 
-def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_features):
+def _dyn_quant_matmul_4bit(
+    inp, packed_weights, block_size, in_features, out_features, *, _try_fast_matmul=None
+):
     """W4A8 linear using the FP32 portable _dyn_quant_pack_4bit_weight ABI.
 
     The contiguous buffer contains N*K/2 numeric byte values, N*(K/block_size)
@@ -159,7 +161,8 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
     subtract eight from each nibble to obtain signed INT4. CPU KleidiAI opaque
     buffers are incompatible and must be repacked on the target device.
     """
-    if not torch.compiler.is_compiling():
+    compiling = torch.compiler.is_compiling()
+    if not compiling:
         logger.debug("GEMS _DYN_QUANT_MATMUL_4BIT")
     if inp.ndim != 2:
         raise RuntimeError("inp must be two-dimensional")
@@ -205,11 +208,8 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
     # Bounded vector tiles also support rows larger than a single program's limits.
     quant_block = max(32, min(triton.next_power_of_2(in_features), 1024))
     bm, bn, bk = 16, 32, 32
-    device_context = (
-        nullcontext()
-        if torch.compiler.is_compiling()
-        else torch_device_fn.device(inp.device)
-    )
+    has_bias = packed_weights.numel() == base + out_features
+    device_context = nullcontext() if compiling else torch_device_fn.device(inp.device)
     with device_context:
         _quantize_rows[(min(m, 65535),)](
             inp,
@@ -223,6 +223,14 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
             quant_block,
             enable_fp_fusion=False,
         )
+        if (
+            _try_fast_matmul is not None
+            and not compiling
+            and _try_fast_matmul(
+                q, scale, offset, packed_weights, output, block_size, has_bias
+            )
+        ):
+            return output
         _w4a8_matmul[(min(triton.cdiv(m, bm) * triton.cdiv(out_features, bn), 65535),)](
             q,
             scale,
@@ -233,7 +241,7 @@ def _dyn_quant_matmul_4bit(inp, packed_weights, block_size, in_features, out_fea
             out_features,
             in_features,
             block_size,
-            packed_weights.numel() == base + out_features,
+            has_bias,
             bm,
             bn,
             bk,

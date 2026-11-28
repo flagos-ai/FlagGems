@@ -316,7 +316,7 @@ from .max_unpool2d import max_unpool2d
 from .median import median_dim, median_dim_values
 from .mixed_dtypes_linear import mixed_dtypes_linear
 from .mm import mm
-from .mm_w8a8_int8 import mm_w8a8_int8, mm_w8a8_int8_out
+from .mm_w8a8_int8 import _dyn_quant_matmul_4bit, mm_w8a8_int8, mm_w8a8_int8_out
 from .mse_loss_backward import mse_loss_backward
 from .mul import mul, mul_
 from .multiply_ import multiply_
@@ -440,6 +440,7 @@ __all__ = [
     "_conv_depthwise2d",
     "_convolution_double_backward",
     "_convolution_mode",
+    "_dyn_quant_matmul_4bit",
     "_embedding_bag",
     "_embedding_bag_backward",
     "_embedding_bag_dense_backward",

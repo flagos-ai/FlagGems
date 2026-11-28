@@ -102,6 +102,15 @@ def test_dyn_quant_matmul_4bit_channelwise(m, n, k, dtype, bias):
         (7, 64, 128, 64),
         (1, 4096, 128, 32),
         (7, 33, 192, 96),
+        pytest.param(
+            1,
+            1024,
+            2560,
+            32,
+            marks=pytest.mark.skipif(
+                flag_gems.vendor_name != "hygon", reason="Hygon async dispatch shape"
+            ),
+        ),
     ],
 )
 @pytest.mark.parametrize("bias", [False, True])
