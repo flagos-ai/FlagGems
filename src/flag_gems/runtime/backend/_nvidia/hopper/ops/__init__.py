@@ -17,6 +17,7 @@ import triton
 from .flash_attention_backward import flash_attention_backward  # noqa: F401
 
 if triton.__version__ >= "3.4":
+    from .argmax import argmax  # noqa: F401
     from .fill import (  # noqa: F401
         fill_scalar,
         fill_scalar_,
