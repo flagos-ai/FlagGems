@@ -19,6 +19,15 @@ def _erfc_kernel(x):
 
 def erfc(x):
     logger.debug("GEMS ERFC")
+    if (
+        isinstance(x, torch.Tensor)
+        and x.requires_grad
+        and torch.is_grad_enabled()
+        and not x.is_complex()
+    ):
+        from flag_gems.ops.erfc_backward import ErfcFunction
+
+        return ErfcFunction.apply(x)
     return _erfc_kernel(x)
 
 
