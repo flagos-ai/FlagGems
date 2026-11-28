@@ -14,6 +14,7 @@ DTYPES = (
     if QUICK_MODE
     else utils.FLOAT_DTYPES + [pytest.param(torch.float64, marks=_SKIP_FP64)]
 )
+IS_KUNLUNXIN = flag_gems.vendor_name == "kunlunxin"
 
 
 # Core shapes exercised by SHAPES (mirrors worktree CI branch).
@@ -105,9 +106,14 @@ def test_upsample_nearest1d_backward_uint8():
     grad_output = torch.randint(
         0, 256, (2, 3, 17), dtype=torch.uint8, device=flag_gems.device
     )
-    reference = torch.ops.aten.upsample_nearest1d_backward.default(
-        grad_output, (17,), (2, 3, 5)
-    )
+    if IS_KUNLUNXIN:
+        reference = torch.ops.aten.upsample_nearest1d_backward.default(
+            grad_output.cpu().to(torch.float32), (17,), (2, 3, 5)
+        ).to(torch.uint8)
+    else:
+        reference = torch.ops.aten.upsample_nearest1d_backward.default(
+            grad_output, (17,), (2, 3, 5)
+        )
     result = flag_gems.upsample_nearest1d_backward(grad_output, (17,), (2, 3, 5))
     utils.gems_assert_equal(result, reference)
 

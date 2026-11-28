@@ -1046,6 +1046,10 @@ from .upsample_lanczos2d_aa import (  # noqa: F401
 from .upsample_linear1d import upsample_linear1d
 from .upsample_linear1d_backward import upsample_linear1d_backward
 from .upsample_nearest1d import upsample_nearest1d
+from .upsample_nearest1d_backward import (  # noqa: F401
+    upsample_nearest1d_backward,
+    upsample_nearest1d_backward_grad_input,
+)
 from .upsample_nearest2d import upsample_nearest2d
 from .upsample_nearest3d import upsample_nearest3d
 from .upsample_nearest3d_backward import (
@@ -2178,6 +2182,8 @@ __all__ = [
     "upsample_linear1d",
     "upsample_linear1d_backward",
     "upsample_nearest1d",
+    "upsample_nearest1d_backward",
+    "upsample_nearest1d_backward_grad_input",
     "upsample_nearest2d",
     "upsample_nearest3d",
     "upsample_nearest3d_backward",
