@@ -225,7 +225,13 @@ def identity_cache_key(
         if hasattr(value, "dtype") and hasattr(value, "device"):
             tensors.append(value)
     platform = f"{vendor_name}:" + ",".join(str(tensor.device) for tensor in tensors)
-    dtype_key = ",".join(str(tensor.dtype) for tensor in tensors)
+    dtype_resolver = getattr(tuner, "_flagtune_dtype_resolver", None)
+    dtypes = (
+        dtype_resolver(arguments)
+        if dtype_resolver is not None and tensors
+        else (tensor.dtype for tensor in tensors)
+    )
+    dtype_key = ",".join(str(dtype) for dtype in dtypes)
     return platform, op_id, variant, dtype_key
 
 

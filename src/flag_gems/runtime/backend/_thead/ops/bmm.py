@@ -54,6 +54,7 @@ from .gemm_utils import (
 )
 from .mm import (
     _dispatch_ppu_gemm,
+    _flagtune_mm_dtype_identity,
     _ppu_multi_row_gemv_configs,
     _ppu_narrow_columns_configs,
     _ppu_small_m_configs,
@@ -266,7 +267,7 @@ def _ppu_batched_gemv_configs():
 
 if HAS_PPU_TLE:
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_batched_gemv_configs(),
         key=[
@@ -292,6 +293,11 @@ if HAS_PPU_TLE:
         rep=20,
         flagtune_op_name="bmm",
         flagtune_expand_op_name="bmm_gemv_ppu",
+        policy="flagtune",
+        benchmark_mode="replay",
+        flagtune_op_id="flaggems/bmm",
+        flagtune_variant="bmm_gemv_ppu",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -385,7 +391,7 @@ if HAS_PPU_TLE:
             result += beta * tl.load(bias_ptrs, mask=mask, other=0.0)
         tl.store(c_ptrs, result.to(C.dtype.element_ty), mask=mask)
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_multi_row_bmm_configs(),
         key=["FUSE_BIAS", "READ_BIAS", "B_TRANSPOSED", "batch", "M", "N", "K"],
@@ -403,6 +409,11 @@ if HAS_PPU_TLE:
         rep=20,
         flagtune_op_name="bmm",
         flagtune_expand_op_name="bmm_ppu_multi_row_gemv",
+        policy="flagtune",
+        benchmark_mode="replay",
+        flagtune_op_id="flaggems/bmm",
+        flagtune_variant="bmm_ppu_multi_row_gemv",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -469,7 +480,7 @@ if HAS_PPU_TLE:
             mask=mask,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_narrow_columns_bmm_configs(),
         key=["FUSE_BIAS", "READ_BIAS", "B_TRANSPOSED", "batch", "M", "N", "K"],
@@ -487,6 +498,11 @@ if HAS_PPU_TLE:
         rep=20,
         flagtune_op_name="bmm",
         flagtune_expand_op_name="bmm_ppu_narrow_columns",
+        policy="flagtune",
+        benchmark_mode="replay",
+        flagtune_op_id="flaggems/bmm",
+        flagtune_variant="bmm_ppu_narrow_columns",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit(do_not_specialize=["alpha", "beta"])
@@ -553,7 +569,7 @@ if HAS_PPU_TLE:
             mask=row_mask & (pid_n < N),
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_bmm_configs(),
         key=[
@@ -581,6 +597,11 @@ if HAS_PPU_TLE:
         rep=10,
         flagtune_op_name="bmm",
         flagtune_expand_op_name="bmm_ppu",
+        policy="flagtune",
+        benchmark_mode="replay",
+        flagtune_op_id="flaggems/bmm",
+        flagtune_variant="bmm_ppu",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -696,7 +717,7 @@ if HAS_PPU_TLE:
             READ_BIAS,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_bmm_narrow_n_configs(),
         key=[
@@ -724,6 +745,11 @@ if HAS_PPU_TLE:
         rep=10,
         flagtune_op_name="bmm",
         flagtune_expand_op_name="bmm_ppu_narrow_n",
+        policy="flagtune",
+        benchmark_mode="replay",
+        flagtune_op_id="flaggems/bmm",
+        flagtune_variant="bmm_ppu_narrow_n",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -839,7 +865,7 @@ if HAS_PPU_TLE:
             READ_BIAS,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_small_m_bmm_configs(),
         key=[
@@ -867,6 +893,11 @@ if HAS_PPU_TLE:
         rep=10,
         flagtune_op_name="bmm",
         flagtune_expand_op_name="bmm_ppu_small_m",
+        policy="flagtune",
+        benchmark_mode="replay",
+        flagtune_op_id="flaggems/bmm",
+        flagtune_variant="bmm_ppu_small_m",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.heuristics(
@@ -974,7 +1005,7 @@ if HAS_PPU_TLE:
             READ_BIAS,
         )
 
-    @libentry()
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_split_k_bmm_configs(),
         key=["B_TRANSPOSED", "aiu_load_mask", "batch", "M", "N", "K"],
@@ -991,6 +1022,11 @@ if HAS_PPU_TLE:
         rep=10,
         flagtune_op_name="bmm",
         flagtune_expand_op_name="bmm_ppu_split_k",
+        policy="flagtune",
+        benchmark_mode="replay",
+        flagtune_op_id="flaggems/bmm",
+        flagtune_variant="bmm_ppu_split_k",
+        flagtune_dtype_resolver=_flagtune_mm_dtype_identity,
         flagtune_yaml_path=EXPAND_CONFIG_FILENAME,
     )
     @triton.jit
@@ -1115,6 +1151,7 @@ if HAS_PPU_TLE:
         else:
             tl.store(workspace_ptrs, acc, mask=mask)
 
+    @libentry(cache_binding=True)
     @libtuner(
         configs=_ppu_split_k_bmm_reduce_configs(),
         key=["FUSE_BIAS", "READ_BIAS", "M", "N", "total_elements", "SPLIT_K"],
@@ -1701,7 +1738,7 @@ def _run_ppu_bmm_split_k(A, B, out, bias, alpha, beta, fuse_bias):
         batch,
     )
     with torch_device_fn.device(A.device):
-        bmm_split_k_kernel_ppu[grid](
+        _, launch_meta = bmm_split_k_kernel_ppu[grid](
             A,
             B,
             workspace,
@@ -1715,12 +1752,7 @@ def _run_ppu_bmm_split_k(A, B, out, bias, alpha, beta, fuse_bias):
             aiu_load_mask=_aiu_load_mask(A, B),
             EVEN_MN=False,
         )
-        tuner = bmm_split_k_kernel_ppu
-        while not hasattr(tuner, "best_config"):
-            tuner = getattr(tuner, "fn", None)
-            if tuner is None:
-                raise RuntimeError("BMM split-K tuner did not expose best_config")
-        split_k = tuner.best_config.kwargs["SPLIT_K"]
+        split_k = launch_meta["SPLIT_K"]
         _run_ppu_bmm_reduce(workspace, out, bias, alpha, beta, split_k, fuse_bias)
     return out
 
