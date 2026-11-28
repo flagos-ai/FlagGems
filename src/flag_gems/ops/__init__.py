@@ -621,6 +621,7 @@ from flag_gems.ops.batch_norm_gather_stats import batch_norm_gather_stats
 from flag_gems.ops.batch_norm_gather_stats_with_counts import (
     batch_norm_gather_stats_with_counts,
 )
+from flag_gems.ops.batch_norm_no_update_backward import batch_norm_no_update_backward
 from flag_gems.ops.batch_norm_stats import batch_norm_stats
 from flag_gems.ops.batch_norm_update_stats import batch_norm_update_stats
 from flag_gems.ops.bernoulli import bernoulli
@@ -2384,6 +2385,7 @@ __all__ = [
     "batch_norm_elemt",
     "batch_norm_gather_stats",
     "batch_norm_gather_stats_with_counts",
+    "batch_norm_no_update_backward",
     "batch_norm_stats",
     "batch_norm_update_stats",
     "bernoulli",

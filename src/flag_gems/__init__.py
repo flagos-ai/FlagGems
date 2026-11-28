@@ -1174,6 +1174,7 @@ _FULL_CONFIG = (
     ("batch_norm_elemt", batch_norm_elemt),
     ("batch_norm_gather_stats", batch_norm_gather_stats),
     ("batch_norm_gather_stats_with_counts", batch_norm_gather_stats_with_counts),
+    ("batch_norm_no_update_backward", batch_norm_no_update_backward),
     ("batch_norm_stats", batch_norm_stats),
     ("batch_norm_update_stats", batch_norm_update_stats),
     ("bernoulli", bernoulli),
