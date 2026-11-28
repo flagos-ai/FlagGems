@@ -1616,6 +1616,12 @@ class LibEntry(triton.KernelInterface):
         def dns_arg(arg):
             if hasattr(arg, "data_ptr"):
                 return arg.dtype
+            # bool must be checked before int: isinstance(True, int) is True,
+            # but Triton compiles a bool scalar as "u1" while an int scalar
+            # becomes "i32". Keying both as "i32" lets an int-scalar launch
+            # reuse a bool-compiled kernel and corrupt the scalar value.
+            if isinstance(arg, bool):
+                return "u1"
             if not isinstance(arg, int):
                 return type(arg)
             if -(2**31) <= arg and arg <= 2**31 - 1:

@@ -61,7 +61,11 @@ def copysign_func_scalar(input, other):
     num_bits: tl.constexpr = input.dtype.primitive_bitwidth
     uint_dtype = _get_uint_dtype(num_bits)
     sign_bit_mask: tl.constexpr = _get_sign_bit_mask(num_bits)
-    other_u = other.to(uint_dtype, bitcast=True)
+    # A python scalar arrives with its own type (bool→i1, int→i32, float→fp32)
+    # whose bitwidth may differ from the input's; a bitcast requires equal
+    # widths, so reinterpret through the input's float type first.
+    other_f = other.to(input.dtype)
+    other_u = other_f.to(uint_dtype, bitcast=True)
     return tl.where((other_u & sign_bit_mask) != 0, -abs_val, abs_val)
 
 
