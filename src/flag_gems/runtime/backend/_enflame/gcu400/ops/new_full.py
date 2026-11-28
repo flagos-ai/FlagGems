@@ -107,10 +107,12 @@ def _new_full_flat_block(n_units, unit_itemsize):
     if n_units <= 8192:
         # Small sizes sit on the launch floor: one CTA with an exact tile.
         return max(2, triton.next_power_of_2(n_units))
-    cap = 131072 if unit_itemsize <= 2 else 65536
-    # Keep ~48 CTAs busy for mid sizes (a single CTA cannot saturate the
-    # write bandwidth on this device) and cap the tile for large streams.
-    return min(cap, max(_FLAT_MIN_BLOCK, triton.next_power_of_2(-(-n_units // 48))))
+    # 32Ki-unit tiles are the mid-band sweet spot (ramp-friendly: -1.4%~-4%
+    # vs 64/128Ki caps at 4-64MB) and tie the DRAM write wall at stream sizes
+    # (BLOCK is not the limiter once the 24 SIPs saturate writes: 16K-256K
+    # tiles all pin at ~3.25 TB/s), so the smaller tile also keeps DSM
+    # headroom per program.
+    return min(32768, max(_FLAT_MIN_BLOCK, triton.next_power_of_2(-(-n_units // 48))))
 
 
 def _launch_new_full_flat(store_target, n_units, value, unit_itemsize):

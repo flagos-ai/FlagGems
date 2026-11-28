@@ -56,7 +56,7 @@ def _linalg_svd(A, full_matrices=False, compute_uv=True, *, driver=None):
     convention which returns zero-filled factors; we honor the aten contract
     here.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _LINALG_SVD")
+    logger.debug("GEMS_ENFLAME _LINALG_SVD")
     # ``driver`` is validated before anything else, matching the CUDA native op,
     # which rejects an unknown driver regardless of the input dtype. The Triton
     # kernels have no driver concept -- they always compute the reduced SVD and

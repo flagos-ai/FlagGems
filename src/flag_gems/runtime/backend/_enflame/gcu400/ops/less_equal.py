@@ -32,18 +32,34 @@ twins, same board and bench protocol) plus a fresh probe for this op
 * flat 1D kernels with per-dtype DSM-bounded tiles (max_dsm = 917504 B)
   and a coverage/chunk loop kernel for the largest 16-bit shapes.
 
-Probe-validated tiers (latency vs torch native, do_bench median):
+Probe-validated tiers (latency vs torch native, do_bench median w1000/r100;
+second-round resweep after the add/logical_xor 2R1W family findings
+(probe_A..E.json, same-process interleaved A/B, anchor-first/last)):
+
+* floor attribution (probe C): the 16-bit tensor op is READ-bound - the
+  2-read floor alone is 1969.7us at 2**30 f16 vs 1992us for the full kernel,
+  so the 1-byte bool store stream is fully hidden under the reads and
+  packed/SWAR bool stores have no headroom (vetoed by measurement);
+  the dual fp16 read stream walls at ~2.18 TB/s, matching the
+  logical_xor int16 4:1 floor family (~2.75 TB/s aggregate).
+* nw=4 is pathologic at BLOCK=65536 on 2R1W streams (2**24: 55.9us f16,
+  2**30 full-grid: 3105us) and BLOCK 262144 exceeds the DSM budget
+  (required 917632/1048576 > 917504) - both vetoed.
+
   tensor (f16/bf16):
     n < 2**16                -> pointwise fallback (launch-overhead floor)
     2**16..2**22             -> flat BLOCK=16384, nw=4        (lt-validated band)
-    2**22..2**28             -> flat BLOCK=131072, nw=4       (2**24: 1.00-1.01x)
-    n >= 2**28               -> loop COV=1048576 CHUNK=131072 nw=4 st=2
-                                (2**30 f16: 1980.6us vs native 1951.8-1986.0us)
+    2**22..2**28             -> grid48 stride-loop BLOCK=65536, nw=2
+                                (2**24: f16 39.6us, bf16 38.0us vs old flat131072-nw4 41.1-41.7)
+    n >= 2**28               -> grid48 stride-loop BLOCK=65536, nw=2 (f16) / nw=1 (bf16)
+                                (2**30: f16 1992us vs old cov-nw4 2037-2065,
+                                 bf16 1932.7us vs old cov-nw4 1984.6)
   tensor (f32):
-    all n                    -> legacy persistent GSL kernel, BLOCK=65536,
-                                grid cap 48 (unchanged vendor arm; probe: it
-                                beats every flat/loop/pointwise variant at
-                                2**24 (68.9us, 1.00x) and 2**30 (3807us, 0.98x))
+    n < 2**22 / n >= 2**28   -> legacy persistent GSL kernel (unchanged vendor arm;
+                                probe: 2**30 candidates all WITHIN-NOISE of GSL)
+    2**22..2**28             -> grid48 stride-loop BLOCK=32768, nw=2
+                                (2**24: 66.8us vs GSL 68.7-68.9)
+
   scalar (f16/bf16):
     0 < n < 2**22            -> flat BLOCK=16384, nw=4
     n >= 2**22               -> flat BLOCK=262144, nw=4
@@ -105,24 +121,28 @@ def _le_cmp_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
 
 
 @triton.jit
-def _le_cmp_loop_kernel(A, B, OUT, N, COV: tl.constexpr, CHUNK: tl.constexpr):
-    base = tl.program_id(0) * COV
-    for j in range(0, COV // CHUNK):
-        off = base + j * CHUNK + tl.arange(0, CHUNK)
-        m = off < N
-        x = tl.load(A + off, mask=m, other=0)
-        y = tl.load(B + off, mask=m, other=0)
-        r = x <= y
-        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
-
-
-@triton.jit
 def _le_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     m = off < N
     x = tl.load(A + off, mask=m, other=0)
     r = x <= Y.to(x.dtype)
     tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
+
+
+@triton.jit
+def _le_cmp_gs_kernel(A, B, OUT, N, BLOCK: tl.constexpr, NST: tl.constexpr):
+    # grid-stride persistent comparison kernel (grid capped at 48 CTAs);
+    # add/logical_xor 2R1W family form, probe-validated for this op.
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    num_blocks = (N + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids, num_stages=NST):
+        off = block_id * BLOCK + tl.arange(0, BLOCK)
+        m = off < N
+        x = tl.load(A + off, mask=m, other=0)
+        y = tl.load(B + off, mask=m, other=0)
+        r = x <= y
+        tl.store(OUT + off, r.to(OUT.dtype.element_ty), mask=m)
 
 
 @libentry()
@@ -158,12 +178,10 @@ def _launch_flat(A, B, out, n, block, nw):
     return True
 
 
-def _launch_loop(A, B, out, n, cov, chunk, nw, st):
-    if n > _INT32_SAFE_LIMIT - cov:
+def _launch_gs(A, B, out, n, block, nw, grid=NUM_SIPS * 2):
+    if n > _INT32_SAFE_LIMIT - block:
         return False
-    _le_cmp_loop_kernel[(triton.cdiv(n, cov),)](
-        A, B, out, n, COV=cov, CHUNK=chunk, num_warps=nw, num_stages=st
-    )
+    _le_cmp_gs_kernel[(grid,)](A, B, out, n, BLOCK=block, NST=1, num_warps=nw)
     return True
 
 
@@ -189,17 +207,21 @@ def _le_cmp_run(A, B, out):
     """Launch the tuned comparison kernel; False falls back to pointwise."""
     n = A.numel()
     if A.dtype == torch.float32:
+        if _MID_N <= n < _BIG_N:
+            return _launch_gs(A, B, out, n, 32768, 2)
         return _launch_gsl_tensor(A, B, out)
     if n < _SMALL_N:
         return False
     if n >= _BIG_N:
-        return _launch_loop(A, B, out, n, 1048576, 131072, 4, 2)
-    return _launch_flat(A, B, out, n, (131072 if n >= _MID_N else 16384), 4)
+        nw = 2 if A.dtype == torch.float16 else 1
+        return _launch_gs(A, B, out, n, 65536, nw)
+    if n >= _MID_N:
+        return _launch_gs(A, B, out, n, 65536, 2)
+    return _launch_flat(A, B, out, n, 16384, 4)
 
 
 def less_equal(A, B):
-    # Constant logging is disabled (fix4 equivalent rewrite)
-    logger.debug("GEMS_ENFLAME_GCU400 LESS_EQUAL")
+    # Constant logging is disabled (equivalent rewrite in fix4)
     if (
         isinstance(B, torch.Tensor)
         and A.device == B.device

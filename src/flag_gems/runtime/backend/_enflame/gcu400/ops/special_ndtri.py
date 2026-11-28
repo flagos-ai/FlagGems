@@ -183,7 +183,7 @@ _SUPPORTED_DTYPES = (torch.float32, torch.float64)
 
 
 def special_ndtri(self):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_NDTRI")
+    logger.debug("GEMS_ENFLAME SPECIAL_NDTRI")
     if self.dtype not in _SUPPORTED_DTYPES:
         raise NotImplementedError(
             f"\"ndtri\" not implemented for '{self.dtype}'; supported dtypes are "

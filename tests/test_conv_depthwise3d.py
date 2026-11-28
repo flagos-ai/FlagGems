@@ -11,7 +11,18 @@ SHAPE_DEPTHWISE = [
     ((2, 8, 5, 7, 9), (8, 1, 3, 3, 3), (3, 3, 3)),
 ]
 
+# torch_gcu provides no PrivateUse1 kernel for aten::conv_depthwise3d, and the
+# operator has no CPU implementation at all (see the comment on the reference
+# call below), so on that backend there is no way to build the golden value:
+# the PrivateUse1 fallback lands on a missing CPU kernel and raises. Skip the
+# module there rather than comparing against a different operator.
+ATEN_REFERENCE_UNSUPPORTED = flag_gems.vendor_name == "enflame"
 
+
+@pytest.mark.skipif(
+    ATEN_REFERENCE_UNSUPPORTED,
+    reason="aten::conv_depthwise3d has no PrivateUse1 nor CPU kernel on this backend",
+)
 @pytest.mark.conv_depthwise3d
 @pytest.mark.parametrize("shape_input, shape_weight, kernel", SHAPE_DEPTHWISE)
 @pytest.mark.parametrize("stride", [[1, 1, 1], [2, 2, 2]])

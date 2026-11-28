@@ -9,7 +9,7 @@ from . import accuracy_utils as utils
 # backend a float64 request is silently downgraded to float32, so it can never
 # match a true-fp64 reference; skip fp64 on that backend only. Every other
 # vendor keeps running float64 exactly as before.
-_SKIP_FP64_ON_VENDORS = pytest.mark.skipif(
+_SKIP_FP64_ON_KUNLUNXIN = pytest.mark.skipif(
     flag_gems.runtime.device.vendor_name in ("kunlunxin", "enflame"),
     reason=(
         "Kunlunxin XPU has no real float64 (silently downgraded to float32); "
@@ -18,7 +18,7 @@ _SKIP_FP64_ON_VENDORS = pytest.mark.skipif(
 )
 FLOAT_DTYPES = [
     torch.float32,
-    pytest.param(torch.float64, marks=_SKIP_FP64_ON_VENDORS),
+    pytest.param(torch.float64, marks=_SKIP_FP64_ON_KUNLUNXIN),
 ]
 
 # Pointwise shapes covering small, medium, and batched 2D tensors
@@ -35,4 +35,7 @@ def test_special_bessel_j0(shape, dtype):
     ref_inp = utils.to_reference(inp)
     ref_out = torch.special.bessel_j0(ref_inp)
     res_out = flag_gems.special_bessel_j0(inp)
+    assert res_out.device == inp.device
+    assert res_out.dtype == inp.dtype
+    assert res_out.shape == inp.shape
     utils.gems_assert_close(res_out, ref_out, dtype)

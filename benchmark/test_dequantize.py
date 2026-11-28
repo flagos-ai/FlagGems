@@ -15,7 +15,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base
+
+# A quantized GCU tensor carries the QuantizedCPU dispatch key with a gcu
+# device label, so the dispatched torch.dequantize falls through to the ATen
+# dequantize stub, which has no gcu kernel.  On enflame the candidate leg is
+# therefore the FlagGems implementation itself (see the skip_native reason).
+_ENFLAME = flag_gems.vendor_name == "enflame"
 
 
 def _input_fn(shape, dtype, device):
@@ -27,6 +35,13 @@ def _input_fn(shape, dtype, device):
     yield q_tensor,
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="aten::dequantize has no GCU kernel: a quantized GCU tensor keeps "
+    "the QuantizedCPU dispatch key with a gcu device label, so the ATen "
+    "dequantize stub answers 'DispatchStub: missing kernel for gcu' and "
+    "there is no native baseline to time",
+)
 @pytest.mark.dequantize
 def test_dequantize():
     # Dequantize operates on quantized tensor input;
@@ -36,5 +51,6 @@ def test_dequantize():
         input_fn=_input_fn,
         dtypes=[torch.qint8],
         torch_op=torch.dequantize,
+        gems_op=flag_gems.dequantize if _ENFLAME else None,
     )
     bench.run()

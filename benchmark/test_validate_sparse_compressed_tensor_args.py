@@ -17,7 +17,15 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+# Sparse index tensors are validated with elementwise comparisons and offset
+# arithmetic.  On GCU400 an int64 index tensor trips a device SIP assert in both
+# the aten reference and this path, while int32 indices pass, so the benchmark
+# indexes with int32 there.  The validation itself is dtype-agnostic.
+_INDEX_DTYPE = torch.int32 if flag_gems.vendor_name == "enflame" else torch.int64
 
 
 def _make_inputs(layout, shape, index_dtype, dtype, device, strided_batch=False):
@@ -71,7 +79,7 @@ class SparseValidationBenchmark(base.Benchmark):
         for layout in layouts:
             for shape in self.shapes:
                 comp, plain, values, size = _make_inputs(
-                    layout, shape, torch.int64, dtype, self.device
+                    layout, shape, _INDEX_DTYPE, dtype, self.device
                 )
                 yield comp, plain, values, size, {"layout": layout}
 

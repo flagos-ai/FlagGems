@@ -17,12 +17,18 @@ import math
 
 import torch
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.ops.attention import (
     scaled_dot_product_attention_forward as _generic_attention_forward,
 )
 
 from .attention import scaled_dot_product_attention_forward
+
+# The backend kernel uses HEAD_DIM_ACTUAL to apply a zero-padding mask on head_dim inside the kernel, so it can directly
+# consume
+# non-power-of-2 head_dim (D=72 verified); therefore only extremely large head_dim values are left to the generic
+# implementation.
+_BACKEND_MAX_HEAD_DIM = 256
 
 logger = logging.getLogger(__name__)
 
@@ -32,11 +38,6 @@ logger = logging.getLogger(__name__)
 # the boundary so the autograd-saved LSE is numerically correct -- the same
 # contract as ``_scaled_dot_product_efficient_attention``.
 _LN2 = math.log(2.0)
-
-# Head dims the gcu400 attention kernels take directly. Anything else
-# (non power-of-two) falls back to the generic path, which pads the head
-# dimension inside its kernel instead of asserting.
-_GCU_HEAD_DIMS = (16, 32, 64, 128, 256)
 
 
 def _scaled_dot_product_cudnn_attention(
@@ -74,31 +75,32 @@ def _scaled_dot_product_cudnn_attention(
     """
     logger.debug("GEMS_ENFLAME _SCALED_DOT_PRODUCT_CUDNN_ATTENTION")
 
-    # Route through the backend's own gcu400 attention whenever its kernels
-    # support the shape: the no-max fast path is the cheapest formulation
-    # measured on GCU400, and its autotune space only carries launch-safe
-    # configs. Shapes the backend kernels reject keep the generic
-    # implementation: non power-of-two head dims (padded in-kernel there) and
-    # broadcastable attn_bias layouts. The backend host indexes the bias
-    # through its raw strides, so a [1,1,Sq,Sk] tensor would be read out of
-    # bounds; the generic path normalizes broadcast dims to zero stride.
+    # Always use the enflame backend's own gcu400 attention: on the host side, use broadcasted_stride
+    # to collapse singleton/missing dims into zero strides, and route masks with "zero q-dim stride" ([B,1,1,Sk] /
+    # [Sq,Sk] / expanded [B,H,Sq,Sk]) through MASK_Q_BROADCAST's 1D load branch.
+    # The generic implementation flag_gems.ops.attention has no such branch; a 2D mask tile with zero stride
+    # faults the GCU device (measured Aborted / core dumped), so it cannot serve as a fallback for
+    # broadcastable bias; only shapes beyond the backend's head_dim capability fall back to the generic implementation.
     head_dim = query.shape[-1]
-    full_shape_bias = attn_bias is None or (
-        attn_bias.dim() == 4
-        and attn_bias.shape[0] == query.shape[0]
-        and attn_bias.shape[1] == query.shape[1]
-        and attn_bias.shape[2] == query.shape[2]
-        and attn_bias.shape[3] == key.shape[2]
-    )
-    if head_dim in _GCU_HEAD_DIMS and full_shape_bias:
+    if head_dim <= _BACKEND_MAX_HEAD_DIM:
         attention_forward = scaled_dot_product_attention_forward
     else:
         attention_forward = _generic_attention_forward
 
+    # Only the backend's own attention forward supports pushing the ln2 conversion down into the kernel.
+    lse_base_e_supported = attention_forward is scaled_dot_product_attention_forward
+
     # Convert attn_bias to attn_mask if provided
     attn_mask = attn_bias
 
-    # Call the attention forward implementation selected above
+    # Call the attention forward implementation selected above.
+    # ``lse_base_e`` lets the backend fast path produce the natural-log LSE directly inside the kernel, saving one
+    # elementwise launch of ``m * ln2`` (on small shapes this step is on par with the main kernel);
+    # on non-fast paths, attention forward fills it in-place internally, with results consistent with host-side
+    # conversion.
+    forward_kwargs = {}
+    if lse_base_e_supported:
+        forward_kwargs["lse_base_e"] = bool(compute_log_sumexp)
     output, m = attention_forward(
         query,
         key,
@@ -108,13 +110,13 @@ def _scaled_dot_product_cudnn_attention(
         is_causal=is_causal,
         scale=scale,
         enable_gqa=False,
+        **forward_kwargs,
     )
 
-    # Compute logsumexp from m if needed. The forward kernels return the
-    # log2-domain row statistic; the aten contract (and every backward that
-    # consumes it) expects the natural-log LSE, so rescale here.
+    # The aten contract (and every backward that consumes it) expects the
+    # natural-log LSE.
     if compute_log_sumexp:
-        logsumexp = m * _LN2
+        logsumexp = m if lse_base_e_supported else m * _LN2
     else:
         logsumexp = torch.empty(0, device=query.device, dtype=torch.float32)
 
@@ -174,25 +176,3 @@ def _scaled_dot_product_cudnn_attention(
 # ---------------------------------------------------------------------------
 _CUDNN_ATTN_FWD_KEY_FLAG = "_flag_gems_gcu400_cudnn_attn_fwd_key_registered"
 _CUDNN_ATTN_FWD_LIBRARY = None
-
-
-def _ensure_cudnn_attn_fwd_key_registration():
-    global _CUDNN_ATTN_FWD_LIBRARY
-    if getattr(torch, _CUDNN_ATTN_FWD_KEY_FLAG, False):
-        return
-    _CUDNN_ATTN_FWD_LIBRARY = torch.library.Library("aten", "IMPL")
-    try:
-        _CUDNN_ATTN_FWD_LIBRARY.impl(
-            "_scaled_dot_product_cudnn_attention",
-            _scaled_dot_product_cudnn_attention,
-            runtime.device.dispatch_key,
-        )
-    except RuntimeError as error:
-        logger.warning(
-            "_scaled_dot_product_cudnn_attention device-key registration skipped: %s",
-            error,
-        )
-    setattr(torch, _CUDNN_ATTN_FWD_KEY_FLAG, True)
-
-
-_ensure_cudnn_attn_fwd_key_registration()

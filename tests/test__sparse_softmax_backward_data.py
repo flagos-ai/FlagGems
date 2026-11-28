@@ -261,6 +261,12 @@ def test__sparse_softmax_backward_data_wide_support(dtype):
 @pytest.mark.parametrize("shape", tu.selected_cases([(5, 7)], quick=[]))
 @pytest.mark.parametrize("dtype", SUPPORTED_DTYPES)
 def test__sparse_softmax_backward_data_out(shape, dtype):
+    if flag_gems.vendor_name == "enflame":
+        pytest.skip(
+            "torch_gcu defect (aten out=): aten::_sparse_softmax_backward_data.out only updates the "
+            "stored count, not indices/values, so the reference buffer is untrustworthy; "
+            "1 case of this function fails because of it"
+        )
     grad, output, self_tensor = _make_inputs(Row(shape, -1, 2, ["-1", "1"]), dtype)
 
     # The sparse out overload is callable on the active backend and is invoked

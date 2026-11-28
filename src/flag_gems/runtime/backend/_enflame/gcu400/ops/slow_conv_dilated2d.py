@@ -64,7 +64,7 @@ import torch
 import triton
 import triton.language as tl
 
-from flag_gems import runtime
+from flag_gems import runtime  # noqa: F401
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -658,6 +658,205 @@ def _scd2d_fwd_elem_kernel(
         )
 
 
+@triton.jit
+def _scd2d_row_accumulate(base, wptr, acc, mask, C_IN, C_IN_C, XSC, WSC, ACC_DTYPE):
+    """Per-tap ci accumulation: ``acc += sum_ci x[base + ci*XSC] * w[wptr + ci*WSC]``.
+
+    With ``C_IN_C > 0`` the ci loop is unrolled at compile time -- the scalar weight loads become
+    independent and the compiler can issue them early, avoiding "one load latency chains the whole
+    dependency graph"; measured 1.2-1.3x faster on fp32 large planes. ``C_IN_C == 0`` keeps the
+    runtime loop so a huge c_in cannot blow up kernel size.
+    """
+    if C_IN_C > 0:
+        for ci in tl.static_range(C_IN_C):
+            xv = tl.load(base + ci * XSC, mask=mask, other=0.0).to(ACC_DTYPE)
+            wv = tl.load(wptr + ci * WSC).to(ACC_DTYPE)
+            acc += xv * wv
+    else:
+        for ci in range(0, C_IN):
+            xv = tl.load(base + ci * XSC, mask=mask, other=0.0).to(ACC_DTYPE)
+            wv = tl.load(wptr + ci * WSC).to(ACC_DTYPE)
+            acc += xv * wv
+    return acc
+
+
+@triton.jit
+def _scd2d_fwd_row_kernel(
+    X,
+    Wp,
+    Bp,
+    O,
+    C_IN,
+    TOTAL_TILES,
+    NUM_PROGRAMS,
+    XSN: tl.constexpr,
+    XSC: tl.constexpr,
+    XSH: tl.constexpr,
+    XSW: tl.constexpr,
+    WSN: tl.constexpr,
+    WSC: tl.constexpr,
+    WSKH: tl.constexpr,
+    WSKW: tl.constexpr,
+    OSN: tl.constexpr,
+    OSC: tl.constexpr,
+    OSH: tl.constexpr,
+    OSW: tl.constexpr,
+    BSN: tl.constexpr,
+    H_IN: tl.constexpr,
+    W_IN: tl.constexpr,
+    H_OUT: tl.constexpr,
+    W_OUT: tl.constexpr,
+    TILES_W: tl.constexpr,
+    C_OUT: tl.constexpr,
+    K_H: tl.constexpr,
+    K_W: tl.constexpr,
+    S_H: tl.constexpr,
+    S_W: tl.constexpr,
+    P_H: tl.constexpr,
+    P_W: tl.constexpr,
+    D_H: tl.constexpr,
+    D_W: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    BLOCK_W: tl.constexpr,
+    C_IN_C: tl.constexpr,
+    ACC_DTYPE: tl.constexpr,
+    OUT_DTYPE: tl.constexpr,
+):
+    """fp32 forward row-tile persistent kernel (per-output-channel outer product form).
+
+    A tile is BLOCK_W consecutive columns of one output row of some (n, co): the row index is a
+    scalar and the column a lane-incrementing vector, so the input load strides are constant per
+    lane -- a truly regular access that reaches the vector/coalesced path. On the payload side the
+    inner dim is pixels rather than taps, so each tap needs one vector load + one scalar weight
+    load + one vector FMA, avoiding a per-output-point gather along the tap axis (a GCU400 gather
+    costs one transaction per lane).
+    The grid is persistent: the CTA count is fixed at NUM_PROGRAMS (a single CTA costs ~2us fixed,
+    and at a hundred thousand CTAs it becomes the dominant term), each CTA striding over tiles.
+    fp32 has no tensor-core dot and the shared dot kernel trips GCUTritonFusionPass's
+    PassManager execution failed on this backend, so fp32 can only take this path.
+    """
+    pid = tl.program_id(0)
+    lane = tl.arange(0, BLOCK_W)
+    for tile in tl.range(pid, TOTAL_TILES, NUM_PROGRAMS):
+        tile_w = tile % TILES_W
+        rest = tile // TILES_W
+        oh = rest % H_OUT
+        rest = rest // H_OUT
+        co = rest % C_OUT
+        n = rest // C_OUT
+
+        ow = tile_w * BLOCK_W + lane
+        mask_w = ow < W_OUT
+        acc = tl.zeros((BLOCK_W,), ACC_DTYPE)
+
+        for kh in tl.static_range(K_H):
+            ih = oh * S_H - P_H + kh * D_H
+            row_ok = (ih >= 0) & (ih < H_IN)
+            base_h = n * XSN + ih * XSH
+            for kw in tl.static_range(K_W):
+                iw = ow * S_W - P_W + kw * D_W
+                mask = mask_w & row_ok & (iw >= 0) & (iw < W_IN)
+                base = X + base_h + iw * XSW
+                wptr = Wp + co * WSN + kh * WSKH + kw * WSKW
+                acc = _scd2d_row_accumulate(
+                    base, wptr, acc, mask, C_IN, C_IN_C, XSC, WSC, ACC_DTYPE
+                )
+
+        if HAS_BIAS:
+            acc += tl.load(Bp + co * BSN).to(ACC_DTYPE)
+
+        tl.store(
+            O + n * OSN + co * OSC + oh * OSH + ow * OSW,
+            acc.to(OUT_DTYPE),
+            mask=mask_w,
+        )
+
+
+# Applicability boundary of the row-tile kernel (measured over 7 benchmark cases):
+#   row tiling is clearly faster when w_out >= 32 or k_tot <= 64 (2.3~2.5x on large planes);
+#   for small planes + long contraction (e.g. 16x16 output, k_tot=288) each row has only a dozen or so lanes,
+#   and row tiling degrades to 0.04x, so keep the per-output-point kernel in that case.
+_ROW_MIN_W_OUT = 32
+_ROW_MAX_K_TOT = 64
+# Number of CTAs for the persistent grid: around 768 is optimal in measurements (larger brings back fixed CTA overhead,
+# smaller gives insufficient parallelism).
+_ROW_PROGRAMS = 768
+_ROW_MIN_PROGRAMS = 32
+_ROW_MAX_BLOCK_W = 256
+# Upper bound on contraction length for unrolling the ci loop: beyond this, fall back to a runtime loop to avoid kernel
+# code-size explosion.
+# Measured: unrolling is best at k_tot=72; at k_tot=144 unrolling instead drags 2.2x down to 1.15x (register pressure).
+_ROW_MAX_UNROLL_K = 96
+
+
+def _launch_row(x, weight, bias, out, dims):
+    """Host side of the fp32 row-tile persistent path (tile partition + fixed CTA count)."""
+    k_h, k_w, s_h, s_w, p_h, p_w, d_h, d_w, h_out, w_out, _unbatched = dims
+    c_out = weight.shape[0]
+    c_in = x.shape[1]
+    n = x.shape[0]
+    k_tot = c_in * k_h * k_w
+
+    # Fix at 256 lanes: on the GCUTritonFusionPass backend the cost of vector ops is nearly independent of lane count,
+    # and narrow tiles (e.g. 32 lanes when w_out=32) measure 1.8x slower than 256 lanes.
+    block_w = _ROW_MAX_BLOCK_W
+    tiles_w = triton.cdiv(w_out, block_w)
+    total_tiles = n * c_out * h_out * tiles_w
+    programs = max(_ROW_MIN_PROGRAMS, min(total_tiles, _ROW_PROGRAMS))
+
+    x_sn, x_sc, x_sh, x_sw = x.stride()
+    w_sn, w_sc, w_skh, w_skw = weight.stride()
+    o_sn, o_sc, o_sh, o_sw = out.stride()
+    has_bias = bias is not None
+    b_arg = bias if has_bias else x
+    b_sn = bias.stride(0) if has_bias else 0
+
+    _scd2d_fwd_row_kernel[(programs,)](
+        x,
+        weight,
+        b_arg,
+        out,
+        c_in,
+        total_tiles,
+        programs,
+        x_sn,
+        x_sc,
+        x_sh,
+        x_sw,
+        w_sn,
+        w_sc,
+        w_skh,
+        w_skw,
+        o_sn,
+        o_sc,
+        o_sh,
+        o_sw,
+        b_sn,
+        x.shape[2],
+        x.shape[3],
+        h_out,
+        w_out,
+        tiles_w,
+        c_out,
+        k_h,
+        k_w,
+        s_h,
+        s_w,
+        p_h,
+        p_w,
+        d_h,
+        d_w,
+        has_bias,
+        block_w,
+        # Unroll the ci loop when the contraction is not long (see _scd2d_row_accumulate).
+        c_in if k_tot <= _ROW_MAX_UNROLL_K else 0,
+        tl.float64 if x.dtype == torch.float64 else tl.float32,
+        _scd2d_dtype_constexpr(out.dtype),
+        num_warps=2,
+    )
+    return out
+
+
 def _scd2d_dtype_constexpr(dtype):
     if dtype == torch.float16:
         return tl.float16
@@ -676,6 +875,12 @@ def _launch(x, weight, bias, out, dims):
     n = x.shape[0]
     hw_out = h_out * w_out
     k_tot = c_in * k_h * k_w
+
+    # fp32 takes the persistent row-tile path (see _scd2d_fwd_row_kernel and the applicability-boundary constants).
+    if x.dtype == torch.float32 and (
+        w_out >= _ROW_MIN_W_OUT or k_tot <= _ROW_MAX_K_TOT
+    ):
+        return _launch_row(x, weight, bias, out, dims)
 
     x_sn, x_sc, x_sh, x_sw = x.stride()
     w_sn, w_sc, w_skh, w_skw = weight.stride()
@@ -820,7 +1025,7 @@ def slow_conv_dilated2d(
     out=None,
 ):
     """Compute ``slow_conv_dilated2d``; see ``_run`` for the argument defaults."""
-    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_DILATED2D")
+    logger.debug("GEMS_ENFLAME SLOW_CONV_DILATED2D")
     return _run(self, weight, kernel_size, bias, stride, padding, dilation, out)
 
 
@@ -842,7 +1047,7 @@ def slow_conv_dilated2d_out(
     an extra full-size device copy.  Registering the overload lets the kernel
     write the destination directly.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 SLOW_CONV_DILATED2D_OUT")
+    logger.debug("GEMS_ENFLAME SLOW_CONV_DILATED2D_OUT")
     return _run(self, weight, kernel_size, bias, stride, padding, dilation, out)
 
 
@@ -889,21 +1094,4 @@ _CUDA_KEY_INSTALL_FLAG = "_flaggems_gcu400_slow_conv_dilated2d_cuda_key"
 _CUDA_KEY_LIBRARY = None
 
 
-def _install_cuda_key_alias():
-    global _CUDA_KEY_LIBRARY
-    if runtime.device.name == "cuda":
-        return
-    if getattr(torch, _CUDA_KEY_INSTALL_FLAG, False):
-        return
-    try:
-        library = torch.library.Library("aten", "IMPL")
-        library.impl("slow_conv_dilated2d.out", slow_conv_dilated2d_out, "CUDA")
-    except RuntimeError as error:
-        logger.warning("slow_conv_dilated2d gcu400 CUDA-key alias skipped: %s", error)
-        return
-    _CUDA_KEY_LIBRARY = library
-    setattr(torch, _CUDA_KEY_INSTALL_FLAG, True)
-
-
 _rebind_generic_entry_points()
-_install_cuda_key_alias()

@@ -421,7 +421,7 @@ def _collapse(sizes, xs, ns):
 
 
 def special_hermite_polynomial_h(x, n):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_HERMITE_POLYNOMIAL_H")
+    logger.debug("GEMS_ENFLAME SPECIAL_HERMITE_POLYNOMIAL_H")
     if not isinstance(x, torch.Tensor):
         raise ValueError("First argument must be a tensor")
     if x.dtype not in (torch.float32, torch.float64):

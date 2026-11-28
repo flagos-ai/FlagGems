@@ -51,8 +51,9 @@ FULL_RUN=false
 
 if [[ "$CHANGED_FILES" == "__ALL__" ]]; then
   FULL_RUN=true
-  # Replace "__ALL__" with all tests
-  CHANGED_FILES=$(find tests -name "test*.py")
+  # Replace "__ALL__" with all tests; skip deprecated/ (those ops have
+  # migrated to FlagGems-vllm and are retained only for backward compatibility).
+  CHANGED_FILES=$(find tests -name "test*.py" -not -path "tests/deprecated/*")
   # add options to generate summary report
   EXTRA_OPTS="--md-report"
   EXTRA_OPTS+=" --md-report-verbose=1"
@@ -79,11 +80,18 @@ NO_QUICK_CPU_TESTS=(
   "tests/test_libentry.py"
   "tests/test_pointwise_type_promotion.py"
   "tests/test_quant.py"
+  "tests/test_rms_norm_w8a16_fp8.py"
   "tests/test_shape_utils.py"
   "tests/test_tensor_wrapper.py"
   "tests/test_conv_depthwise2d.py"
   "tests/test_conv_depthwise3d.py"
   "tests/test_cudnn_convolution_transpose.py"
+)
+
+# Benchmark test cases that should not run on generic NVIDIA/CPU environments
+# (vendor-specific or hardware-specific tests)
+NO_KERNEL_CHECK_TESTS=(
+  "benchmark/test_rms_norm_w8a16_fp8.py"
 )
 
 # Extract test cases from CHANGED_FILES
@@ -94,7 +102,31 @@ TEST_CASES_CPU=()
 # but bring no test file of their own. We still want to exercise them, selected
 # by pytest marker below.
 OPS_IMPL_FILES=()
+declare -A DAILY_PYTHON_OP_BLACKLIST=()
+if $FULL_RUN && [[ "${DAILY_PYTHON_OP:-}" == "1" ]]; then
+  while read -r test_file _reason; do
+    [[ -z "$test_file" || "$test_file" == \#* ]] && continue
+    DAILY_PYTHON_OP_BLACKLIST["$test_file"]=1
+  done < "$(dirname "${BASH_SOURCE[0]}")/daily-python-op-blacklist.txt"
+fi
+declare -A ASCEND_DAILY_OP_BLACKLIST=()
+if $FULL_RUN && [[ "${BACKEND:-}" == *ascend* ]]; then
+  while read -r test_file _reason; do
+    [[ -z "$test_file" || "$test_file" == \#* ]] && continue
+    ASCEND_DAILY_OP_BLACKLIST["$test_file"]=1
+  done < "$(dirname "${BASH_SOURCE[0]}")/ascend-daily-op-blacklist.txt"
+fi
 for item in $CHANGED_FILES; do
+  if [[ -n "${DAILY_PYTHON_OP_BLACKLIST[$item]:-}" ]]; then
+    echo "Skipping daily python-op blacklist: $item"
+    continue
+  fi
+  if [[ -n "${ASCEND_DAILY_OP_BLACKLIST[$item]:-}" ]]; then
+    # skip on Ascend daily run: CANN 9.1.1 / BiShengHIR compiler limitation
+    # TODO: unblock each test once the underlying issue is resolved
+    echo "Skipping Ascend daily-op blacklist: $item"
+    continue
+  fi
   file_name=$(basename "$item")
   case $item in
     tests/test_quant.py)
@@ -253,10 +285,19 @@ if $FULL_RUN && [[ ${#TEST_CASES[@]} -gt 0 ]]; then
   fi
 else
   # Per-PR run: a handful of changed files, run individually for precise
-  # failure attribution and -x fail-fast.
+  # failure attribution and -x fail-fast. Guard each file with the same shell
+  # timeout as the batched daily runs, and print node ids, so a hung test fails
+  # with rc=124 and leaves the last started test in the log instead of blocking
+  # the job until the workflow timeout.
   for item in "${TEST_CASES[@]}"; do
     echo "Running unit tests for ${item}"
-    if ! coverage run -m pytest -s ${EXTRA_OPTS} ${item}; then
+    PYTHONUNBUFFERED=1 timeout "${TEST_BATCH_TIMEOUT:-3600}" \
+      coverage run -m pytest -s -v ${EXTRA_OPTS} ${item}
+    rc=$?
+    if [[ $rc -ne 0 ]]; then
+      if [[ $rc -eq 124 ]]; then
+        echo "::error::${item} timed out after ${TEST_BATCH_TIMEOUT:-3600}s"
+      fi
       if $FAIL_FAST; then exit 1; fi
       FAILURES+=("${item}")
     fi
@@ -358,6 +399,20 @@ for marker in "${OPS_MARKERS[@]}"; do
 done
 
 for item in "${KERNEL_CHECK_EXTRAS[@]}"; do
+  # Skip vendor-specific/hardware-specific benchmark tests
+  skip_kernel_check=0
+  for skip_test in "${NO_KERNEL_CHECK_TESTS[@]}"; do
+    if [[ "$item" == "$skip_test" ]]; then
+      skip_kernel_check=1
+      break
+    fi
+  done
+
+  if [[ $skip_kernel_check -eq 1 ]]; then
+    echo "Skipping kernel-check for ${item} (vendor-specific test)"
+    continue
+  fi
+
   echo "Running kernel-check for ${item} (derived from changed operator)"
   if ! pytest -s ${item} --kernel-check; then
     if $FAIL_FAST; then exit 1; fi

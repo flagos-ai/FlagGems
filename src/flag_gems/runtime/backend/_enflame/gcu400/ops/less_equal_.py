@@ -37,18 +37,34 @@ instead (probe-validated tiers, sibling of greater_equal / eq):
   to the template.
 
 Probe-validated tiers (L600, do_bench kernel-mode median vs torch native,
-2026-11-13):
+2026-11-13; 2^22/2^24/2^26/2^28/2^30 re-probed 2026-11-16 r1/r2):
 
   tensor  n < 2**16               -> generic pointwise (launch floor ~1.4x)
   tensor  2**16..2**22            -> flat BLOCK=np2(cdiv(n,16)) in [4096,65536] nw4
-  tensor  2**22..2**28 (f16/bf16) -> flat BLOCK=65536 nw2           (~0.98-1.01x)
-  tensor  2**22..2**28 (f32)      -> flat BLOCK=32768 nw2           (~1.01x)
-  tensor  n >= 2**28 (f16/bf16)   -> loop COV=524288 CHUNK=131072 nw2 st2 (~1.04-1.06x)
-  tensor  n >= 2**28 (f32)        -> strided BLOCK=65536 grid=48 nw4 (~1.05x)
+  tensor  2**22..2**28 (f16/bf16) -> strided 48xB=65536 nw2 (2026-11-16:
+                                     2^22 -10.4% / 2^24 -3.6% / 2^26 -1.1%
+                                     vs flat 65536 nw2); N%65536==0 uses the
+                                     mask-free strided form (-0.3% more)
+  tensor  2**22..2**28 (f32)      -> strided 48xB=32768 nw2 (2^22 -4.4% /
+                                     2^24 -2.0% vs flat 32768 nw2);
+                                     N%32768==0 uses the mask-free form
+  tensor  n >= 2**28 (f16/bf16)   -> N%131072==0: strided 48xB=131072 nw4
+                                     mask-free (2^28 -1.6%, 2^30 flat vs
+                                     loop); ragged N: loop COV=524288
+                                     CHUNK=131072 nw2 st2 (masked strided
+                                     loses at 2^30, +1.1% r1)
+  tensor  n >= 2**28 (f32)        -> strided BLOCK=65536 grid=48 nw4 (B=32768
+                                     nw2 WITHIN-NOISE at 2^30, worse at 2^28)
   scalar  n < 2**16               -> generic pointwise (launch floor ~1.5x)
   scalar  2**16..2**22            -> flat BLOCK=np2(cdiv(n,16)) in [4096,65536] nw4
   scalar  2**22..2**28            -> flat BLOCK=131072 (f16/bf16) / 65536 (f32) nw4
   scalar  n >= 2**28              -> flat BLOCK=262144 (f16/bf16) / 131072 (f32) nw4
+
+2026-11-16 scalpel round (do_bench median, fresh-process r1/r2): the flat
+grid pays a tail-wave tax at 2^22+ (grid 64/256 vs 48 concurrent CTAs) and
+the persistent strided form removes it; nw4 at 2^24 f16 (48.1us) and
+grid=96 at 2^22 f16 (16.9us) stay vetoed; scalar tiers and f32 >=2^28 are
+WITHIN-NOISE vs candidates, kept unchanged.
 
 ``less_equal_func`` / ``less_equal_func_scalar`` (the pointwise template)
 remain the fallback, so untuned corners keep their previous behaviour.
@@ -123,6 +139,19 @@ def _le_cmp_strided_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
 
 
 @triton.jit
+def _le_cmp_strided_even_kernel(A, B, OUT, N, BLOCK: tl.constexpr):
+    # caller guarantees N % BLOCK == 0 -> every tile is full, no tail mask
+    pid = tl.program_id(0)
+    num_ctas = tl.num_programs(0)
+    for tile in tl.range(pid, tl.cdiv(N, BLOCK), num_ctas):
+        off = tile * BLOCK + tl.arange(0, BLOCK)
+        x = tl.load(A + off)
+        y = tl.load(B + off)
+        r = x <= y
+        tl.store(OUT + off, r.to(OUT.dtype.element_ty))
+
+
+@triton.jit
 def _le_cmp_scalar_kernel(A, OUT, N, Y, BLOCK: tl.constexpr):
     off = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
     m = off < N
@@ -167,19 +196,57 @@ def _le_cmp_run(A, B, out):
                 )
             )
             return True
-        block, nw = (32768, 2) if n >= _MID_N else (_mid_block(n), 4)
+        if n >= _MID_N:
+            # 2026-11-16 r1/r2 do_bench: 48-CTA persistent strided B=32768 nw2
+            # beats flat 32768 nw2 across the band (2^22 -4.4% / 2^24 -2.0% /
+            # 2^26 -0.1%); exact multiples drop the tail mask for -0.2% more.
+            if n > _INT32_SAFE_LIMIT - 32768:
+                return False
+            kernel = (
+                _le_cmp_strided_even_kernel
+                if n % 32768 == 0
+                else _le_cmp_strided_kernel
+            )
+            _launch_with_retry(
+                lambda: kernel[(_NPROGS,)](A, B, out, n, BLOCK=32768, num_warps=2)
+            )
+            return True
+        block, nw = _mid_block(n), 4
     else:
         if n >= _BIG_N:
-            cov = 524288
-            if n > _INT32_SAFE_LIMIT - cov:
+            # ragged n keeps the loop (masked strided loses at 2^30);
+            # exact multiples take the mask-free strided form (2^28 -1.6%).
+            if n % 131072 == 0 and n <= _INT32_SAFE_LIMIT - 131072:
+                _launch_with_retry(
+                    lambda: _le_cmp_strided_even_kernel[(_NPROGS,)](
+                        A, B, out, n, BLOCK=131072, num_warps=4
+                    )
+                )
+                return True
+            if n > _INT32_SAFE_LIMIT - 524288:
                 return False
             _launch_with_retry(
-                lambda: _le_cmp_loop_kernel[(triton.cdiv(n, cov),)](
-                    A, B, out, n, COV=cov, CHUNK=131072, ST=2, num_warps=2
+                lambda: _le_cmp_loop_kernel[(triton.cdiv(n, 524288),)](
+                    A, B, out, n, COV=524288, CHUNK=131072, ST=2, num_warps=2
                 )
             )
             return True
-        block, nw = (65536, 2) if n >= _MID_N else (_mid_block(n), 4)
+        if n >= _MID_N:
+            # 2026-11-16 r1/r2 do_bench: 48-CTA persistent strided kills the
+            # flat grid's tail wave (2^22 -10.4% / 2^24 -3.6% / 2^26 -1.1%);
+            # exact multiples drop the tail mask (2^24 -3.9% vs flat).
+            if n > _INT32_SAFE_LIMIT - 65536:
+                return False
+            kernel = (
+                _le_cmp_strided_even_kernel
+                if n % 65536 == 0
+                else _le_cmp_strided_kernel
+            )
+            _launch_with_retry(
+                lambda: kernel[(_NPROGS,)](A, B, out, n, BLOCK=65536, num_warps=2)
+            )
+            return True
+        block, nw = _mid_block(n), 4
     if n > _INT32_SAFE_LIMIT - block:
         return False
     _launch_with_retry(
@@ -191,7 +258,7 @@ def _le_cmp_run(A, B, out):
 
 
 def less_equal_(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 LESS_EQUAL_")
+    logger.debug("GEMS_ENFLAME LESS_EQUAL_")
     if (
         isinstance(B, torch.Tensor)
         and A.dtype == B.dtype
@@ -207,7 +274,7 @@ def less_equal_(A, B):
 
 
 def less_equal_scalar_(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 LESS_EQUAL_SCALAR_")
+    logger.debug("GEMS_ENFLAME LESS_EQUAL_SCALAR_")
     if (
         isinstance(B, (int, float))
         and not isinstance(B, bool)

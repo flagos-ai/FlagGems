@@ -17,9 +17,15 @@ import logging
 
 import torch
 
+import flag_gems
+
+from .lift_fresh_copy import _launch_copy
+
 logger = logging.getLogger(__name__)
 
-_COPY = torch.Tensor.copy_
+# int32 offset safe domain (see lift_fresh_copy.py): the masked tail block
+# evaluates offsets for masked lanes too, so keep n_total <= 2^31 - 2^17.
+_INT32_SAFE_LIMIT = (1 << 31) - (1 << 17)
 
 
 def lift(A):
@@ -41,7 +47,7 @@ def lift(A):
         For compiled-graph use cases that only need tensor identity semantics,
         this implementation is sufficient.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LIFT")
+    logger.debug("GEMS_ENFLAME LIFT")
     return A
 
 
@@ -49,11 +55,35 @@ def lift_out(A, *, out=None):
     """
     Implements aten::lift.out variant - copies A to out and returns out.
 
-    Uses PyTorch's optimized copy_() instead of a Triton kernel for
-    cross-backend compatibility and better performance.
+    gcu400 retune (2026-11-17): lift_out is a 1R1W flat copy; it previously
+    dispatched to aten::Tensor.copy_ (a native compute entry) from the host.
+    The host now only allocates/validates and launches the FlagGems Triton
+    copy kernel shared with lift_fresh_copy (abs-family size/itemsize
+    dispatch table, grid<=48 persistent grid-stride, cold-compile retry).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LIFT_OUT")
+    logger.debug("GEMS_ENFLAME LIFT_OUT")
+    if A.device.type != flag_gems.device:
+        raise ValueError(f"lift_out Triton kernel requires a {flag_gems.device} tensor")
+
+    a_contig = A.contiguous()
+
+    if a_contig.numel() >= _INT32_SAFE_LIMIT:
+        # int32-unsafe flat offsets: defer to the generic implementation
+        from flag_gems.ops.lift import lift_out as _public
+
+        return _public(A, out=out)
+
     if out is None:
-        out = torch.empty_like(A, memory_format=torch.contiguous_format)
-    _COPY(out, A)
+        out = torch.empty_like(a_contig, memory_format=torch.contiguous_format)
+    else:
+        if out.device.type != flag_gems.device:
+            raise ValueError(f"Output tensor 'out' must be on {flag_gems.device}")
+        if out.dtype != a_contig.dtype:
+            raise ValueError("Output tensor 'out' must have the same dtype as input")
+        if out.numel() != a_contig.numel() or not out.is_contiguous():
+            out.resize_(a_contig.shape)
+            if not out.is_contiguous():
+                out = out.contiguous()
+
+    _launch_copy(a_contig, out)
     return out

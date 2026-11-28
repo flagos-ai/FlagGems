@@ -18,9 +18,21 @@ import logging
 import triton
 import triton.language as tl
 
+# Absolute imports are required: pointwise_dynamic's code-cache generated file copies
+# module-level imports verbatim, so a relative import (.lt) there degrades to `from lt import ...` and fails.
+from flag_gems.runtime.backend._enflame.gcu400.ops.lt import (  # noqa: E402
+    _FLOAT_DTYPES,
+    _stride_config,
+    round_scalar_to_dtype,
+)
 from flag_gems.utils import pointwise_dynamic
 
 logger = logging.getLogger(__name__)
+
+# Under in-place semantics A is both read and written; 2**16 (65K) is still in the pure launch-overhead regime,
+# where the dedicated kernel's 5.8us is actually 39% slower than pointwise's 4.2us, so the fast path starts at 2**18
+# (from 2**18 onward it is -2%~-84%). This threshold was set by A/B measurements, not a conservative estimate.
+_INPLACE_MIN_N = 1 << 18
 
 
 @pointwise_dynamic(promotion_methods=[(0, 1, "ALWAYS_BOOL")])
@@ -29,8 +41,57 @@ def lt_func(x, y):
     return x.to(tl.float32) < y
 
 
+@triton.jit(do_not_specialize=["N"])
+def _lt_inplace_kernel(A, B, N, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (N + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        if EVEN:
+            x = tl.load(A + off)
+            y = tl.load(B + off)
+            tl.store(A + off, (x < y).to(A.dtype.element_ty))
+        else:
+            mask = off < N
+            x = tl.load(A + off, mask=mask)
+            y = tl.load(B + off, mask=mask)
+            tl.store(A + off, (x < y).to(A.dtype.element_ty), mask=mask)
+
+
+@triton.jit(do_not_specialize=["N"])
+def _lt_scalar_inplace_kernel(A, N, Y, BLOCK: tl.constexpr, EVEN: tl.constexpr):
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK)
+    num_blocks = (N + BLOCK - 1) // BLOCK
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK + arange
+        if EVEN:
+            x = tl.load(A + off)
+            tl.store(A + off, (x < Y.to(x.dtype)).to(A.dtype.element_ty))
+        else:
+            mask = off < N
+            x = tl.load(A + off, mask=mask)
+            tl.store(A + off, (x < Y.to(x.dtype)).to(A.dtype.element_ty), mask=mask)
+
+
 def lt_(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 LT_")
+    logger.debug("GEMS_ENFLAME LT_")
+    if (
+        A.device == B.device
+        and A.dtype == B.dtype
+        and A.dtype in _FLOAT_DTYPES
+        and A.shape == B.shape
+        and A.is_contiguous()
+        and B.is_contiguous()
+        and A.numel() >= _INPLACE_MIN_N
+    ):
+        n = A.numel()
+        block, grid, even = _stride_config(n, A.element_size())
+        _lt_inplace_kernel[grid](A, B, n, BLOCK=block, EVEN=even, num_warps=2)
+        return A
     lt_func(A, B, out0=A)
     return A
 
@@ -42,6 +103,18 @@ def lt_func_scalar(x, y):
 
 
 def lt_scalar_(A, B):
-    logger.debug("GEMS_ENFLAME_GCU400 LT_SCALAR_")
+    logger.debug("GEMS_ENFLAME LT_SCALAR_")
+    if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES and A.is_contiguous():
+        n = A.numel()
+        if n >= _INPLACE_MIN_N:
+            block, grid, even = _stride_config(n, A.element_size())
+            _lt_scalar_inplace_kernel[grid](
+                A, n, float(B), BLOCK=block, EVEN=even, num_warps=2
+            )
+            return A
+    # The fallback path compares in the fp32 domain, so the scalar must first be rounded to A.dtype per torch semantics
+    # (otherwise under fp16/bf16, x < 0.1 would be inconsistent with torch).
+    if isinstance(B, (int, float)) and A.dtype in _FLOAT_DTYPES:
+        B = round_scalar_to_dtype(B, A.dtype)
     lt_func_scalar(A, B, out0=A)
     return A

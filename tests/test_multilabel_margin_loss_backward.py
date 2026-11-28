@@ -94,7 +94,21 @@ TARGET_PATTERNS = [
     "half",
     "full",
     "near_full",
-    "permuted",
+    # Device-side int64 torch.flip aborts on enflame GCU
+    # (TOPSATEN_STATUS_BAD_PARAM), and the permuted prefix needs
+    # torch.arange(...).flip(0) on the device tensor, so this one pattern is
+    # skipped there only.
+    pytest.param(
+        "permuted",
+        marks=pytest.mark.skipif(
+            flag_gems.vendor_name == "enflame",
+            reason=(
+                "aten int64 flip aborts on GCU (TOPSATEN_STATUS_BAD_PARAM); "
+                "the permuted target prefix needs torch.arange(...).flip(0) "
+                "on the device tensor"
+            ),
+        ),
+    ),
     "ragged",
     "duplicate",
     "payload",

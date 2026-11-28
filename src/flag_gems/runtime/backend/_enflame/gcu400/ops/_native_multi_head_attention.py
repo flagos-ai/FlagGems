@@ -426,7 +426,7 @@ def _native_multi_head_attention(
         [B, T, D]; ``attn_output_weights`` has shape [B, T, T] when averaged,
         [B, num_head, T, T] otherwise, or ``None`` when ``need_weights`` is False.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _NATIVE_MULTI_HEAD_ATTENTION")
+    logger.debug("GEMS_ENFLAME _NATIVE_MULTI_HEAD_ATTENTION")
 
     B, T, D = query.shape
     head_dim = D // num_head

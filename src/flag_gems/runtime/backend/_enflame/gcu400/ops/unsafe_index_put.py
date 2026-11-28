@@ -24,6 +24,23 @@ from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
 
 logger = logging.getLogger(__name__)
 
+# Target CTA count for the fully indexed case (inp_rank == indices_len), where
+# each CTA writes BLOCK_SIZE0 consecutive scattered elements and the launch is
+# bound by the number of CTAs rather than by memory traffic.
+_FULLY_INDEXED_TARGET_CTAS = 256
+
+# Default 2D tile for the sliced case (rows x slice elements per CTA).
+_DEFAULT_BLOCK_SIZE0 = 2
+_DEFAULT_BLOCK_SIZE1 = 2048
+
+# A sliced launch is CTA-bound once it needs more than this many CTAs: few rows
+# over a long slice (e.g. 2x128 indices into a 512^3 tensor) then costs one tiny
+# CTA per 2048 slice elements. Above the threshold the tile switches to many
+# rows over a shorter slice block, which cuts the CTA count 4x.
+_SLICED_MAX_CTAS = 2048
+_SLICED_WIDE_TILE = 16384
+_SLICED_MAX_ROWS = 64
+
 
 def generate_imports(code: IndentedBuffer) -> IndentedBuffer:
     code.writeline("import triton")
@@ -62,6 +79,7 @@ def generate_index_put_kernel(
             "M,",
             "N,",
             "IS_ACCUMULATE: tl.constexpr,",
+            "SLICE_UNIFORM_VALUES: tl.constexpr = False,",
             "BLOCK_SIZE0: tl.constexpr = 2,",
             "BLOCK_SIZE1: tl.constexpr = 2048,",
         ]
@@ -112,13 +130,34 @@ def generate_index_put_kernel(
         ]
         code.writeline(f"input_offset = {' + '.join(comp)}")
         comp = [f"indices_idx{i} * values_stride{i}" for i in range(index_rank)]
+        uniform_comp = list(comp)
         comp += [
             f"input_idx{indices_len + i} * values_stride{index_rank + i}"
             for i in range(inp_rank - indices_len)
         ]
-        code.writeline(f"values_offset = {' + '.join(comp)}")
         code.newline()
-        code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
+        if inp_rank > indices_len:
+            # A broadcast value (torch.index_put with a scalar or a per-index-row
+            # value) has stride 0 on every slice axis. Loading such a tile as a
+            # full 2D gather turns into one address computation and one scalar
+            # load per lane; hoisting the load to the row axis keeps it at
+            # BLOCK_SIZE0 lanes and lets the tile broadcast instead.
+            code.writeline("if SLICE_UNIFORM_VALUES:")
+            with code.indent():
+                code.writeline(f"values_offset = {' + '.join(uniform_comp)}")
+                code.writeline(
+                    "cur_value = tl.load("
+                    "values_ptr + values_offset, mask=mask0 & index_mask, other=0)"
+                )
+            code.writeline("else:")
+            with code.indent():
+                code.writeline(f"values_offset = {' + '.join(comp)}")
+                code.writeline(
+                    "cur_value = tl.load(values_ptr + values_offset, mask=mask)"
+                )
+        else:
+            code.writeline(f"values_offset = {' + '.join(comp)}")
+            code.writeline("cur_value = tl.load(values_ptr + values_offset, mask=mask)")
         code.writeline("if IS_ACCUMULATE:")
         with code.indent():
             code.writeline(
@@ -153,11 +192,71 @@ def generate_index_put_wrapper(
         code.writeline("M = indices[0].numel()")
         code.writeline(f"N = volume(input_shape[{indices_len}: ])")
         code.newline()
-        code.writeline("grid = lambda meta: (")
-        with code.indent():
-            code.writeline("triton.cdiv(M, meta['BLOCK_SIZE0']), ")
-            code.writeline("triton.cdiv(N, meta['BLOCK_SIZE1']), ")
-        code.writeline(")")
+        # Block sizing. Every CTA owns BLOCK_SIZE0 rows (one gathered row per
+        # index entry) times BLOCK_SIZE1 slice elements.
+        if inp_rank == indices_len:
+            # Fully indexed input: the slice axis is dead, so the 2D tile is
+            # BLOCK_SIZE0 x 1 and the CTA count dominates the cost. The kernel
+            # default BLOCK_SIZE0=2 turns a (2**28,) scatter of 2**16 indices
+            # into 32768 two-element CTAs, which is ~10x slower than the 1D
+            # copy it replaces. Pick the row block from a target CTA count
+            # instead, clamped to the 8192-lane tile limit.
+            code.writeline(
+                "rows_per_cta = max(1, triton.cdiv(M, %d))" % _FULLY_INDEXED_TARGET_CTAS
+            )
+            code.writeline(
+                "BLOCK_SIZE0 = min(8192, max(2, 1 << (rows_per_cta - 1).bit_length()))"
+            )
+            code.writeline("BLOCK_SIZE1 = 1")
+        else:
+            # Sliced input. grid.y <= 255, so BLOCK_SIZE1 must cover N/255 at
+            # least; grid.x <= 65535 is handled by the need_b0 guard below.
+            code.writeline("BLOCK_SIZE0 = %d" % _DEFAULT_BLOCK_SIZE0)
+            code.writeline("need_b1 = max(1, triton.cdiv(N, 255))")
+            code.writeline(
+                "BLOCK_SIZE1 = max(%d, 1 << (need_b1 - 1).bit_length())"
+                % _DEFAULT_BLOCK_SIZE1
+            )
+            # Few rows over a long slice needs one tiny CTA per BLOCK_SIZE1
+            # slice elements; use the extra rows per CTA instead (see
+            # _SLICED_MAX_CTAS).
+            code.writeline(
+                "if triton.cdiv(M, BLOCK_SIZE0) * triton.cdiv(N, BLOCK_SIZE1) > %d:"
+                % _SLICED_MAX_CTAS
+            )
+            with code.indent():
+                code.writeline(
+                    "BLOCK_SIZE0 = min(%d, 1 << (max(M, 1) - 1).bit_length(),"
+                    " max(1, %d // BLOCK_SIZE1))"
+                    % (_SLICED_MAX_ROWS, _SLICED_WIDE_TILE)
+                )
+            code.writeline("need_b0 = max(2, triton.cdiv(M, 65535))")
+            code.writeline("if need_b0 > BLOCK_SIZE0:")
+            with code.indent():
+                code.writeline("BLOCK_SIZE0 = 1 << (need_b0 - 1).bit_length()")
+                # Keep the 2D tile at most 8192 lanes; the row block grows only
+                # on the large-M path, so shrink the slice block to compensate.
+                code.writeline(
+                    "BLOCK_SIZE1 = max(1, min(BLOCK_SIZE1, 8192 // BLOCK_SIZE0))"
+                )
+        code.writeline(
+            "grid = (triton.cdiv(M, BLOCK_SIZE0), triton.cdiv(N, BLOCK_SIZE1))"
+        )
+        if inp_rank > indices_len:
+            # The value tensor only has to be gathered per slice element when at
+            # least one slice stride is non-zero; a broadcasted value keeps the
+            # cheap row-only load.
+            slice_strides = [
+                f"values_stride[{index_rank + i}]"
+                for i in range(inp_rank - indices_len)
+            ]
+            code.writeline(
+                "slice_uniform_values = all(s == 0 for s in ("
+                + ", ".join(slice_strides)
+                + ",))"
+            )
+        else:
+            code.writeline("slice_uniform_values = False")
         code.newline()
         code.writeline(f"{kernel_name}[grid](")
         with code.indent():
@@ -174,7 +273,14 @@ def generate_index_put_wrapper(
                 f"values_stride[{i}],"
                 for i in range(index_rank + inp_rank - indices_len)
             ]
-            args += ["M,", "N,", "accumulate==True,"]
+            args += [
+                "M,",
+                "N,",
+                "accumulate==True,",
+                "SLICE_UNIFORM_VALUES=slice_uniform_values,",
+                "BLOCK_SIZE0=BLOCK_SIZE0,",
+                "BLOCK_SIZE1=BLOCK_SIZE1,",
+            ]
             code.writelines(args)
         code.writeline(")")
         code.writeline("return input")
@@ -255,7 +361,19 @@ _unsafe_index_put_func = UnsafeIndexPutFunction()
 
 
 def unsafe_index_put(inp, indices, values, accumulate=False):
-    logger.debug("GEMS_ENFLAME_GCU400 UNSAFE_INDEX_PUT")
+    logger.debug("GEMS_ENFLAME UNSAFE_INDEX_PUT")
+
+    # The accumulation path (accumulate=True) uses tl.atomic_add to accumulate in place in the input dtype:
+    # native atomic adds for fp16/bf16 round to low precision after every add; with repeated indices (especially when a
+    # single
+    # add makes the magnitude far larger than the final result and cancellation occurs), the accumulated error exceeds
+    # the test tolerance.
+    # Therefore, the accumulation path for low-precision inputs first promotes everything to fp32 for accumulation, then
+    # writes back to the original dtype once at the end.
+    if accumulate and inp.dtype in (torch.float16, torch.bfloat16):
+        fp32_accumulator = inp.float()
+        unsafe_index_put_impl(fp32_accumulator, indices, values.float(), accumulate)
+        return fp32_accumulator.to(inp.dtype)
 
     out = inp.clone()
     return unsafe_index_put_impl(out, indices, values, accumulate)
