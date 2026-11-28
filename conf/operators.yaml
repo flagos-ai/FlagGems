@@ -13207,6 +13207,19 @@ ops:
   - Math
   stages:
   - beta: '5.4'
+- id: logaddexp2_backward
+  description: The backward computation of `logaddexp2()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - logaddexp2
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.5.0'
 - id: logaddexp2_out
   description: A variant of `logaddexp2` that allows the output to be assigned to
     an `out` tensor.
