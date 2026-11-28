@@ -51,8 +51,23 @@ from .expm1__opt import expm1
 logger = logging.getLogger(__name__)
 
 _GRID_SIZE = 48
-_TILE_BYTES = 131072
 _INT32_MAX = 2**31 - 1
+
+
+def _choose_block(n, itemsize):
+    # 128KB-tile baseline widened only in the n>=2^28 large band (256KB tile:
+    # 2B -> 131072, 4B -> 65536); mid/small bands keep the round-1 tiles.
+    # Interleaved A/B calibration (tmp/probe_ab.py + probe_boundary.py):
+    #   fp16 512M +3.7% / bf16 512M +2.8% / fp32 512M +0.8% (4/4 pairs each);
+    #   B131072 at 16.7M is ~2% slower; B65536@fp32 at 2^25+1 is ~11% slower
+    #   (2^27 parity) — fp32 crossover sits at n>=2^28 (2^28: +1.0%, 3/3).
+    if itemsize <= 2:
+        block = 131072 if n > (1 << 28) else 65536
+    else:
+        block = 65536 if n >= (1 << 28) else 32768
+    if n < block:
+        block = max(1024, triton.next_power_of_2(n))
+    return block
 
 
 @triton.jit
@@ -75,12 +90,10 @@ def _special_expm1_kernel(
 
 
 def special_expm1(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_EXPM1")
+    logger.debug("GEMS_ENFLAME SPECIAL_EXPM1")
     if A.is_floating_point() and A.is_contiguous() and A.numel() > 0:
         n = A.numel()
-        block = _TILE_BYTES // A.element_size()
-        if n < block:
-            block = max(1024, triton.next_power_of_2(n))
+        block = _choose_block(n, A.element_size())
         if triton.cdiv(n, block) * block <= _INT32_MAX:
             out = torch.empty_like(A)
             grid = (min(_GRID_SIZE, triton.cdiv(n, block)), 1, 1)

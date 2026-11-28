@@ -20,37 +20,135 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
+# flat grid-stride family convention (same as square/leaky_relu/hardtanh backward, 2026-11-17):
+# The original generic flat copy used BLOCK=1024, grid=cdiv(n,1024); at n=2^29, grid.x=524288
+# which exceeds the hardware limit of 65535; the full benchmark core run at the 2^29 bucket hits OutOfResources (P19
+# instance,
+# compiler_problems/P19_grid_hard_limits/sources/flaggems_hardshrink_backward.md).
+# Switched to an in-kernel strided loop to cover large shapes, with grid capped at 48 CTA (24 SIP × 2); the EVEN bucket
+# (n % BLOCK == 0) is mask-free. The BLOCK/num_warps ladder follows the same body (2R1W cmp+select)
+# per the hardtanh_backward precedent (GCU400/L600 interleaved do_bench A/B for config selection, 2026-11-17).
+# Only one num_warps per (dtype, BLOCK) (the libentry dispatch key does not include nw,
+# to avoid cache collisions).
+GRID_CAP = 48
+_FLAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
+# int32 safety domain: numel + BLOCK must stay < 2^31 (flat int32 offsets),
+# cf. square/leaky_relu/hardtanh precedents; larger sizes fall back to the
+# public op.
+_FLAT_MAX_NUMEL = (1 << 31) - (1 << 17)
 
-@triton.jit
-def hardshrink_backward_kernel(
-    grad_out_ptr,
+
+@libentry()
+@triton.jit(do_not_specialize=["n_elements", "lambd"])
+def _hardshrink_backward_kernel(
+    grad_output_ptr,
     self_ptr,
     out_ptr,
     n_elements,
     lambd,
     BLOCK_SIZE: tl.constexpr,
+    EVEN: tl.constexpr,
 ):
-    pid = tl.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    arange = tl.arange(0, BLOCK_SIZE)
+    zero = tl.zeros([BLOCK_SIZE], dtype=grad_output_ptr.dtype.element_ty)
+    num_blocks = (n_elements + BLOCK_SIZE - 1) // BLOCK_SIZE
+    for block_id in tl.range(pid, num_blocks, num_pids):
+        off = block_id * BLOCK_SIZE + arange
+        if EVEN:
+            grad_output = tl.load(grad_output_ptr + off)
+            x = tl.load(self_ptr + off)
+            # ATen semantics: grad = 0 where |self| <= lambd, grad_out
+            # elsewhere; the (negated) where form keeps the gradient at NaN /
+            # +-inf inputs. lambd is an fp32 runtime arg, so the comparison
+            # promotes x to fp32: bit-identical drop decisions to the public
+            # fp32-compute kernel for every scalar value. The select runs in
+            # the native grad dtype -- both arms (0 and grad) are exact in the
+            # fp32 round trip, no rounding either way.
+            drop = tl.abs(x) <= lambd
+            res = tl.where(drop, zero, grad_output)
+            tl.store(out_ptr + off, res)
+        else:
+            mask = off < n_elements
+            grad_output = tl.load(grad_output_ptr + off, mask=mask, other=0)
+            x = tl.load(self_ptr + off, mask=mask, other=0)
+            drop = tl.abs(x) <= lambd
+            res = tl.where(drop, zero, grad_output)
+            tl.store(out_ptr + off, res, mask=mask)
 
-    grad_out = tl.load(grad_out_ptr + offsets, mask=mask, other=0)
-    x = tl.load(self_ptr + offsets, mask=mask, other=0)
 
-    x32 = x.to(tl.float32)
-    go32 = grad_out.to(tl.float32)
+def _bwd_config(numel, dtype):
+    # 2R1W ladder (same body class as hardtanh_backward: cmp + select):
+    #   16-bit: >2^21 -> 16384/nw2, (4096,2^21] -> 8192/nw4;
+    #   fp32:   >4096 -> 16384/nw2;
+    #   tiny <=4096 -> single-CTA npo2/nw4 (launch-overhead floor), except
+    #           fp32 (2048,4096] -> 2048/nw2 (two CTAs, floor-tracking).
+    if dtype not in _FLAT_DTYPES:
+        if numel <= 1024:
+            return 1024, 4
+        if numel <= 32768:
+            return triton.next_power_of_2(numel), 4
+        return 8192, 4
+    if numel <= 4096:
+        block = triton.next_power_of_2(numel)
+        if dtype is torch.float32 and block > 2048:
+            return 2048, 2
+        return (256 if block < 256 else block), 4
+    if dtype is torch.float32:
+        return 16384, 2
+    if numel <= (1 << 21):
+        return 8192, 4
+    # 2026-11-20 retune of the >2^21 band (16.7M probe, kernel-level do_bench
+    # median, 12-config sweep): a 16K tile is 1.0% faster than the previous
+    # 65536 tile for 16-bit (509.7us vs 514.7us) and 0.6% faster than the
+    # previous 32768 tile for fp32 (1013.7us vs 1018.9us); 8K regresses 16-bit
+    # (518.4us). num_warps 2 and 4 are within 0.01% at 16K, so nw=2 (fewer
+    # registers, one config per dtype class).
+    return 16384, 2
 
-    # ATen semantics: grad = 0 where |self| <= lambd, grad_out elsewhere.
-    # This (negated) form keeps the gradient at NaN / +-inf inputs, matching ATen.
-    zero = tl.zeros(go32.shape, dtype=tl.float32)
-    out32 = tl.where(tl.abs(x32) <= lambd, zero, go32)
 
-    res = out32.to(grad_out.dtype)
-    tl.store(out_ptr + offsets, res, mask=mask)
+def _launch_flat(grad_out, self_t, out, lambd):
+    n_elements = out.numel()
+    if n_elements == 0:
+        return
+    block_size, num_warps = _bwd_config(n_elements, grad_out.dtype)
+    # 2026-11-20 512Mi probe (kernel-level do_bench median): one CTA per SIP is
+    # 0.95% faster than the 48-CTA cap for 16-bit (15980us vs 16109us) and
+    # neutral for fp32 (32256us vs 32313us), so 16-bit gets the tighter cap.
+    grid_cap = 24 if grad_out.element_size() == 2 else GRID_CAP
+    grid = min(triton.cdiv(n_elements, block_size), grid_cap)
+    even = n_elements % block_size == 0
+    # The external llvm converter intermittently fails on cold compiles
+    # (nondeterministic, host-level userland flake windows on shared nodes);
+    # retrying the launch recompiles and succeeds (square/leaky_relu/hardtanh
+    # precedents).
+    for attempt in range(3):
+        try:
+            with torch_device_fn.device(out.device):
+                _hardshrink_backward_kernel[(grid,)](
+                    grad_out,
+                    self_t,
+                    out,
+                    n_elements,
+                    float(lambd),
+                    BLOCK_SIZE=block_size,
+                    EVEN=even,
+                    num_warps=num_warps,
+                )
+            return
+        except Exception as exc:
+            if attempt == 2:
+                raise
+            logger.warning(
+                "hardshrink_backward flat kernel launch failed (attempt %d): %s",
+                attempt + 1,
+                exc,
+            )
 
 
 def _check_supported_dtype(t: torch.Tensor):
@@ -60,32 +158,8 @@ def _check_supported_dtype(t: torch.Tensor):
         )
 
 
-def _launch_hardshrink_backward_kernel(
-    grad_out: torch.Tensor,
-    self_t: torch.Tensor,
-    out: torch.Tensor,
-    lambd: float,
-):
-    n_elements = out.numel()
-    if n_elements == 0:
-        return
-    grid = lambda meta: (triton.cdiv(n_elements, meta["BLOCK_SIZE"]),)
-    with torch_device_fn.device(out.device):
-        hardshrink_backward_kernel[grid](
-            grad_out,
-            self_t,
-            out,
-            n_elements,
-            float(lambd),
-            # Simple 1D masked elementwise kernel; 1024 keeps blocks warp-aligned
-            # and saturates memory bandwidth without grid-size overhead.
-            BLOCK_SIZE=1024,
-            num_warps=4,
-        )
-
-
 def hardshrink_backward(grad_out: torch.Tensor, self_t: torch.Tensor, lambd=0.5):
-    logger.debug("GEMS_ENFLAME_GCU400 HARDSHRINK_BACKWARD")
+    logger.debug("GEMS_ENFLAME HARDSHRINK_BACKWARD")
     _check_supported_dtype(grad_out)
     _check_supported_dtype(self_t)
     if self_t.shape != grad_out.shape:
@@ -96,18 +170,24 @@ def hardshrink_backward(grad_out: torch.Tensor, self_t: torch.Tensor, lambd=0.5)
         raise TypeError(
             f"Dtype mismatch: grad_out.dtype={grad_out.dtype}, self.dtype={self_t.dtype}"
         )
+    if grad_out.numel() >= _FLAT_MAX_NUMEL or grad_out.device != self_t.device:
+        from flag_gems.ops.hardshrink_backward import hardshrink_backward as _public
 
-    grad_out_c = grad_out.contiguous()
-    self_c = self_t.contiguous()
-    out = torch.empty_like(grad_out_c)
-    _launch_hardshrink_backward_kernel(grad_out_c, self_c, out, lambd)
+        return _public(grad_out, self_t, lambd)
+
+    if not grad_out.is_contiguous():
+        grad_out = grad_out.contiguous()
+    if not self_t.is_contiguous():
+        self_t = self_t.contiguous()
+    out = torch.empty_like(grad_out)
+    _launch_flat(grad_out, self_t, out, lambd)
     return out.reshape_as(grad_out)
 
 
 def hardshrink_backward_grad_input(
     grad_out: torch.Tensor, self_t: torch.Tensor, lambd=0.5, *, grad_input=None
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 HARDSHRINK_BACKWARD_GRAD_INPUT")
+    logger.debug("GEMS_ENFLAME HARDSHRINK_BACKWARD_GRAD_INPUT")
     _check_supported_dtype(grad_out)
     _check_supported_dtype(self_t)
     if grad_input is None:
@@ -124,6 +204,16 @@ def hardshrink_backward_grad_input(
             f"Dtype mismatch: grad_out.dtype={grad_out.dtype}, self.dtype={self_t.dtype}, "
             f"grad_input.dtype={grad_input.dtype}"
         )
+    if (
+        grad_out.numel() >= _FLAT_MAX_NUMEL
+        or grad_out.device != self_t.device
+        or grad_out.device != grad_input.device
+    ):
+        from flag_gems.ops.hardshrink_backward import (
+            hardshrink_backward_grad_input as _public,
+        )
+
+        return _public(grad_out, self_t, lambd, grad_input=grad_input)
 
     grad_out_c = grad_out.contiguous()
     self_c = self_t.contiguous()
@@ -132,7 +222,7 @@ def hardshrink_backward_grad_input(
     else:
         out_buf = torch.empty_like(grad_input, memory_format=torch.contiguous_format)
 
-    _launch_hardshrink_backward_kernel(grad_out_c, self_c, out_buf, lambd)
+    _launch_flat(grad_out_c, self_c, out_buf, lambd)
 
     if out_buf.data_ptr() != grad_input.data_ptr():
         grad_input.copy_(out_buf)

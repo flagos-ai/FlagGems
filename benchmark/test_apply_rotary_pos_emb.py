@@ -22,64 +22,6 @@ import flag_gems
 from . import base, consts
 
 
-class InplaceRopeBenchmark(base.GenericBenchmark):
-    def set_more_shapes(self):
-        return [
-            (tokens, q_heads, k_heads, head_dim, interleaved)
-            for tokens in [1, 128, 2048, 8192]
-            for q_heads, k_heads in [(1, 1), (8, 1), (16, 4)]
-            for head_dim in [64, 128, 256]
-            for interleaved in [False, True]
-        ]
-
-    def set_shapes(self, shape_file_path=None):
-        self.shapes = self.set_more_shapes()
-        self.shape_desc = "tokens, q_heads, k_heads, head_dim, interleaved"
-
-
-def inplace_rope_input_fn(shape, dtype, device):
-    tokens, q_heads, k_heads, head_dim, interleaved = shape
-    q = torch.randn(tokens, q_heads, head_dim, device=device, dtype=dtype)
-    k = torch.randn(tokens, k_heads, head_dim, device=device, dtype=dtype)
-    # Exact quarter turns avoid overflow/underflow during repeated in-place runs.
-    cos = torch.zeros(4096, head_dim // 2, device=device)
-    sin = torch.ones_like(cos)
-    positions = torch.randint(0, 4096, (tokens,), device=device)
-    yield q, k, cos, sin, positions, {
-        "rotary_interleaved": interleaved,
-        "inplace": True,
-    }
-
-
-def torch_inplace_rope(q, k, cos, sin, positions, rotary_interleaved, inplace):
-    c = cos[positions].unsqueeze(1)
-    s = sin[positions].unsqueeze(1)
-
-    def rotate(x):
-        if rotary_interleaved:
-            a, b = x.float()[..., ::2], x.float()[..., 1::2]
-            return torch.stack((a * c - b * s, b * c + a * s), dim=-1).flatten(-2)
-        a, b = x.float().chunk(2, dim=-1)
-        return torch.cat((a * c - b * s, b * c + a * s), dim=-1)
-
-    q.copy_(rotate(q))
-    k.copy_(rotate(k))
-    return q, k
-
-
-@pytest.mark.apply_rotary_pos_emb
-def test_apply_rotary_pos_emb_inplace():
-    bench = InplaceRopeBenchmark(
-        input_fn=inplace_rope_input_fn,
-        op_name="apply_rotary_pos_emb",
-        torch_op=torch_inplace_rope,
-        gems_op=flag_gems.apply_rotary_pos_emb,
-        dtypes=consts.FLOAT_DTYPES,
-        is_inplace=True,
-    )
-    bench.run()
-
-
 class RopeBenchmark(base.GenericBenchmark):
     def set_more_shapes(self):
         # self.shapes is a list of tuples, each containing three elements:

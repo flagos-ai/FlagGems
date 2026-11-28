@@ -193,99 +193,11 @@ def _sgn_impl(x: torch.Tensor, out: torch.Tensor):
 
 
 def sgn(x: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 SGN")
+    logger.debug("GEMS_ENFLAME SGN")
     out = torch.empty_like(x)
     return _sgn_impl(x, out)
 
 
 def sgn_out(x: torch.Tensor, *, out: torch.Tensor):
-    logger.debug("GEMS_ENFLAME_GCU400 SGN_OUT")
+    logger.debug("GEMS_ENFLAME SGN_OUT")
     return _sgn_impl(x, out)
-
-
-# ---------------------------------------------------------------------------
-# Native torch.sgn guard (torch_gcu topsaten runtime defects, P21 family)
-#
-# Probe matrix (job j20261111163337_b919f583, gcu400/L600, torch_gcu 2.11.0,
-# TORCH_GCU_ENABLE_INT64_AND_UINT64=1): native torch.sgn is broken for every
-# testable dtype on GCU --
-#   * float32/float16/bfloat16: returns the input unchanged (identity), 266/266
-#     elements wrong on a (2,19,7) randn probe;
-#   * complex64: ~65% of elements off by ~1e-7 (unnormalized-precision variant),
-#     and the overflow-safe hypot / pinned non-finite semantics of the tests are
-#     not reproduced;
-#   * uint8/int32/int64/bool: TOPSATEN_STATUS_NOT_SUPPORT CHECK abort (core
-#     dump, exit 134) -- same topsatenSign-family rejection the sign round hit;
-#   * int8: process hang (240s watchdog timeout).
-# The accuracy gate's reference leg calls torch.sgn directly on GCU tensors
-# (tests/test_sgn.py), so those calls die or compare against garbage before the
-# FlagGems candidate is judged.  Route exactly the broken dtypes through the
-# FlagGems kernel (bit-exact vs the CPU reference for every probed dtype and
-# layout); every other call passes through to the captured native callables
-# untouched (same narrow-shim family as the svd Tensor.to / complex-scalar-mul
-# and sign guards).  Benchmark note: the native baseline leg for the guarded
-# dtypes therefore measures the FlagGems kernel (there is no working native
-# implementation to compare against).
-_GUARDED_DEVICE_TYPES = ("gcu",)
-_GUARDED_DTYPES = (
-    torch.float16,
-    torch.float32,
-    torch.bfloat16,
-    torch.complex32,
-    torch.complex64,
-    torch.int8,
-    torch.int16,
-    torch.int32,
-    torch.int64,
-    torch.uint8,
-    torch.bool,
-)
-
-
-def _needs_native_sgn_guard(t):
-    return (
-        isinstance(t, torch.Tensor)
-        and t.device.type in _GUARDED_DEVICE_TYPES
-        and t.dtype in _GUARDED_DTYPES
-    )
-
-
-def _install_native_sgn_guard():
-    # The backend loader imports this file under several module names, so the
-    # module body (and this installer) runs more than once; the marker check
-    # keeps the first install authoritative and later runs a no-op.
-    native_sgn = torch.sgn
-    if getattr(native_sgn, "_flaggems_gcu_sgn_guard", False):
-        return
-    native_tensor_sgn = torch.Tensor.sgn
-    native_tensor_sgn_ = torch.Tensor.sgn_
-
-    def _sgn_guard(x, *, out=None):
-        if _needs_native_sgn_guard(x):
-            if out is None:
-                return sgn(x)
-            return sgn_out(x, out=out)
-        if out is None:
-            return native_sgn(x)
-        return native_sgn(x, out=out)
-
-    def _tensor_sgn_guard(self):
-        if _needs_native_sgn_guard(self):
-            return sgn(self)
-        return native_tensor_sgn(self)
-
-    def _tensor_sgn_guard_(self):
-        # In-place via the out-of-place kernel keeps non-contiguous and bool
-        # inputs correct without touching the aten.sgn_ fallback in sgn_.py.
-        if _needs_native_sgn_guard(self):
-            return sgn_out(self, out=self)
-        return native_tensor_sgn_(self)
-
-    for guard in (_sgn_guard, _tensor_sgn_guard, _tensor_sgn_guard_):
-        guard._flaggems_gcu_sgn_guard = True
-    torch.sgn = _sgn_guard
-    torch.Tensor.sgn = _tensor_sgn_guard
-    torch.Tensor.sgn_ = _tensor_sgn_guard_
-
-
-_install_native_sgn_guard()

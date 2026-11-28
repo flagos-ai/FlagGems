@@ -121,6 +121,14 @@ def test_sparse_compressed_tensor_rejects_bad_layout(dtype):
 
 
 @pytest.mark.sparse_compressed_tensor
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "enflame infers the plain extent with a dense max reduction instead of "
+        "the grid-capped Triton atomic kernel, so _MAX_BLOCK/_BLOCK_ELEMS do "
+        "not exist in that backend"
+    ),
+)
 def test_sparse_compressed_tensor_infer_size_scans_past_the_grid_cap(monkeypatch):
     """The size-inference scan reads every plain index, not just the first
     ``_MAX_BLOCK * _BLOCK_ELEMS`` of them.

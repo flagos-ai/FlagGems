@@ -32,6 +32,8 @@ _INT32_MAX = torch.iinfo(torch.int32).max
 # BLOCK_SIZE 512 balances bandwidth saturation on large tensors against
 # avoiding wasted work on small ones.
 _BLOCK_SIZE = 4096
+# GCU400 hardware limit for a single launch dimension.
+_GRID_X_LIMIT = 65535
 
 # C++ ``TypeMeta`` spellings, as printed by ATen's out= dtype check
 # ("Expected out tensor to have dtype double, but got c10::Half instead").
@@ -63,6 +65,7 @@ _BYTEWISE_DTYPES = (torch.bool, torch.float8_e4m3fn, torch.float8_e5m2)
 def slice_copy_kernel(
     inp_ptr,
     out_ptr,
+    base,
     numel,
     inner,
     slice_len,
@@ -75,8 +78,9 @@ def slice_copy_kernel(
     pid = tl.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
+        base = base.to(tl.int64)
 
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+    offsets = base + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
     # Decompose the flat output index into (outer_idx, slice_idx, inner_idx)
@@ -102,6 +106,7 @@ def slice_copy_kernel(
 def slice_copy_kernel_inner1(
     inp_ptr,
     out_ptr,
+    base,
     numel,
     slice_len,
     dim_size,
@@ -113,7 +118,8 @@ def slice_copy_kernel_inner1(
     pid = tl.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        base = base.to(tl.int64)
+    offsets = base + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
     outer_idx = offsets // slice_len
@@ -136,6 +142,7 @@ def slice_copy_kernel_inner1(
 def slice_copy_kernel_step1(
     inp_ptr,
     out_ptr,
+    base,
     numel,
     inner,
     slice_len,
@@ -147,7 +154,8 @@ def slice_copy_kernel_step1(
     pid = tl.program_id(0)
     if INT64_INDEX:
         pid = pid.to(tl.int64)
-    offsets = pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
+        base = base.to(tl.int64)
+    offsets = base + pid * BLOCK_SIZE + tl.arange(0, BLOCK_SIZE)
     mask = offsets < numel
 
     outer_idx = offsets // (slice_len * inner)
@@ -186,6 +194,42 @@ def _native_copy_(out: torch.Tensor, src: torch.Tensor):
     return torch.ops.aten.copy_.default.redispatch(_FALLBACK_KEYSET, out, src, False)
 
 
+def _place_into_view(destination, source):
+    """``copy_`` a contiguous ``source`` into a possibly negative-stride view.
+
+    The native strided ``copy_`` aborts with a TOPSATEN CHECK (no error code)
+    when the destination is a negative-stride complex view -- the slice_copy_out
+    accuracy leg does exactly that (``buf.flip(0)`` as ``out``).  Complex
+    tensors are therefore placed in real space (``view_as_real`` keeps the
+    element mapping) and the reversed axes are flipped on the contiguous
+    source instead of being expressed as negative destination strides.  The
+    positive-stride case keeps the plain native copy.
+    """
+    if all(stride >= 0 for stride in destination.stride()):
+        _native_copy_(destination, source)
+        return
+    if destination.is_complex():
+        src_view = torch.view_as_real(source)
+        dst_view = torch.view_as_real(destination)
+    else:
+        src_view = source
+        dst_view = destination
+    sizes = dst_view.shape
+    storage_offset = dst_view.storage_offset()
+    positive_strides = []
+    flipped_axes = []
+    for axis, (size, stride) in enumerate(zip(sizes, dst_view.stride())):
+        if stride < 0:
+            storage_offset += (size - 1) * stride
+            positive_strides.append(-stride)
+            flipped_axes.append(axis)
+        else:
+            positive_strides.append(stride)
+    positive_view = dst_view.as_strided(sizes, positive_strides, storage_offset)
+    flipped_source = src_view.flip(tuple(flipped_axes)) if flipped_axes else src_view
+    _native_copy_(positive_view, flipped_source)
+
+
 def _slice_view(inp, dim, start, slice_len, step):
     """Build the aliasing ``aten::slice`` view without going through dispatch."""
     sizes = list(inp.shape)
@@ -220,9 +264,13 @@ def _launch_slice_copy(inp, out, dim, start, slice_len, step):
     """
     # ``view_as_real`` and ``Tensor.view(dtype)`` reject tensors that still carry
     # a lazy conjugate/negative bit, and the raw bytes behind such a tensor are
-    # the un-negated/un-conjugated ones, so materialize them first. ATen's
-    # slice_copy likewise returns a resolved (is_conj/is_neg == False) result.
-    inp = inp.resolve_conj().resolve_neg()
+    # the un-negated/un-conjugated ones, so materialize them first.  clone() is
+    # used instead of resolve_conj()/resolve_neg(): those keep the raw bytes on
+    # torch_gcu (the flag is dropped without touching the values), which would
+    # copy the un-negated data.  ATen's slice_copy likewise returns a resolved
+    # (is_conj/is_neg == False) result.
+    if inp.is_conj() or inp.is_neg():
+        inp = inp.clone()
     # Work on a contiguous view of the input so the simple flat-index mapping holds.
     inp = inp.contiguous()
 
@@ -238,50 +286,59 @@ def _launch_slice_copy(inp, out, dim, start, slice_len, step):
     # int32 range even when the slice itself is small.
     int64_index = max(numel, inp.numel()) > _INT32_MAX
 
-    grid = (triton.cdiv(numel, _BLOCK_SIZE),)
-
-    if inner == 1:
-        # Trailing-dim slice (incl. step > 1): one integer division instead of
-        # three.
-        slice_copy_kernel_inner1[grid](
-            inp,
-            out,
-            numel,
-            slice_len,
-            dim_size,
-            start,
-            step,
-            BLOCK_SIZE=_BLOCK_SIZE,
-            INT64_INDEX=int64_index,
-        )
-    elif step == 1:
-        # The contiguous-slice fast path: the input dim index is ``start + i``,
-        # so the gather reduces to a single affine offset with no per-element
-        # multiply (only one division/modulo instead of three).
-        slice_copy_kernel_step1[grid](
-            inp,
-            out,
-            numel,
-            inner,
-            slice_len,
-            dim_size,
-            start,
-            BLOCK_SIZE=_BLOCK_SIZE,
-            INT64_INDEX=int64_index,
-        )
-    else:
-        slice_copy_kernel[grid](
-            inp,
-            out,
-            numel,
-            inner,
-            slice_len,
-            dim_size,
-            start,
-            step,
-            BLOCK_SIZE=_BLOCK_SIZE,
-            INT64_INDEX=int64_index,
-        )
+    # One launch covers at most _GRID_X_LIMIT * _BLOCK_SIZE elements; the
+    # >2**31-element copies that need the int64 index path also need 5e5
+    # programs, so the flat range is walked in hardware-sized chunks.
+    max_per_launch = _GRID_X_LIMIT * _BLOCK_SIZE
+    for base in range(0, numel, max_per_launch):
+        chunk = min(max_per_launch, numel - base)
+        grid = (triton.cdiv(chunk, _BLOCK_SIZE),)
+        if inner == 1:
+            # Trailing-dim slice (incl. step > 1): one integer division instead
+            # of three.
+            slice_copy_kernel_inner1[grid](
+                inp,
+                out,
+                base,
+                numel,
+                slice_len,
+                dim_size,
+                start,
+                step,
+                BLOCK_SIZE=_BLOCK_SIZE,
+                INT64_INDEX=int64_index,
+            )
+        elif step == 1:
+            # The contiguous-slice fast path: the input dim index is
+            # ``start + i``, so the gather reduces to a single affine offset with
+            # no per-element multiply (only one division/modulo instead of
+            # three).
+            slice_copy_kernel_step1[grid](
+                inp,
+                out,
+                base,
+                numel,
+                inner,
+                slice_len,
+                dim_size,
+                start,
+                BLOCK_SIZE=_BLOCK_SIZE,
+                INT64_INDEX=int64_index,
+            )
+        else:
+            slice_copy_kernel[grid](
+                inp,
+                out,
+                base,
+                numel,
+                inner,
+                slice_len,
+                dim_size,
+                start,
+                step,
+                BLOCK_SIZE=_BLOCK_SIZE,
+                INT64_INDEX=int64_index,
+            )
 
 
 def _slice_copy_impl(inp, dim, start, end, step, out):
@@ -341,11 +398,20 @@ def _slice_copy_impl(inp, dim, start, end, step, out):
         or has_internal_overlapping(out) != MemOverlap.No
     )
 
-    if inp.device.type != "cuda":
+    # The native strided copy_ computes flat offsets in int32 and silently
+    # corrupts extents above 2**31 - 1 elements, so those shapes go through the
+    # int64 Triton gather instead.  Everything else stays on the native copy:
+    # it is a pure data movement already at the memcpy bound, and the Triton
+    # gather measured 20-30x slower on the large-strided benchmark shapes
+    # (2026-11-18: (10000, 2**16) dim=0 -> native 7.8ms, Triton >900s timeout),
+    # so the kernels only take over where the int32 offsets would corrupt.
+    if inp.device.type != "cuda" and max(out.numel(), inp.numel()) <= _INT32_MAX:
         view = _slice_view(inp, dim, start, slice_len, step)
         if needs_staging:
             view = view.clone(memory_format=torch.contiguous_format)
-        _native_copy_(out, view)
+            _place_into_view(out, view)
+        else:
+            _native_copy_(out, view)
         return out
 
     dst = (
@@ -355,15 +421,15 @@ def _slice_copy_impl(inp, dim, start, end, step, out):
     )
     _launch_slice_copy(inp, dst, dim, start, slice_len, step)
     if needs_staging:
-        _native_copy_(out, dst)
+        _place_into_view(out, dst)
     return out
 
 
 def slice_copy(inp, dim=0, start=None, end=None, step=1):
-    logger.debug("GEMS_ENFLAME_GCU400 SLICE_COPY")
+    logger.debug("GEMS_ENFLAME SLICE_COPY")
     return _slice_copy_impl(inp, dim, start, end, step, out=None)
 
 
 def slice_copy_out(inp, dim=0, start=None, end=None, step=1, *, out):
-    logger.debug("GEMS_ENFLAME_GCU400 SLICE_COPY_OUT")
+    logger.debug("GEMS_ENFLAME SLICE_COPY_OUT")
     return _slice_copy_impl(inp, dim, start, end, step, out=out)

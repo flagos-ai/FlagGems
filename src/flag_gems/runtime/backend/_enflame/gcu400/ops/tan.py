@@ -42,20 +42,21 @@ def tan_kernel(x_ptr, out_ptr, N, BLOCK: tl.constexpr):
         tl.store(out_ptr + off, out, mask=mask)
 
 
-def _choose_block(N, is_fp32):
-    if N <= 1024:
+def _choose_block(N):
+    # GCU400 measured sweet spots (2026-11-16, 512Mi/16.7M/4K x fp32/fp16/bf16):
+    # - N <= 4096: BLOCK=1024 spreads work over multiple SIPs (grid=cdiv) and beats
+    #   a single-CTA next_pow2(N) tile by 5-12% on the (64, 64) core shape.
+    # - large N: 8192/nw4 beats 65536 (old fp32 pick) by 26% and 16384 by 31%+;
+    #   the extern __ef_tanf ALU stream saturates and DMA cannot overlap with it,
+    #   so wider tiles only reduce in-flight parallelism.
+    if N <= 4096:
         return 1024
-    if N <= 32768:
-        return triton.next_power_of_2(N)
-    if is_fp32:
-        return 65536
     return 8192
 
 
 def _launch(inp, out):
     N = inp.numel()
-    is_fp32 = inp.dtype == torch.float32
-    BLOCK = _choose_block(N, is_fp32)
+    BLOCK = _choose_block(N)
     grid_size = min(triton.cdiv(N, BLOCK), NUM_SIPS * 2)
     with torch_device_fn.device(inp.device):
         tan_kernel[(grid_size,)](

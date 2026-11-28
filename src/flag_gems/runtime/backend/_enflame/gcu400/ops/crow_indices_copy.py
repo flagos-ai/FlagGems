@@ -35,6 +35,11 @@ def _crow_indices_copy_kernel(src_ptr, dst_ptr, n_elements, BLOCK: tl.constexpr)
 
 _BLOCK = 1024
 
+# The crow buffer has only nrows+1 elements; in the vast majority of cases it only covers the fixed overhead of one
+# kernel launch;
+# Below this threshold, use vendor memcpy (clone) instead to avoid Triton's host-side launch cost.
+_CLONE_MAX_ELEMENTS = 1 << 14
+
 # C++ layout names as printed by native ATen in the rejection message of
 # ``crow_indices``/``crow_indices_copy`` (ATen/SparseCsrTensorUtils.h dispatch
 # macro). Only row-compressed layouts (CSR/BSR) carry a crow-indices buffer;
@@ -82,7 +87,7 @@ def crow_indices_copy(self: torch.Tensor) -> torch.Tensor:
     ``n_elements == 0`` short-circuit skips the launch (an empty crow buffer
     appears for a zero-sized batch dimension).
     """
-    logger.debug("GEMS_ENFLAME_GCU400 CROW_INDICES_COPY")
+    logger.debug("GEMS_ENFLAME CROW_INDICES_COPY")
     if self.layout == _LAYOUT_COO:
         # Native has no crow_indices_copy kernel on the sparse-COO key
         # (verified on H20: CUDA COO raises NotImplementedError with the
@@ -117,10 +122,15 @@ def crow_indices_copy(self: torch.Tensor) -> torch.Tensor:
     # is already contiguous (the common case).
     if not src.is_contiguous():
         src = src.contiguous()
-    out = torch.empty_like(src)
     n = src.numel()
-    if n == 0:
-        return out
+    if n <= _CLONE_MAX_ELEMENTS:
+        # Small buffers (the crow buffer is actually nrows+1 elements, usually ≤ a few thousand elements) are purely
+        # launch-bound:
+        # Measured clone 2.69~3.38 us vs Triton copy 3.66~4.16 us; vendor memcpy is faster by
+        # 0.8~1.0 us (the fixed cost of one kernel launch). The crossover is around 16384 elements,
+        # and from 65536 elements onward Triton takes the lead (11.0 vs 12.2 us).
+        return src.clone()
+    out = torch.empty_like(src)
     grid = (triton.cdiv(n, _BLOCK),)
     with torch_device_fn.device(src.device):
         _crow_indices_copy_kernel[grid](src, out, n, BLOCK=_BLOCK)

@@ -27,18 +27,31 @@ EVEN no-mask fast path) and probe-validated tiers (do_bench median
 w1000/r100, vs torch native in brackets):
 
 * n <= 2**20   -> one-tile-per-CTA flat, BLOCK=min(np2(n), 65536|32768),
-                  num_warps=4 (4096 fp16 3.14us [4.16]; 1M fp16 6.36 [6.44])
-* n <= 2**24   -> persistent grid-stride, grid=min(cdiv,48), num_warps=4
-                  (16.7M fp16 25.0us [24.4])
-* n > 2**24    -> same, num_warps=2 (512M fp16 550us [548] = 2.93TB/s;
-                  fp32 BLOCK=32768 988us [987]; bf16 547us [546])
-* BLOCK by element size: 65536 (es<=2) / 32768 (es==4), DSM peak
-  2*BLOCK*es + BLOCK <= 320KB < 448KB/program (not_equal-validated budget).
+                  num_warps=4 (4096 fp16 3.14us [4.17]; 1M fp16 6.36 [6.44])
+* n > 2**20    -> persistent grid-stride, grid=min(cdiv,48) (16.7M and 512M
+                  core shapes; interleaved A/B 2026-11-18):
+  - es<=2, n >= 48*131072: BLOCK=131072, num_stages=1, nw=4 (n<=2**24) /
+    nw=2 above (16.7M fp16 24.96us [24.99 native], bf16 24.92 [24.96];
+    512M bf16 546.5 [549.8])
+  - es==4, n >= 48*65536:  BLOCK=65536, num_stages=1, nw=4 / nw=2
+    (16.7M fp32 39.43us [40.06 native]; 512M fp32 1034 [1035])
+  - smaller persistent n keeps the old arms: BLOCK=65536 (es<=2) /
+    32768 (es==4), default stages, nw=4|2 (unchanged, zero-regression).
+  The wide arms rely on the new-stack staging pool: compiled
+  ``gcu.dsm_memory_size`` is a fixed 262144B (<448KB, 48-way resident) for
+  every BLOCK in {32768,65536,131072} — the old ``2*BLOCK*es+BLOCK`` budget
+  was over-conservative (it capped BLOCK at 65536/32768); ``num_stages=1``
+  plus the 2x wider tile buys the mid-tier win.
 
 Vetoed by probe: int64 wide-channel load + packed int32 bool store (shift/
 and/or chain costs more than the bandwidth gain: 1040us vs 550us @512M fp16),
-one-tile-per-CTA beyond ~2**20 (713us @512M), grid cap 96/192 (worse than 48),
-num_stages 2/4 (no effect).
+one-tile-per-CTA beyond ~2**20 (713us @512M; 16.7M flat B=32768 g=512 44.6us
+vs persistent 39.2-25.0us), grid cap 96/192 (worse than 48 at every size),
+BLOCK<65536 in the persistent tier (16.7M fp16 B=32768/nw4 29.9us, B=16384
+30.4us, B=8192 36.3us), grid 24 (786us @512M fp16), nw=1 (672us @512M fp16),
+nw=8 mid (25.59 vs 25.54 current), mid-tier num_stages 2 on B=65536
+(25.27 vs 25.54 = WITHIN-NOISE), B=131072 with default stages (DSM formula
+violation; superseded by the ns=1 wide arm).
 
 Non-contiguous / non-fast-dtype / n >= 2**31-BLOCK inputs fall back to the
 production ``signbit_func`` pointwise kernel (previous behaviour, zero
@@ -77,8 +90,17 @@ _FAST_DTYPES = {
 _MAX_FLAT_N = 2**20
 _MID_N = 2**24
 _NUM_SPC = 48
-# Keeps (n + BLOCK - 1) inside int32 for every BLOCK in use (max 65536).
-_I32_SAFE_MAX = 2**31 - 2**16
+# Keeps (n + BLOCK - 1) inside int32 for every BLOCK in use (max 131072).
+_I32_SAFE_MAX = 2**31 - 2**17
+# Wide persistent arms (2026-11-18 probe, new stack): the compiler stages the
+# elementwise tile through a fixed 256KB pool (gcu.dsm_memory_size = 262144
+# for every BLOCK), so num_stages=1 plus a 2x wider BLOCK is affordable and
+# wins at the mid tier. Only engaged when all _NUM_SPC slots get whole blocks;
+# smaller persistent n keeps the previously validated arms.
+_WIDE_ES2_BLOCK = 131072
+_WIDE_ES2_MIN_N = _NUM_SPC * _WIDE_ES2_BLOCK
+_WIDE_ES4_BLOCK = 65536
+_WIDE_ES4_MIN_N = _NUM_SPC * _WIDE_ES4_BLOCK
 
 
 @triton.jit
@@ -131,18 +153,31 @@ def _launch(A, out):
     n = A.numel()
     if n == 0:
         return True
-    block_cap = _big_block(A.element_size())
+    es = A.element_size()
+    num_stages = None
     if n <= _MAX_FLAT_N:
-        block = min(max(16, triton.next_power_of_2(n)), block_cap)
+        block = min(max(16, triton.next_power_of_2(n)), _big_block(es))
         grid = (triton.cdiv(n, block),)
         num_warps = 4
         kernel = _signbit_flat_kernel
     else:
-        block = block_cap
+        if es <= 2:
+            if n >= _WIDE_ES2_MIN_N:
+                block, num_stages = _WIDE_ES2_BLOCK, 1
+            else:
+                block = 65536
+        else:
+            if n >= _WIDE_ES4_MIN_N:
+                block, num_stages = _WIDE_ES4_BLOCK, 1
+            else:
+                block = 32768
         grid = (min(triton.cdiv(n, block), _NUM_SPC),)
         num_warps = 4 if n <= _MID_N else 2
         kernel = _signbit_pers_kernel
-    kernel[grid](A, out, n, BLOCK=block, EVEN=(n % block == 0), num_warps=num_warps)
+    kwargs = {} if num_stages is None else {"num_stages": num_stages}
+    kernel[grid](
+        A, out, n, BLOCK=block, EVEN=(n % block == 0), num_warps=num_warps, **kwargs
+    )
     return True
 
 
@@ -151,7 +186,7 @@ def _fast_ok(A):
 
 
 def signbit(A):
-    logger.debug("GEMS_ENFLAME_GCU400 SIGNBIT")
+    logger.debug("GEMS_ENFLAME SIGNBIT")
     if _fast_ok(A):
         out = torch.empty(A.shape, dtype=torch.bool, device=A.device)
         _launch(A, out)
@@ -160,7 +195,7 @@ def signbit(A):
 
 
 def signbit_out(A, *, out=None):
-    logger.debug("GEMS_ENFLAME_GCU400 SIGNBIT_OUT")
+    logger.debug("GEMS_ENFLAME SIGNBIT_OUT")
     if out is None:
         return signbit(A)
     if (

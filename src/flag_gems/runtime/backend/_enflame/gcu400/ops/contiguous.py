@@ -58,16 +58,25 @@ def _rows_copy_kernel(
 ):
     """Copy equally strided contiguous rows into a flat destination.
 
-    Each iteration moves one contiguous 1-D segment of one row.  Two other
-    layouts were measured and rejected on gcu400: the generic pointwise path
-    moves every tile through a block-pointer (DTE) transfer, which faults the
-    device on large sliced 4-D sources (a ``contiguous`` on a sliced
+    Each iteration moves one contiguous 1-D segment of one row.  The scalar
+    row bases (``row * row_stride``) stay out of the lane arithmetic: this
+    backend folds a scalar added to a raw ``arange`` into the 64-bit pointer
+    base, so 4-byte dtypes copy byte spans beyond 2 GiB correctly (a flat
+    fp32 (1024, 1024, 1024) ``[::2]`` source verifies bitwise, 2026-11-17).
+
+    Layouts measured and rejected on gcu400: the generic pointwise path
+    moves every tile through a block-pointer (DTE) transfer, which faults
+    the device on large sliced 4-D sources (a ``contiguous`` on a sliced
     (16, 128, 64, 1280) fp16 tensor takes the card down with a SIC halt,
-    observed 2026-11-12), and a (rows x cols) affine 2-D tile silently reads
+    observed 2026-11-12); a (rows x cols) affine 2-D tile silently reads
     garbage for the second row when the row stride is large (measured on a
-    (2, 128, 64, 1280) fp16 source, 2026-11-12).  Plain 1-D offset
-    loads/stores stay on the synchronous port and are masked exactly, so they
-    cannot overrun; see also the flat-copy rationale in ops/copy.py.
+    (2, 128, 64, 1280) fp16 source, 2026-11-12).  A row-loop without the
+    per-chunk div/mod, contiguous per-CTA row blocks, and ``num_stages``
+    pipelining were all measured at parity or worse (2026-11-17: row-loop
+    754 us vs this form 737 us on a word-viewed (512, 1024, 1024) fp16
+    source; contig blocks 746-917 us; num_stages 1-4 identical).  Plain 1-D
+    offset loads/stores stay on the synchronous port and are masked exactly,
+    so they cannot overrun; see also the flat-copy rationale in ops/copy.py.
     """
     pid = tl.program_id(0)
     num_chunks = n_rows * chunks_per_row
@@ -92,7 +101,13 @@ def _strided_copy_kernel(
     GRID: tl.constexpr,
 ):
     """Flat copy for constant-stride sources (row_len == 1): element p of the
-    contiguous destination comes from p * row_stride of the source."""
+    contiguous destination comes from p * row_stride of the source.
+
+    Fast arm, valid while every lane's byte-scaled element offset stays inside
+    int32 (the host gate keeps the byte spans under 2**31); past that the
+    address math wraps and silently corrupts (or faults the MMU), so the wide
+    kernel below takes over.
+    """
     pid = tl.program_id(0)
     num_tiles = tl.cdiv(n_elements, BLOCK)
     for tile_id in tl.range(pid, num_tiles, GRID):
@@ -100,6 +115,49 @@ def _strided_copy_kernel(
         mask = offs < n_elements
         val = tl.load(src_ptr + offs * row_stride, mask=mask, other=0)
         tl.store(dst_ptr + offs, val, mask=mask)
+
+
+@triton.jit
+def _strided_copy_kernel_wide(
+    src_ptr,
+    dst_ptr,
+    n_elements,
+    row_stride,
+    BLOCK: tl.constexpr,
+    GRID: tl.constexpr,
+):
+    """Wide-span twin of ``_strided_copy_kernel`` for byte extents past 2**31.
+
+    Keeping the full offset in the lanes lets the backend's gather path scale
+    it by the element size inside int32, which wraps on 4-byte dtypes whose
+    source span exceeds 2 GiB (measured 2026-11-17: a 1-D fp32 ``[::2]`` view
+    of 2**30 elements returned wrong data, or faulted the MMU with an
+    unmapped read).  Widening the tile bases to int64 before the pointer add
+    keeps every remaining lane offset tiny; the explicit conversion is
+    required because the compiler re-associates the implicit
+    ``src_ptr + base * row_stride`` form back into the single big-vector
+    expression (variant probe, 2026-11-17: implicit-fold form wrong past
+    2**31 bytes, int64 forms bitwise correct on the same shapes).
+    """
+    pid = tl.program_id(0)
+    num_full = n_elements // BLOCK
+    for tile_id in tl.range(pid, num_full, GRID):
+        base = tile_id * BLOCK
+        offs = tl.arange(0, BLOCK)
+        src_tile = src_ptr + base.to(tl.int64) * row_stride
+        dst_tile = dst_ptr + base.to(tl.int64)
+        val = tl.load(src_tile + offs * row_stride)
+        tl.store(dst_tile + offs, val)
+    if pid == num_full % GRID:
+        base = num_full * BLOCK
+        rem = n_elements - base
+        if rem > 0:
+            offs = tl.arange(0, BLOCK)
+            mask = offs < rem
+            src_tile = src_ptr + base.to(tl.int64) * row_stride
+            dst_tile = dst_ptr + base.to(tl.int64)
+            val = tl.load(src_tile + offs * row_stride, mask=mask, other=0)
+            tl.store(dst_tile + offs, val, mask=mask)
 
 
 @triton.jit
@@ -222,12 +280,56 @@ def _offsets_fit(inp):
     return highest < _OFFSET_LIMIT and -lowest < _OFFSET_LIMIT
 
 
-def _launch_rows_copy(src, dst, n_rows, row_len, row_stride):
+def _byte_extent(inp):
+    """Largest byte distance from the view start to any element it addresses.
+
+    In-kernel lane offsets are byte-scaled inside int32 lanes, so any path
+    that keeps a full element offset in a lane (the gather decomposition)
+    must stay under 2**31 bytes; the row/strided kernels instead fold the
+    big scalar part into the 64-bit pointer and only small lane parts are
+    scaled, which is what lets 4-byte dtypes copy spans beyond 2 GiB.
+    """
+    highest = 0
+    lowest = 0
+    for size, stride in zip(inp.shape, inp.stride()):
+        extent = (size - 1) * stride
+        highest += max(extent, 0)
+        lowest += min(extent, 0)
+    return max(abs(highest), abs(lowest)) * inp.element_size()
+
+
+def _launch_rows_copy(src, dst, n_rows, row_len, row_stride, esize):
+    # 2-byte dtypes spend twice the lanes per byte; an int32 word alias of
+    # the underlying storage halves the lane count without changing the
+    # traffic (934.6 -> 737 us on a (512, 1024, 1024) fp16 [::2] source and
+    # 19.0 -> 16.0 us on a (32, 512, 512) source, measured 2026-11-17).
+    # Word rows keep the same row structure: element (r, c) at byte
+    # 2 * (r * row_stride + c) sits at word (r * (row_stride // 2) + c // 2).
+    if esize == 2 and row_len % 2 == 0 and row_stride % 2 == 0:
+        storage = src.untyped_storage()
+        off_bytes = src.storage_offset() * esize
+        if off_bytes % 4 == 0 and storage.nbytes() % 4 == 0:
+            src_words = torch.empty(0, dtype=torch.int32, device=src.device)
+            src_words.set_(storage, off_bytes // 4, [storage.nbytes() // 4], [1])
+            row_len_w = row_len // 2
+            row_stride_w = row_stride // 2
+            block_w = min(triton.next_power_of_2(row_len_w), _ROW_BLOCK_CAP)
+            chunks_per_row_w = triton.cdiv(row_len_w, block_w)
+            _rows_copy_kernel[(min(_GRID_SIZE, n_rows * chunks_per_row_w),)](
+                src_words,
+                dst.reshape(-1).view(torch.int32),
+                n_rows,
+                row_len_w,
+                row_stride_w,
+                chunks_per_row_w,
+                BLOCK=block_w,
+                GRID=_GRID_SIZE,
+                num_warps=4,
+            )
+            return
     block = min(triton.next_power_of_2(row_len), _ROW_BLOCK_CAP)
     chunks_per_row = triton.cdiv(row_len, block)
-    num_chunks = n_rows * chunks_per_row
-    grid = (min(_GRID_SIZE, num_chunks),)
-    _rows_copy_kernel[grid](
+    _rows_copy_kernel[(min(_GRID_SIZE, n_rows * chunks_per_row),)](
         src,
         dst,
         n_rows,
@@ -240,10 +342,23 @@ def _launch_rows_copy(src, dst, n_rows, row_len, row_stride):
     )
 
 
-def _launch_strided_copy(src, dst, n_elements, row_stride):
+def _launch_strided_copy(src, dst, n_elements, row_stride, esize):
+    # Both operands' lane byte spans must stay inside int32 for the fast
+    # kernel; the wide kernel takes over past 2**31 bytes, but its lanes
+    # still carry offs * row_stride, so keep that (per-tile) span in range
+    # too and defer exotic huge strides to copy_.
+    src_lane_bytes = (n_elements - 1) * abs(row_stride) * esize
+    dst_bytes = n_elements * esize
+    tile_lane_bytes = (_STRIDED_BLOCK - 1) * abs(row_stride) * esize
+    if tile_lane_bytes >= 2**31:
+        return False
+    kern = (
+        _strided_copy_kernel
+        if max(src_lane_bytes, dst_bytes) < 2**31
+        else _strided_copy_kernel_wide
+    )
     num_tiles = triton.cdiv(n_elements, _STRIDED_BLOCK)
-    grid = (min(_GRID_SIZE, num_tiles),)
-    _strided_copy_kernel[grid](
+    kern[(min(_GRID_SIZE, num_tiles),)](
         src,
         dst,
         n_elements,
@@ -252,6 +367,7 @@ def _launch_strided_copy(src, dst, n_elements, row_stride):
         GRID=_GRID_SIZE,
         num_warps=4,
     )
+    return True
 
 
 def _launch_gather_copy(src, dst, inp):
@@ -290,14 +406,25 @@ def _kernel_contiguous(out, inp):
     else:
         src = inp
         dst = out
+    esize = src.element_size()
     plan = _row_plan(inp)
     if plan is not None:
         n_rows, row_len, row_stride = plan
         if row_len == 1:
-            _launch_strided_copy(src, dst, numel, row_stride)
+            if not _launch_strided_copy(src, dst, numel, row_stride, esize):
+                return False
         else:
-            _launch_rows_copy(src, dst, n_rows, row_len, row_stride)
+            # Rows lanes stay inside one row; the scalar row bases fold into
+            # the pointer (affine path scales in 64-bit), so the in-row byte
+            # span is the only lane budget.
+            if row_len * esize >= 2**31:
+                return False
+            _launch_rows_copy(src, dst, n_rows, row_len, row_stride, esize)
     else:
+        # The gather decomposition keeps full element offsets in the lanes,
+        # both for the source multi-index and the dense destination index.
+        if max(_byte_extent(inp), numel * esize) >= 2**31:
+            return False
         _launch_gather_copy(src, dst, inp)
     return True
 

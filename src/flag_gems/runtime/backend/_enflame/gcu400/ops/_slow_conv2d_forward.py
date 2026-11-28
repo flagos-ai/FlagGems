@@ -36,6 +36,14 @@ channel count lands on the M axis, and every operand is addressed with plain
 contiguous offsets (the host materialises strided tensors first).  The fp64
 FMA path and all backward kernels are unchanged from the generic source.
 
+A constexpr-specialised fast-path kernel (``_conv2d_fwd_dot_v2_kernel``)
+serves the common well-formed cases: every shape value is a ``tl.constexpr``
+and the (kh, kw) taps unroll through ``tl.static_range`` with affine per-tap
+input offsets, which runs an order of magnitude faster than the runtime-indexed
+gather kernel on this target (see ``_conv2d_fwd_dot_v2_kernel``'s comment).
+Cases outside its int32 / unroll-budget guards fall back to the original
+gather kernel unchanged.
+
 Everything that produces or contributes to the returned values runs in Triton
 kernels declared here; the host wrapper only validates arguments, allocates the
 output, and launches kernels.
@@ -49,6 +57,7 @@ import triton
 import triton.language as tl
 
 from flag_gems.runtime import torch_device_fn
+from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
 
@@ -159,6 +168,118 @@ def _conv2d_fwd_dot_kernel(
         tl.store(out_ptr + out_off, acc.to(x_ptr.dtype.element_ty), mask=omask)
     else:
         tl.store(out_ptr + out_off, acc, mask=omask)
+
+
+# --------------------------------------------------------------------------
+# forward: static-unroll implicit GEMM fast path (fp16 / bf16 / fp32)
+#
+# Perf-oriented rewrite of the gather kernel above, ported from the
+# residue-phase structure proven on this tree's ``slow_conv_transpose3d``:
+# every shape-dependent value is a ``tl.constexpr``, the (kh, kw) taps and
+# the C_in blocks unroll through ``tl.static_range`` (no runtime div/mod in
+# the K loop), the output pixel index is decomposed once with constexpr
+# divisors, and the per-pixel input offset is affine in (oh, ow) for each
+# compile-time tap.  The x tile rows are the per-pixel bases and the columns
+# add the C_in strides, so the load stays in the P02-safe column-dependent
+# shape.  Masked operands are re-zeroed with ``tl.where`` right before the
+# ``tl.dot``: on this backend that both keeps masked lanes out of the dot
+# (see conv2d__opt) and selects the fast lowering -- dropping it measured
+# 7-8x slower.  fp16/bf16 upcast to fp32 and run an ieee dot (raw
+# low-precision dots are intermittently wrong on this backend; the upcast
+# measured identical latency), fp32 runs the ieee dot directly.
+# --------------------------------------------------------------------------
+@libentry()
+@triton.jit
+def _conv2d_fwd_dot_v2_kernel(
+    x_ptr,
+    w_ptr,
+    b_ptr,
+    o_ptr,
+    N: tl.constexpr,
+    CIN: tl.constexpr,
+    H: tl.constexpr,
+    W: tl.constexpr,
+    COUT: tl.constexpr,
+    HOUT: tl.constexpr,
+    WOUT: tl.constexpr,
+    KH: tl.constexpr,
+    KW: tl.constexpr,
+    SH: tl.constexpr,
+    SW: tl.constexpr,
+    PH: tl.constexpr,
+    PW: tl.constexpr,
+    HAS_BIAS: tl.constexpr,
+    UPCAST: tl.constexpr,
+    BLOCK_N: tl.constexpr,
+    BLOCK_CI: tl.constexpr,
+    BLOCK_CO: tl.constexpr,
+):
+    pid_p = tl.program_id(0)
+    pid_co = tl.program_id(1)
+
+    idx = pid_p * BLOCK_N + tl.arange(0, BLOCK_N)
+    total: tl.constexpr = N * HOUT * WOUT
+    valid = idx < total
+    ow = idx % WOUT
+    idx_hw = idx // WOUT
+    oh = idx_hw % HOUT
+    n = idx_hw // HOUT
+
+    co = pid_co * BLOCK_CO + tl.arange(0, BLOCK_CO)
+    vco = co < COUT
+
+    acc = tl.zeros((BLOCK_N, BLOCK_CO), dtype=tl.float32)
+    if HAS_BIAS:
+        bv = tl.load(b_ptr + co, mask=vco, other=0.0).to(tl.float32)
+        acc += bv[None, :]
+
+    HW: tl.constexpr = H * W
+    KVOL: tl.constexpr = KH * KW
+    ci_blocks: tl.constexpr = (CIN + BLOCK_CI - 1) // BLOCK_CI
+    for kh in tl.static_range(KH):
+        ihr = oh * SH + kh - PH
+        vd = (ihr >= 0) & (ihr < H)
+        ihc = tl.maximum(ihr, 0)
+        for kw in tl.static_range(KW):
+            iwr = ow * SW + kw - PW
+            vw = (iwr >= 0) & (iwr < W)
+            iwc = tl.maximum(iwr, 0)
+            vm = valid & vd & vw
+            xrow = n * (CIN * HW) + ihc * W + iwc
+            wbase = kh * KW + kw
+            for ci_base in tl.static_range(0, ci_blocks):
+                cci = ci_base * BLOCK_CI + tl.arange(0, BLOCK_CI)
+                vci = cci < CIN
+                m2 = vm[:, None] & vci[None, :]
+                xv = tl.load(
+                    x_ptr + xrow[:, None] + (cci * HW)[None, :], mask=m2, other=0.0
+                )
+                wv = tl.load(
+                    w_ptr
+                    + (cci * KVOL)[:, None]
+                    + (co * (CIN * KVOL) + wbase)[None, :],
+                    mask=vci[:, None] & vco[None, :],
+                    other=0.0,
+                )
+                xv = tl.where(m2, xv, 0.0)
+                wv = tl.where(vci[:, None] & vco[None, :], wv, 0.0)
+                if UPCAST:
+                    acc = acc + tl.dot(
+                        xv.to(tl.float32), wv.to(tl.float32), input_precision="ieee"
+                    )
+                else:
+                    acc = tl.dot(xv, wv, acc, input_precision="ieee")
+
+    ooff = (
+        (n[:, None] * COUT + co[None, :]) * (HOUT * WOUT)
+        + oh[:, None] * WOUT
+        + ow[:, None]
+    )
+    tl.store(
+        o_ptr + ooff,
+        acc.to(o_ptr.dtype.element_ty),
+        mask=valid[:, None] & vco[None, :],
+    )
 
 
 # --------------------------------------------------------------------------
@@ -657,13 +778,64 @@ def _launch_forward(x, weight, bias, out, dims):
         return out
 
     p_total = h_out * w_out
-    block_co, block_p, bk = _pick_blocks(n, c_out, c_in, p_total, k_h * k_w, x.dtype)
+    kv = k_h * k_w
+    b_arg = bias if bias is not None else weight
+    np2 = triton.next_power_of_2
+
+    # Static-unroll fast path: every index expression is constexpr-folded
+    # inside the v2 kernel, so gate on the int32 offset range and the
+    # ``tl.static_range`` unroll budget and fall back to the runtime-indexed
+    # gather kernel above otherwise.
+    block_ci = max(16, min(64, np2(max(c_in, 1))))
+    unroll = kv * ((c_in + block_ci - 1) // block_ci)
+    int32_safe = max(x.numel(), weight.numel(), target.numel()) < (1 << 31) - 65536
+    if (
+        int32_safe
+        and x.numel() > 0
+        and target.numel() > 0
+        and kv <= 64
+        and unroll <= 64
+    ):
+        block_co = max(16, min(64, np2(max(c_out, 1))))
+        total = n * p_total
+        grid = (triton.cdiv(total, 128), triton.cdiv(c_out, block_co))
+        with torch_device_fn.device(x.device):
+            _conv2d_fwd_dot_v2_kernel[grid](
+                x,
+                weight,
+                b_arg,
+                target,
+                n,
+                c_in,
+                h,
+                w,
+                c_out,
+                h_out,
+                w_out,
+                k_h,
+                k_w,
+                s_h,
+                s_w,
+                p_h,
+                p_w,
+                HAS_BIAS=bias is not None,
+                UPCAST=x.dtype != torch.float32,
+                BLOCK_N=128,
+                BLOCK_CI=block_ci,
+                BLOCK_CO=block_co,
+                num_warps=4,
+                num_stages=2,
+            )
+        if target is not out:
+            out.copy_(target)
+        return out
+
+    block_co, block_p, bk = _pick_blocks(n, c_out, c_in, p_total, kv, x.dtype)
     if x.dtype == torch.float32:
         prec = 1 if c_in * k_h * k_w >= 1024 else 0
     else:
         prec = 2
     num_warps = 8 if block_co * block_p > 2048 else 4
-    b_arg = bias if bias is not None else weight
 
     grid = (triton.cdiv(p_total, block_p), triton.cdiv(c_out, block_co), n)
     with torch_device_fn.device(x.device):
@@ -854,7 +1026,7 @@ def _slow_conv2d_forward(
     self, weight, kernel_size, bias=None, stride=None, padding=None, output=None
 ):
     """Compute ``_slow_conv2d_forward`` for the FlagGems pytest contract."""
-    logger.debug("GEMS_ENFLAME_GCU400 _SLOW_CONV2D_FORWARD")
+    logger.debug("GEMS_ENFLAME _SLOW_CONV2D_FORWARD")
     x = self
     # ATen's ``_slow_conv2d_forward`` schema makes stride and padding required
     # positional arguments; this wrapper accepts ``None`` as well and resolves

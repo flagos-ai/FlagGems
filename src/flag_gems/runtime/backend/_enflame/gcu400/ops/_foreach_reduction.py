@@ -283,7 +283,7 @@ def _foreach_max(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
     specified for input.numel() == 0"), so an empty entry is refused rather than
     silently yielding ``-inf``.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_MAX")
+    logger.debug("GEMS_ENFLAME _FOREACH_MAX")
     tensors = check_tensor_list(self)
     # One ``numel()`` pass feeds both the emptiness check and the metadata; the
     # list is walked several times below and every pass costs microseconds on a
@@ -656,7 +656,7 @@ def _foreach_norm(
     nonzero elements, ``inf`` returns ``max(|x|)`` and ``-inf`` returns
     ``min(|x|)``. Finite orders go through the power sum.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_NORM")
+    logger.debug("GEMS_ENFLAME _FOREACH_NORM")
     tensors = check_tensor_list(self)
     sums = _pow_sum_list(tensors, ord, dtype)
     return _finish_list(sums, float(ord))
@@ -762,7 +762,7 @@ def _foreach_zero_(self: Sequence[torch.Tensor]) -> None:
     The schema returns ``()``; handing the list back would make the dispatcher
     reject the kernel.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ZERO_")
+    logger.debug("GEMS_ENFLAME _FOREACH_ZERO_")
     tensors = check_tensor_list(self)
     _zero_list(tensors)
     return None
@@ -774,7 +774,7 @@ def _foreach_zero(self: Sequence[torch.Tensor]) -> List[torch.Tensor]:
     The schema is ``(Tensor[] self) -> Tensor[] self_out``: PyTorch zeroes the
     inputs and returns them, so this is not a fresh allocation.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _FOREACH_ZERO")
+    logger.debug("GEMS_ENFLAME _FOREACH_ZERO")
     tensors = check_tensor_list(self)
     _zero_list(tensors)
     return tensors

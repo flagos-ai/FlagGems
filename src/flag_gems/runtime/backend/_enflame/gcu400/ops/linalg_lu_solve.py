@@ -23,6 +23,7 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.runtime import device as runtime_device
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -39,13 +40,51 @@ def _row_at(w, index):
     return tl.sum(tl.where(row_indices[:, None] == index, w, 0.0), 0)[None, :]
 
 
-# Dispatch boundary between the two solve kernels, measured on H20. See
-# _can_use_gather_path for why N == 32 is where the register-resident kernel
-# stops winning.
-GATHER_MAX_N = 32
+# Dispatch boundary between the two solve kernels. The register-resident
+# gather kernel's wall time is ~3 serial row steps per N, each one cross-lane
+# tree; the blocked pair pays two launches plus per-block barriers but hoists
+# the bulk updates into tl.dot panels. Measured on GCU400 the boundary sits at
+# N == 64: 128x16 blocked runs 449us vs 624us through the gather kernel,
+# while at 64x8 the gather kernel's single launch stays ahead (240us vs ~250).
+GATHER_MAX_N = 64
 # Widest RHS tile the gather kernel keeps in registers; wider systems split
 # along the grid's second axis instead.
 GATHER_MAX_RHS_TILE = 32
+# Widest RHS tile the row-parallel permute kernel copies per iteration; wider
+# systems loop inside the program instead of growing the grid.
+PERMUTE_MAX_RHS_TILE = 512
+# Below this order the gather kernel fully unrolls its serial row loops
+# (constexpr N): the compiler then statically schedules the independent
+# column loads against the cross-lane reduction chain (-5..-19% measured).
+# At N == 128 the fully unrolled body instead collapses scheduling (+276%),
+# so larger orders keep the runtime loop form.
+GATHER_UNROLL_MAX_N = tl.constexpr(64)
+
+
+@triton.jit
+def _pivot_swap_step(perm, rows, i, p):
+    """One swap of the pivot composition: exchange perm[i] and perm[p].
+
+    Expressed with a single cross-lane reduction: s = perm[i] - perm[p] feeds
+    both destinations at once (lane i gets perm - s, lane p gets perm + s).
+    The arithmetic (at_i - at_p) form stays correct for identity swaps
+    (p == i), where a select-based contribution would double-count the lane.
+    """
+    sel = (rows == i).to(tl.int32) - (rows == p).to(tl.int32)
+    s = tl.sum(sel * perm, 0)
+    return perm - s * sel
+
+
+@triton.jit
+def _fwd_update_step(w, l_col, i):
+    w_i = _row_at(w, i)
+    return w - l_col[:, None] * w_i
+
+
+@triton.jit
+def _bwd_update_step(w, u_col, inv_diag, i):
+    w_i = _row_at(w, i)
+    return w - (u_col * inv_diag)[:, None] * w_i
 
 
 @libentry()
@@ -105,13 +144,19 @@ def linalg_lu_solve_gather_kernel(
     # turns the N global load/store row exchanges of the elementwise
     # formulation into N warp-local selects plus one gathered load of B.
     perm = rows
-    for i in range(N):
-        p = tl.load(piv_base + i * stride_piv_row).to(tl.int32) - 1
-        at_i = rows == i
-        at_p = rows == p
-        v_i = tl.sum(tl.where(at_i, perm, 0))
-        v_p = tl.sum(tl.where(at_p, perm, 0))
-        perm = tl.where(at_i, v_p, tl.where(at_p, v_i, perm))
+    if N <= GATHER_UNROLL_MAX_N:
+        # Small orders unroll the row chain: the compiler statically
+        # schedules the address-independent loads against the reduction
+        # chain (-5..-19% measured). At N == 128 the fully unrolled body
+        # instead collapses scheduling (+276%), so larger orders keep the
+        # runtime loop form.
+        for i in tl.static_range(N):
+            p = tl.load(piv_base + i * stride_piv_row).to(tl.int32) - 1
+            perm = _pivot_swap_step(perm, rows, i, p)
+    else:
+        for i in range(N):
+            p = tl.load(piv_base + i * stride_piv_row).to(tl.int32) - 1
+            perm = _pivot_swap_step(perm, rows, i, p)
 
     # Step 2: load P @ B directly through the permutation, then solve
     # L @ y = P @ B in place. L has an implicit unit diagonal.
@@ -120,14 +165,22 @@ def linalg_lu_solve_gather_kernel(
         mask=rows_mask[:, None] & col_mask[None, :],
         other=0.0,
     )
-    for i in range(N):
-        l_col = tl.load(
-            lu_base + rows * stride_lu_row + i * stride_lu_col,
-            mask=(rows > i) & rows_mask,
-            other=0.0,
-        )
-        w_i = _row_at(w, i)
-        w = w - l_col[:, None] * w_i
+    if N <= GATHER_UNROLL_MAX_N:
+        for i in tl.static_range(N):
+            l_col = tl.load(
+                lu_base + rows * stride_lu_row + i * stride_lu_col,
+                mask=(rows > i) & rows_mask,
+                other=0.0,
+            )
+            w = _fwd_update_step(w, l_col, i)
+    else:
+        for i in range(N):
+            l_col = tl.load(
+                lu_base + rows * stride_lu_row + i * stride_lu_col,
+                mask=(rows > i) & rows_mask,
+                other=0.0,
+            )
+            w = _fwd_update_step(w, l_col, i)
 
     # Step 3: solve U @ x = y. Newton-refined reciprocal replaces the division.
     diag = tl.load(
@@ -139,14 +192,22 @@ def linalg_lu_solve_gather_kernel(
     inv_diag = inv_diag * (2.0 - diag * inv_diag)
 
     w = w * inv_diag[:, None]
-    for i in range(N - 1, -1, -1):
-        u_col = tl.load(
-            lu_base + rows * stride_lu_row + i * stride_lu_col,
-            mask=rows < i,
-            other=0.0,
-        )
-        w_i = _row_at(w, i)
-        w = w - (u_col * inv_diag)[:, None] * w_i
+    if N <= GATHER_UNROLL_MAX_N:
+        for i in tl.static_range(N - 1, -1, -1):
+            u_col = tl.load(
+                lu_base + rows * stride_lu_row + i * stride_lu_col,
+                mask=rows < i,
+                other=0.0,
+            )
+            w = _bwd_update_step(w, u_col, inv_diag, i)
+    else:
+        for i in range(N - 1, -1, -1):
+            u_col = tl.load(
+                lu_base + rows * stride_lu_row + i * stride_lu_col,
+                mask=rows < i,
+                other=0.0,
+            )
+            w = _bwd_update_step(w, u_col, inv_diag, i)
 
     tl.store(
         x_base + rows[:, None] * stride_x_row + cols[None, :] * stride_x_col,
@@ -163,6 +224,7 @@ def linalg_lu_solve_permute_kernel(
     pivots,
     N: tl.constexpr,
     nrhs: tl.constexpr,
+    num_chunks,
     batch_stride_piv,
     stride_piv_row,
     batch_stride_b,
@@ -171,51 +233,50 @@ def linalg_lu_solve_permute_kernel(
     batch_stride_x,
     stride_x_row,
     stride_x_col,
-    BLOCK_N: tl.constexpr,
+    CHUNK: tl.constexpr,
     BLOCK_RHS: tl.constexpr,
 ):
-    """Write X = P @ B for the blocked path.
+    """Write X = P @ B for the blocked path, CHUNK output rows per program.
 
     PyTorch stores pivots as sequential 1-indexed row swaps, so composing them
-    is serial in N. Only the row indices take part in that chain, so it runs on
-    a register-resident index vector and the payload moves in one coalesced
-    gathered pass -- far cheaper than N global row-exchange read/write pairs.
+    is serial in N. The vector formulation costs one cross-lane reduction tree
+    per swap step on this backend, O(N) trees, which dominates at large N
+    (measured ~3.4us/step at N=512); a one-row-per-program scalar replay
+    instead collapses to O(N * N / num_chunks) aggregate issue once the grid
+    outgrows the device. This variant gives each program a CHUNK-lane vector
+    of independent row trackers: every swap step is one shared scalar pivot
+    load plus pure elementwise selects (no cross-lane traffic at all), and
+    the payload rows then move in one gathered 2D pass.
     """
-    batch_idx = tl.program_id(0)
-    rhs_tile_idx = tl.program_id(1)
-
-    rows = tl.arange(0, BLOCK_N)
-    rows_mask = rows < N
-    cols = rhs_tile_idx * BLOCK_RHS + tl.arange(0, BLOCK_RHS)
-    col_mask = cols < nrhs
+    pid = tl.program_id(0)
+    batch_idx = pid // num_chunks
+    chunk_idx = pid % num_chunks
 
     piv_base = pivots + batch_idx * batch_stride_piv
+    b_base = B + batch_idx * batch_stride_b
+    x_base = X + batch_idx * batch_stride_x
 
-    perm = rows
+    rows = chunk_idx * CHUNK + tl.arange(0, CHUNK)
+    rows_mask = rows < N
+
+    q = rows
     for i in range(N):
         p = tl.load(piv_base + i * stride_piv_row).to(tl.int32) - 1
-        at_i = rows == i
-        at_p = rows == p
-        v_i = tl.sum(tl.where(at_i, perm, 0))
-        v_p = tl.sum(tl.where(at_p, perm, 0))
-        perm = tl.where(at_i, v_p, tl.where(at_p, v_i, perm))
+        q = tl.where(q == i, p, tl.where(q == p, i, q))
 
-    vals = tl.load(
-        B
-        + batch_idx * batch_stride_b
-        + perm[:, None] * stride_b_row
-        + cols[None, :] * stride_b_col,
-        mask=rows_mask[:, None] & col_mask[None, :],
-        other=0.0,
-    )
-    tl.store(
-        X
-        + batch_idx * batch_stride_x
-        + rows[:, None] * stride_x_row
-        + cols[None, :] * stride_x_col,
-        vals,
-        mask=rows_mask[:, None] & col_mask[None, :],
-    )
+    for c0 in range(0, nrhs, BLOCK_RHS):
+        cols = c0 + tl.arange(0, BLOCK_RHS)
+        col_mask = cols < nrhs
+        vals = tl.load(
+            b_base + q[:, None] * stride_b_row + cols[None, :] * stride_b_col,
+            mask=rows_mask[:, None] & col_mask[None, :],
+            other=0.0,
+        )
+        tl.store(
+            x_base + rows[:, None] * stride_x_row + cols[None, :] * stride_x_col,
+            vals,
+            mask=rows_mask[:, None] & col_mask[None, :],
+        )
 
 
 @libentry()
@@ -403,12 +464,14 @@ def linalg_lu_solve_blocked_kernel(
 def _can_use_gather_path(N, nrhs):
     """Whether to take the register-resident gather kernel.
 
-    It wins up to N == 32 and loses past it (measured on H20: 0.87x at N=64
-    fp32, 0.59x fp64), because the whole [next_pow2(N), BLOCK_RHS] tile must
-    stay live across a serial chain that grows with N. Everything above goes to
-    the blocked kernel, which hoists the bulk of the work into a panel update.
-    The two paths partition every shape; nrhs never affects the choice, since
-    wide RHS simply splits into more tiles along the grid's second axis.
+    The gather kernel's cost is ~3 serial row steps per N (pivot compose,
+    forward, backward), each step a cross-lane reduction over the
+    [BLOCK_N, BLOCK_RHS] tile, while the blocked pair pays two launches and
+    per-k-block barriers but runs the bulk updates as tl.dot panels. Measured
+    on GCU400 fp32 the boundary sits at N == 64 (gather 240us vs ~250us
+    blocked); at N == 128 the blocked path already wins (449us vs 624us) and
+    the gap only grows with N as the per-step tree widens. nrhs never affects
+    the choice: wide RHS simply splits into more tiles along grid axis 1.
     """
     return N <= GATHER_MAX_N
 
@@ -420,12 +483,9 @@ def _get_gather_block_rhs(nrhs):
 
 
 def _get_gather_launch_config(dtype, N):
-    # The serial row chain is latency-bound, so one warp wins at the smallest
-    # sizes; from N == 16 up there is enough per-row vector work to feed four.
-    if N >= 16:
-        return {"num_warps": 4, "num_stages": 2}
-    if dtype == torch.float64:
-        return {"num_warps": 2, "num_stages": 1}
+    # The serial row chain is latency-bound; the whole [BLOCK_N, BLOCK_RHS]
+    # tile is register-resident, so one warp keeps every cross-lane reduction
+    # intra-warp instead of paying DSM-mediated cross-warp trees.
     return {"num_warps": 1, "num_stages": 2}
 
 
@@ -450,21 +510,30 @@ def _get_blocked_config(dtype, N):
     return {
         "BLOCK_K": 32,
         "BLOCK_M": 128 if N >= 128 else 64,
-        "num_warps": 4,
+        "num_warps": 1,
         "num_stages": 1,
     }
 
 
 def _get_blocked_block_rhs(nrhs):
-    # A 16-wide RHS tile is the tl.dot minimum and also the measured H20
-    # winner: grid = batch x ceil(nrhs / BLOCK_RHS), so a narrow tile spreads
-    # the panel updates over more SMs instead of serializing them inside one
-    # CTA. This is worth more than the redundant diagonal work it costs
-    # (N=64 fp32 went 0.96x -> 1.26x versus a 64-wide tile).
+    # A 16-wide RHS tile is the tl.dot minimum and also the measured winner:
+    # grid = batch x ceil(nrhs / BLOCK_RHS), so a narrow tile spreads the
+    # panel updates over more program slots instead of serializing them
+    # inside one program.
     return 16
 
 
-def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
+def _get_permute_chunk(n):
+    # Rows per program in the row-parallel permute kernel. The swap replay is
+    # a length-N chain of one scalar pivot load plus a few elementwise vector
+    # ops per step, so the wall time is set by the chain length as long as
+    # the grid stays within the device's program slots; 32 rows per program
+    # keeps grids small at every core shape while leaving the vector width
+    # non-trivial.
+    return min(32, triton.next_power_of_2(n))
+
+
+def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False, out=None):
     """
     Solve the linear system AX = B using the LU factorization of A.
 
@@ -474,11 +543,14 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
         B: (*, n, k) right-hand side matrix
         left: if True, solve AX = B; if False, solve XA = B
         adjoint: if True, solve A^H X = B
+        out: optional pre-allocated contiguous (*, n, k) output buffer of the
+            same dtype; the kernels then write the solution in place instead
+            of allocating a fresh tensor and copying into ``out`` afterwards.
 
     Returns:
         X: (*, n, k) solution matrix
     """
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_LU_SOLVE")
+    logger.debug("GEMS_ENFLAME LINALG_LU_SOLVE")
 
     if LU.ndim < 2 or B.ndim < 2:
         raise ValueError("LU and B must be at least 2D")
@@ -494,6 +566,25 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
         raise ValueError(
             f"linalg_lu_solve only supports float32/float64, got {LU.dtype}"
         )
+
+    if LU.dtype == torch.float64 and not runtime_device.support_fp64:
+        # No f64 arithmetic: the device reports support_fp64 == False and the
+        # GCU400 Triton compiler rejects f64 ops (compiler_problems P04; a
+        # failed legalization in make_gcuir can take down the whole process).
+        # Native aten already computes Double as FP32 on this backend, so
+        # mirror that: solve value-level in FP32 and widen the outputs back,
+        # like cudnn_grid_sampler_backward / upsample paths.
+        X32 = linalg_lu_solve(
+            LU.to(torch.float32),
+            pivots,
+            B.to(torch.float32),
+            left=left,
+            adjoint=adjoint,
+        )
+        if out is not None and out.dtype == torch.float64 and out.is_contiguous():
+            out.copy_(X32.reshape(out.shape))
+            return out
+        return X32.to(torch.float64)
 
     if LU.numel() == 0 or B.numel() == 0:
         return B.clone()
@@ -514,7 +605,12 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
             # than permuting a pre-copied buffer, so it writes a separate
             # output and needs no clone of B.
             B_work = B.reshape(batch, n, nrhs).contiguous()
-            X = torch.empty_like(B_work)
+            if out is not None and out.dtype == LU.dtype and out.is_contiguous():
+                X = out.reshape(batch, n, nrhs)
+                fresh_out = False
+            else:
+                X = torch.empty_like(B_work)
+                fresh_out = True
             grid = (batch, triton.cdiv(nrhs, block_rhs))
             linalg_lu_solve_gather_kernel[grid](
                 LU_work,
@@ -541,19 +637,28 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
         else:
             cfg = _get_blocked_config(LU.dtype, n)
             block_rhs = _get_blocked_block_rhs(nrhs)
-            block_n = triton.next_power_of_2(n)
             B_work = B.reshape(batch, n, nrhs).contiguous()
-            X = torch.empty_like(B_work)
+            if out is not None and out.dtype == LU.dtype and out.is_contiguous():
+                X = out.reshape(batch, n, nrhs)
+                fresh_out = False
+            else:
+                X = torch.empty_like(B_work)
+                fresh_out = True
             # Apply the pivots in a separate pass so the blocked TRSM works on
             # an already-permuted X: composing the swaps is serial in N and
             # would otherwise be redone identically by every RHS tile.
-            permute_rhs = _get_gather_block_rhs(nrhs)
-            linalg_lu_solve_permute_kernel[(batch, triton.cdiv(nrhs, permute_rhs))](
+            permute_rhs = max(
+                min(triton.next_power_of_2(nrhs), PERMUTE_MAX_RHS_TILE), 1
+            )
+            permute_chunk = _get_permute_chunk(n)
+            num_chunks = triton.cdiv(n, permute_chunk)
+            linalg_lu_solve_permute_kernel[(batch * num_chunks,)](
                 B_work,
                 X,
                 piv_work,
                 n,
                 nrhs,
+                num_chunks,
                 piv_work.stride(0),
                 piv_work.stride(1),
                 B_work.stride(0),
@@ -562,9 +667,9 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
                 X.stride(0),
                 X.stride(1),
                 X.stride(2),
-                BLOCK_N=block_n,
+                CHUNK=permute_chunk,
                 BLOCK_RHS=permute_rhs,
-                num_warps=4,
+                num_warps=1,
                 num_stages=1,
             )
             linalg_lu_solve_blocked_kernel[(batch, triton.cdiv(nrhs, block_rhs))](
@@ -585,4 +690,8 @@ def linalg_lu_solve(LU, pivots, B, *, left=True, adjoint=False):
                 num_warps=cfg["num_warps"],
                 num_stages=cfg["num_stages"],
             )
+    if not fresh_out:
+        # The caller's buffer was used directly as the compute target; return
+        # it unchanged (same object) so out= callers observe their tensor.
+        return out
     return X.reshape(B.shape)

@@ -28,7 +28,7 @@ def _assert_async_kernel(x_ptr, MSG: tl.constexpr):
 
 
 def _assert_async(tensor: torch.Tensor, msg: str = "Assertion failed"):
-    logger.debug("GEMS_ENFLAME_GCU400 ASSERT_ASYNC")
+    logger.debug("GEMS_ENFLAME ASSERT_ASYNC")
     if tensor.numel() != 1:
         raise RuntimeError(
             f"Boolean value of Tensor with shape {list(tensor.shape)} is ambiguous"

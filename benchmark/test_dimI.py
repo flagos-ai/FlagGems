@@ -74,6 +74,10 @@ class DimIBenchmark(base.Benchmark):
             yield (_make_sparse_input(shape, sparse_dim, cur_dtype, self.device),)
 
 
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason="aten and cpu dosenot support",
+)
 @pytest.mark.dimI
 def test_dimI():
     bench = DimIBenchmark(

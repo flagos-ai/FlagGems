@@ -417,13 +417,20 @@ def test_grouped_gemm_w8a8_changing_expert_rows(
 
 
 @pytest.mark.skipif(
-    flag_gems.vendor_name not in ("ascend", "thead")
+    flag_gems.vendor_name not in ("ascend", "enflame", "thead")
     or "grouped_gemm_w8a8" not in vars(flag_gems),
     reason="requires a registered Ascend or PPU grouped GEMM backend",
 )
 class TestGroupedInt8GEMM:
 
     @pytest.mark.parametrize("n,k", [(512, 6144), (6144, 256)])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "enflame",
+        reason=(
+            "enflame backend has no deep_gemm build, so the grouped GEMM "
+            "reference cannot be produced"
+        ),
+    )
     @pytest.mark.grouped_gemm_w8a8
     def test_grouped_gemm_w8a8_native(self, n, k):
         lengths = [1] * 32 + [0] * 224 + [13]
@@ -490,6 +497,14 @@ class TestGroupedInt8GEMM:
         [(True, False, 64, 128, False, 3), (False, True, 128, 64, True, 4)],
     )
     @pytest.mark.parametrize("values", ["random", "extreme", "cancellation"])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "enflame",
+        reason=(
+            "enflame backend ships a single tiled kernel and does not expose "
+            "the thead grouped_gemm_metadata / grouped_gemm_tiled_kernel "
+            "workspace ABI this case drives directly"
+        ),
+    )
     @pytest.mark.grouped_gemm_w8a8
     @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="PPU kernel options")
     def test_grouped_gemm_w8a8_async(
@@ -556,6 +571,13 @@ class TestGroupedInt8GEMM:
         gems_assert_equal(args[4].cpu(), expected)
 
     @pytest.mark.parametrize("cache,evict", [(".cg", ""), (".ca", "evict_last")])
+    @pytest.mark.skipif(
+        flag_gems.vendor_name == "enflame",
+        reason=(
+            "enflame backend has no grouped_gemv_int8_kernel with the thead "
+            "cache-hint constexpr ABI this case drives directly"
+        ),
+    )
     @pytest.mark.grouped_gemm_w8a8
     @pytest.mark.skipif(flag_gems.vendor_name != "thead", reason="PPU cache options")
     def test_grouped_gemm_w8a8_gemv_cache_tail(self, cache, evict):

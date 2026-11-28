@@ -583,6 +583,13 @@ def test_cudnn_grid_sampler_backward_out_dtype_mismatch(dtype, index):
 
 
 @pytest.mark.cudnn_grid_sampler_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "enflame",
+    reason=(
+        "torch aten not support due to: enflame backend does not support "
+        "registering a python kernel on aten::cudnn_grid_sampler_backward"
+    ),
+)
 def test_cudnn_grid_sampler_backward_dispatch(monkeypatch):
     # Calling the wrapper directly only proves the wrapper runs; this case
     # proves the dispatcher path.  ``only_enable`` is the sanctioned

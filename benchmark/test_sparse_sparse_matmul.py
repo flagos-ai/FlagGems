@@ -62,6 +62,18 @@ class SparseSparseMatmulBenchmark(base.BlasBenchmark):
             yield from self.input_fn(m, n, k, dtype, self.device, seed=i)
 
 
+# The native baseline leg cannot be timed for the Half/BFloat16 entries:
+# ``aten::_sparse_sparse_matmul`` only dispatches floating point types and
+# raises ``NotImplementedError: "sparse_matmul" not implemented for
+# 'Half'/'BFloat16'``. The harness times one dtype list per case, so the native
+# leg aborts before the float32 row is reached. Gate the native baseline off on
+# the enflame backend only; other vendors keep their baseline untouched.
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="aten::_sparse_sparse_matmul has no Half/BFloat16 kernel "
+    '(NotImplementedError: "sparse_matmul" not implemented for '
+    "'Half'/'BFloat16'), so the native baseline cannot be timed",
+)
 @pytest.mark.sparse_sparse_matmul
 def test_sparse_sparse_matmul(monkeypatch):
     bench = SparseSparseMatmulBenchmark(

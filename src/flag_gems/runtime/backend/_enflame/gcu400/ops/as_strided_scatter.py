@@ -198,7 +198,7 @@ def as_strided_scatter(
     storage_offset=None,
 ) -> torch.Tensor:
     """Clone ``self`` storage and scatter ``src`` through an as-strided view."""
-    logger.debug("GEMS_ENFLAME_GCU400 AS_STRIDED_SCATTER")
+    logger.debug("GEMS_ENFLAME AS_STRIDED_SCATTER")
     if self.device != src.device or self.dtype != src.dtype:
         raise RuntimeError("self and src must have the same device and dtype")
     if self.layout != torch.strided or src.layout != torch.strided:

@@ -100,7 +100,7 @@ def _sobol_engine_ff_(quasi, n, sobolstate, dimension, num_generated):
     Returns:
         quasi: the updated state tensor (modified in-place)
     """
-    logger.debug("GEMS_ENFLAME_GCU400 _SOBOL_ENGINE_FF_")
+    logger.debug("GEMS_ENFLAME _SOBOL_ENGINE_FF_")
 
     # Sobol direction matrices use MAXBIT=30
     MAXBIT = 30
