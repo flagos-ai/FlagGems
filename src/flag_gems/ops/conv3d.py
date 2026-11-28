@@ -126,7 +126,13 @@ def conv3d_forward_kernel(
     pid_group = tl.program_id(2)
 
     # caculate in_n out_depth out_height out_weight value in kernel
-    ni_do_ho_wo_offset = pid_ni_do_ho_wo * BLOCK_NI_DO_HO_WO + tl.arange(
+    # The flattened row index spans N * out_depth * out_height * out_width, and
+    # it is multiplied by the input/output n-strides below. With the channel
+    # padding applied by `conv3d()` those products exceed INT32_MAX long before
+    # the tensors do (e.g. N=522240, padded row pitch 6272 -> 3.27e9 elements),
+    # which wraps the address and faults. Promote the program id once so all the
+    # derived indices are 64-bit. See Issue #6588.
+    ni_do_ho_wo_offset = pid_ni_do_ho_wo.to(tl.int64) * BLOCK_NI_DO_HO_WO + tl.arange(
         0, BLOCK_NI_DO_HO_WO
     )
     ni_do_ho_offset = ni_do_ho_wo_offset // out_width
