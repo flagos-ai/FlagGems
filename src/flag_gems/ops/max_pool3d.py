@@ -128,3 +128,42 @@ def max_pool3d(
     return _MaxPool3DFunction.apply(
         input, kernel_size, stride, padding, dilation, ceil_mode
     )
+
+
+def max_pool3d_backward(
+    grad_output,
+    self,
+    kernel_size,
+    stride=None,
+    padding=0,
+    dilation=1,
+    ceil_mode=False,
+    indices=None,
+):
+    """Return the input gradient using the indices saved by 3-D max pooling."""
+    if indices is None:
+        raise ValueError(
+            "max_pool3d_backward requires the indices from the forward pass"
+        )
+    if (
+        torch.version.cuda is not None
+        and self.is_cuda
+        and torch.cuda.get_device_capability(self.device)[0] == 9
+    ):
+        from flag_gems.runtime.backend._nvidia.hopper.ops.max_pool3d_backward import (
+            max_pool3d_with_indices_backward,
+        )
+    else:
+        from flag_gems.ops.max_pool3d_with_indices_backward import (
+            max_pool3d_with_indices_backward,
+        )
+    return max_pool3d_with_indices_backward(
+        grad_output,
+        self,
+        kernel_size,
+        stride,
+        padding,
+        dilation,
+        ceil_mode,
+        indices,
+    )

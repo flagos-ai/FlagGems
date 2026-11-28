@@ -14171,6 +14171,18 @@ ops:
   - NeuralNetwork
   stages:
   - alpha: '5.5'
+- id: max_pool3d_backward
+  description: The backward computation of `max_pool3d()`, exercised through the autograd
+    of the forward operator.
+  for:
+  - max_pool3d_with_indices_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.4'
 - id: max_pool3d_with_indices
   description: Applies a 3D max pooling over an input signal composed of several input
     planes.
