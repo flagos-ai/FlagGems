@@ -63,3 +63,22 @@ def test_addcmul_out():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+def _backward_input_fn(shape, dtype, device):
+    inp = utils.generate_tensor_input(shape, dtype, device)
+    tensor1 = utils.generate_tensor_input(shape, dtype, device)
+    tensor2 = utils.generate_tensor_input(shape, dtype, device)
+    yield inp, tensor1, tensor2, {"value": -0.75}
+
+
+@pytest.mark.addcmul_backward
+def test_addcmul_backward():
+    bench = base.GenericBenchmark(
+        op_name="addcmul_backward",
+        input_fn=_backward_input_fn,
+        torch_op=torch.addcmul,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()

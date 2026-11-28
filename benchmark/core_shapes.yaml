@@ -465,6 +465,14 @@ BlasBenchmark:
     - [16, 4096, 4096, 4096]
   shape_desc: "B, M, N, K"   # shapes are defined as (B, M, N, K)
 
+addcmul_backward:
+  # Three sizes expose launch-bound, mid-sized and bandwidth-bound backward paths.
+  shapes:
+    - [4096]
+    - [1048576]
+    - [16777216]
+  shape_desc: "N"
+
 addbmm_backward:
   # Representative backward cases cover skinny, rectangular and non-aligned
   # GEMMs without the multi-gigabyte gradients of the shared forward BLAS set.
