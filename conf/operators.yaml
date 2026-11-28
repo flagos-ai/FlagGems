@@ -9008,6 +9008,79 @@ ops:
   - PointWise
   stages:
   - alpha: '5.4'
+- id: fp8_einsum
+  description: |
+    Block-scaled bhr,hdr->bhd contraction. Precisions: FP8 (NVIDIA Hopper,
+    vLLM DeepGEMM fp8_einsum) and INT8 with per-token-group activation scales
+    (Hygon, MetaX, PPU).
+  for:
+  - vllm.utils.deep_gemm.fp8_einsum
+  labels:
+  - fused
+  - vLLM
+  - DeepSeekV4
+  kind:
+  - NeuralNetwork
+  - Quantization
+  stages:
+  - alpha: '5.4'
+- id: fp8_fp4_mega_moe
+  description: 'Functional Triton fallback for local FP8 x FP4 MegaMoE. It consumes
+
+    staged FP8 activations, packed FP4 expert weights, scales, and top-k
+
+    routing tensors, then computes the two-layer SwiGLU MoE output.
+
+    '
+  for:
+  - flag_gems.fused.fp8_fp4_mega_moe
+  - vllm.third_party.deep_gemm.fp8_fp4_mega_moe
+  labels:
+  - fused
+  - vLLM
+  - Triton
+  kind:
+  - MoE
+  - NeuralNetwork
+  stages:
+  - alpha: '5.4'
+- id: fp8_fp4_mqa_logits
+  description: 'Compute weighted MQA logits with FP8 quantized Q and K tensors.
+
+    Uses head-batched tiled dot products with K reuse for high throughput
+
+    on DeepSeek V4 sparse attention indexer workloads.
+
+    '
+  for:
+  - vllm.utils.deep_gemm.fp8_fp4_mqa_logits
+  labels:
+  - fused
+  - vLLM
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - alpha: '5.1'
+- id: fp8_fp4_paged_mqa_logits
+  description: 'Compute paged multi-query attention logits from FP8 queries against
+
+    FP8/FP4 paged KV cache with per-token scaling. Used in DeepSeek-V4
+
+    decode-phase inference with adaptive tile sizing.
+
+    '
+  for:
+  - vllm.utils.deep_gemm.fp8_fp4_paged_mqa_logits
+  labels:
+  - fused
+  - vLLM
+  - DeepSeekV4
+  - KernelGen
+  kind:
+  - NeuralNetwork
+  stages:
+  - beta: '5.3'
 - id: fp8_mqa_logits
   description: 'For each token in the given E4M3 tensor, iterate all tokens from two
     other given tensors,
@@ -11785,6 +11858,18 @@ ops:
   - LinearAlg
   stages:
   - stable: '3.0'
+- id: less
+  description: Computes that `input` is less than `other` element-wise.
+  for:
+  - less.Tensor
+  - lt.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - stable: '2.0'
 - id: less_
   description: The in-place version of `less()`.
   for:
