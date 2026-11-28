@@ -691,6 +691,8 @@ from flag_gems.ops.cholesky_inverse import cholesky_inverse
 from flag_gems.ops.cholesky_solve import cholesky_solve, cholesky_solve_out
 from flag_gems.ops.choose_qparams_optimized import choose_qparams_optimized
 from flag_gems.ops.choose_qparams_per_tensor import choose_qparams_per_tensor
+from flag_gems.ops.chunk import chunk
+from flag_gems.ops.chunk_backward import chunk_backward
 from flag_gems.ops.clamp import (
     clamp,
     clamp_,
@@ -2457,6 +2459,8 @@ __all__ = [
     "cholesky_solve_out",
     "choose_qparams_optimized",
     "choose_qparams_per_tensor",
+    "chunk",
+    "chunk_backward",
     "clamp",
     "clamp_",
     "clamp_max",
