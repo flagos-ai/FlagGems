@@ -18,6 +18,13 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.div import true_divide
+from flag_gems.ops.eq import eq
+from flag_gems.ops.index_select import index_select
+from flag_gems.ops.ones_like import ones_like
+from flag_gems.ops.scatter_add import scatter_add
+from flag_gems.ops.where import where_self
+from flag_gems.ops.zeros_like import zeros_like
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import dim_compress, libentry
 
@@ -789,9 +796,205 @@ def _index_reduce_out(
 
 def index_reduce(inp, dim, index, source, reduce, *, include_self=True):
     logger.debug("GEMS INDEX_REDUCE")
-    return _index_reduce_functional(
-        index_reduce_, inp, dim, index, source, reduce, include_self=include_self
+    return IndexReduceOpFunction.apply(inp, dim, index, source, reduce, include_self)
+
+
+class IndexReduceOpFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, dim, index, source, reduce, include_self):
+        ctx.dim = dim
+        ctx.reduce = reduce
+        ctx.include_self = include_self
+        ctx.input_size = tuple(inp.shape)
+        out = _index_reduce_functional(
+            index_reduce_,
+            inp,
+            dim,
+            index,
+            source,
+            reduce,
+            include_self=include_self,
+        )
+        ctx.index = index
+        ctx.save_for_backward(inp, source, out)
+        return out
+
+    @staticmethod
+    def backward(ctx, grad_out):
+        inp, source, out = ctx.saved_tensors
+        grad_inp, grad_source = index_reduce_backward(
+            grad_out,
+            out,
+            inp,
+            source,
+            ctx.dim,
+            ctx.index.to(torch.int64),
+            ctx.reduce,
+            ctx.include_self,
+        )
+        return grad_inp, None, None, grad_source, None, None
+
+
+def _axis_view(v, ndim, d):
+    shape = [1] * ndim
+    shape[d] = v.numel()
+    return v.view(shape)
+
+
+def index_reduce_backward(grad_out, out, inp, source, dim, index, reduce, include_self):
+    """Backward of ``index_reduce`` for prod / mean / amax / amin.
+
+    The selected slices of ``inp`` are replaced by the reduction of the
+    gathered ``source`` values, so the source gradient is gathered from the
+    output gradient at the selected positions while the input gradient keeps
+    the output gradient at untouched positions.  Tie and zero handling follows
+    the native ``torch.index_reduce`` autograd formula:
+
+    * ``mean`` divides by the number of contributors.
+    * ``prod`` maps a zero factor to the product of the remaining factors.
+    * ``amax``/``amin`` split the gradient equally over all elements that tie
+      the reduced value; with ``include_self=False`` the input gradient is
+      masked to zero but the input still counts in the tie denominator.
+    """
+    logger.debug("GEMS INDEX_REDUCE_BACKWARD")
+    ndim = inp.ndim
+    d = dim % ndim
+    M = inp.size(d)
+    N = index.numel()
+    device = inp.device
+    index = index.to(torch.int64)
+
+    src_count = scatter_add(
+        torch.zeros(M, dtype=torch.float32, device=device),
+        0,
+        index,
+        ones_like(index).to(torch.float32),
     )
+    contrib = src_count + (1.0 if include_self else 0.0)
+    no_contrib = eq(contrib, zeros_like(contrib))
+    safe_contrib = where_self(no_contrib, ones_like(contrib), contrib)
+
+    at_index = index_select(grad_out, d, index)
+    out_at_index = index_select(out, d, index)
+
+    if reduce == "mean":
+        contrib_at_index = index_select(
+            _axis_view(safe_contrib, grad_out.ndim, d), d, index
+        )
+        grad_source = true_divide(at_index, contrib_at_index)
+        if include_self:
+            grad_inp = true_divide(grad_out, _axis_view(safe_contrib, grad_out.ndim, d))
+        else:
+            grad_inp = where_self(
+                _axis_view(no_contrib, grad_out.ndim, d),
+                grad_out,
+                zeros_like(grad_out),
+            )
+    elif reduce == "prod":
+        # Product of the source factors at every reduced position, with zero
+        # factors replaced by one, computed with a prod reduction over the
+        # scattered positions.  Positions without sources keep the unit
+        # initialiser, i.e. the empty product.
+        masked_source = where_self(
+            eq(source, zeros_like(source)), ones_like(source), source
+        ).to(torch.float32)
+        unit = torch.ones(M, dtype=torch.float32, device=device)
+        prod_masked_src = index_reduce(
+            _axis_view(unit, ndim, d).expand(inp.shape).contiguous(),
+            d,
+            index,
+            masked_source,
+            "prod",
+            include_self=False,
+        )
+        idx_shape = [1] * source.ndim
+        idx_shape[d] = N
+        idx_expanded = index.view(idx_shape).expand_as(source)
+        zero_src_count = scatter_add(
+            _axis_view(torch.zeros(M, dtype=torch.float32, device=device), ndim, d)
+            .expand(inp.shape)
+            .contiguous(),
+            d,
+            idx_expanded,
+            eq(source, zeros_like(source)).to(torch.float32),
+        )
+        self_zero = eq(inp, zeros_like(inp)).to(torch.float32)
+        if include_self:
+            zero_count = zero_src_count + self_zero
+            masked_self = where_self(eq(inp, zeros_like(inp)), ones_like(inp), inp).to(
+                torch.float32
+            )
+            total_masked = masked_self * prod_masked_src
+        else:
+            zero_count = zero_src_count
+            total_masked = prod_masked_src
+        zero_count_at_index = index_select(zero_count, d, index)
+        single_zero = eq(zero_count_at_index, ones_like(zero_count_at_index))
+        total_masked_at_index = index_select(total_masked, d, index)
+
+        grad_source = where_self(
+            eq(source, zeros_like(source)),
+            where_self(
+                single_zero,
+                at_index * total_masked_at_index,
+                zeros_like(at_index),
+            ),
+            at_index * true_divide(out_at_index, source),
+        )
+        if include_self:
+            grad_inp = where_self(
+                eq(inp, zeros_like(inp)),
+                where_self(
+                    eq(zero_count, ones_like(zero_count)),
+                    grad_out * total_masked,
+                    zeros_like(grad_out),
+                ),
+                grad_out * true_divide(out, inp),
+            )
+        else:
+            grad_inp = where_self(
+                _axis_view(no_contrib, grad_out.ndim, d),
+                grad_out,
+                zeros_like(grad_out),
+            )
+    else:  # amax / amin
+        tied_src = eq(source, out_at_index)
+        idx_shape = [1] * source.ndim
+        idx_shape[d] = N
+        idx_expanded = index.view(idx_shape).expand_as(source)
+        tied_src_count = scatter_add(
+            _axis_view(torch.zeros(M, dtype=torch.float32, device=device), ndim, d)
+            .expand(inp.shape)
+            .contiguous(),
+            d,
+            idx_expanded,
+            tied_src.to(torch.float32),
+        )
+        # The input joins the tie set whenever it equals the reduced value,
+        # even with include_self=False where its own gradient stays zero.
+        tie_count = tied_src_count + eq(inp, out).to(torch.float32)
+        tie_count_safe = where_self(
+            eq(tie_count, zeros_like(tie_count)),
+            ones_like(tie_count),
+            tie_count,
+        )
+        tie_count_at_index = index_select(tie_count_safe, d, index)
+        grad_source = true_divide(at_index, tie_count_at_index)
+        grad_source = where_self(tied_src, grad_source, zeros_like(grad_source))
+        if include_self:
+            grad_inp = where_self(
+                eq(inp, out),
+                true_divide(grad_out, tie_count_safe),
+                zeros_like(grad_out),
+            )
+        else:
+            grad_inp = where_self(
+                _axis_view(no_contrib, grad_out.ndim, d),
+                grad_out,
+                zeros_like(grad_out),
+            )
+
+    return grad_inp, grad_source
 
 
 def index_reduce_out(inp, dim, index, source, reduce, *, include_self=True, out=None):

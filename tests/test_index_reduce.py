@@ -64,7 +64,7 @@ def test_index_reduce_(shape, dim, dtype, index_dtype, reduce, include_self):
 
     ref_inp = utils.to_reference(inp.clone(), upcast=True)
     ref_source = utils.to_reference(source, upcast=True)
-    ref_index = utils.to_reference(index)
+    ref_index = utils.to_reference(index).to(torch.int64)
     ref_inp.index_reduce_(dim, ref_index, ref_source, reduce, include_self=include_self)
 
     res = flag_gems.index_reduce_(
@@ -86,7 +86,7 @@ def test_index_reduce_noncontiguous(reduce):
 
     ref_inp = utils.to_reference(inp.clone(), upcast=True)
     ref_source = utils.to_reference(source, upcast=True)
-    ref_index = utils.to_reference(index)
+    ref_index = utils.to_reference(index).to(torch.int64)
     ref_inp.index_reduce_(dim, ref_index, ref_source, reduce, include_self=False)
 
     flag_gems.index_reduce_(inp, dim, index, source, reduce, include_self=False)
@@ -105,7 +105,7 @@ def test_index_reduce_duplicate_index_short_source(reduce, include_self):
 
     ref_inp = utils.to_reference(inp.clone(), upcast=True)
     ref_source = utils.to_reference(source, upcast=True)
-    ref_index = utils.to_reference(index)
+    ref_index = utils.to_reference(index).to(torch.int64)
     ref_inp.index_reduce_(1, ref_index, ref_source, reduce, include_self=include_self)
 
     flag_gems.index_reduce_(inp, 1, index, source, reduce, include_self=include_self)
@@ -123,7 +123,7 @@ def test_index_reduce_unique_index(reduce, include_self):
 
     ref_inp = utils.to_reference(inp.clone(), upcast=True)
     ref_source = utils.to_reference(source, upcast=True)
-    ref_index = utils.to_reference(index)
+    ref_index = utils.to_reference(index).to(torch.int64)
     ref_inp.index_reduce_(1, ref_index, ref_source, reduce, include_self=include_self)
 
     flag_gems.index_reduce_(inp, 1, index, source, reduce, include_self=include_self)
@@ -141,7 +141,7 @@ def test_index_reduce_empty_index(include_self):
 
     ref_inp = utils.to_reference(inp.clone(), upcast=True)
     ref_source = utils.to_reference(source, upcast=True)
-    ref_index = utils.to_reference(index)
+    ref_index = utils.to_reference(index).to(torch.int64)
     ref_inp.index_reduce_(1, ref_index, ref_source, "mean", include_self=include_self)
 
     flag_gems.index_reduce_(inp, 1, index, source, "mean", include_self=include_self)
@@ -165,7 +165,7 @@ def test_index_reduce(shape, dim, dtype, index_dtype, reduce, include_self):
 
     ref_inp = utils.to_reference(inp, upcast=True)
     ref_source = utils.to_reference(source, upcast=True)
-    ref_index = utils.to_reference(index)
+    ref_index = utils.to_reference(index).to(torch.int64)
     ref_out = ref_inp.index_reduce(
         dim, ref_index, ref_source, reduce, include_self=include_self
     )
@@ -213,7 +213,7 @@ def test_index_reduce_out(reduce, include_self):
     out = torch.empty((0,), dtype=dtype, device=flag_gems.device)
 
     ref_inp = utils.to_reference(inp)
-    ref_index = utils.to_reference(index)
+    ref_index = utils.to_reference(index).to(torch.int64)
     ref_source = utils.to_reference(source)
     ref_out = torch.empty_like(ref_inp)
     torch.index_reduce(
@@ -296,3 +296,53 @@ def test_index_reduce_invalid_reduce():
 
     with pytest.raises(AssertionError, match="Unsupported reduce"):
         flag_gems.index_reduce(inp, 1, index, source, "sum")
+
+
+INDEX_REDUCE_BACKWARD_CASES = [
+    ((8,), 0),
+    ((4, 7), 1),
+    ((5, 3, 4), 0),
+    ((3, 5, 2), -2),
+]
+
+
+@pytest.mark.index_reduce_backward
+@pytest.mark.parametrize("shape, dim", INDEX_REDUCE_BACKWARD_CASES)
+@pytest.mark.parametrize("dtype", DTYPE_LIST)
+@pytest.mark.parametrize("index_dtype", INDEX_DTYPES)
+@pytest.mark.parametrize("reduce", REDUCE_MODES)
+@pytest.mark.parametrize("include_self", [True, False])
+def test_index_reduce_backward(shape, dim, dtype, index_dtype, reduce, include_self):
+    inp = _make_values(shape, dtype).requires_grad_(True)
+    dim = dim % inp.ndim
+    source_shape = list(shape)
+    source_shape[dim] = 4
+    source = _make_values(source_shape, dtype).requires_grad_(True)
+    index = _make_index(4, shape[dim], index_dtype)
+
+    ref_inp = utils.to_reference(inp, upcast=True)
+    ref_source = utils.to_reference(source, upcast=True)
+    ref_index = utils.to_reference(index).to(torch.int64)
+
+    res_out = flag_gems.index_reduce(
+        inp, dim, index, source, reduce, include_self=include_self
+    )
+    ref_out = ref_inp.index_reduce(
+        dim, ref_index, ref_source, reduce, include_self=include_self
+    )
+
+    out_grad = torch.randn_like(res_out)
+    ref_out_grad = utils.to_reference(out_grad, True)
+
+    res_grads = torch.autograd.grad(res_out, (inp, source), out_grad, allow_unused=True)
+    ref_grads = torch.autograd.grad(
+        ref_out, (ref_inp, ref_source), ref_out_grad, allow_unused=True
+    )
+    utils.gems_assert_close(res_grads[0], ref_grads[0], dtype)
+    utils.gems_assert_close(res_grads[1], ref_grads[1], dtype)
+
+    res_dinp, res_dsrc = flag_gems.index_reduce_backward(
+        out_grad, res_out, inp, source, dim, index, reduce, include_self
+    )
+    utils.gems_assert_close(res_dinp.to(dtype), ref_grads[0], dtype)
+    utils.gems_assert_close(res_dsrc.to(dtype), ref_grads[1], dtype)
