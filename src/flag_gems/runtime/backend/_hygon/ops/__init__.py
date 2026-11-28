@@ -222,6 +222,7 @@ from .conv_depthwise2d import conv_depthwise2d
 from .conv_tbc_backward import conv_tbc_backward
 from .convolution_overrideable import convolution_overrideable
 from .convolution_overrideable_out import convolution_overrideable_out
+from .cross_attention import cross_attention
 from .cudnn_convolution import cudnn_convolution
 from .dequantize import dequantize
 from .diagonal_scatter import diagonal_scatter
@@ -610,6 +611,7 @@ __all__ = [
     "conv_tbc_backward",
     "convolution_overrideable",
     "convolution_overrideable_out",
+    "cross_attention",
     "cudnn_convolution",
     "dequantize",
     "diagonal_scatter",
