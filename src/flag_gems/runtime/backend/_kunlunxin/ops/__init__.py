@@ -405,6 +405,7 @@ from .convert_indices_from_csr_to_coo import (  # noqa: F401
     _convert_indices_from_csr_to_coo,
     _convert_indices_from_csr_to_coo_out,
 )
+from .convolution_double_backward import _convolution_double_backward  # noqa: F401
 from .copy import copy, copy_
 from .copy_sparse_to_sparse_ import copy_sparse_to_sparse_
 from .copysign import copysign, copysign_out
@@ -1144,6 +1145,7 @@ __all__ = [
     "_chunk_cat",
     "_conj",
     "_conv_depthwise2d",
+    "_convolution_double_backward",
     "_ctc_loss",
     "_ctc_loss_backward",
     "_ctc_loss_backward_out",
