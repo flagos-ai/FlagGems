@@ -3663,6 +3663,23 @@ ops:
   - Sparse
   stages:
   - alpha: '5.5'
+- id: coalesce_backward
+  description: 'Backward pass for `_coalesce`: routes the upstream gradient of the
+    coalesced output back to the uncoalesced input. Every stored input position
+    receives the upstream value of the coalesced group that merged it (a plain
+    copy for duplicate-free inputs); the restored gradient keeps the input
+    index table and coalesced flag.
+
+    '
+  for:
+  - coalesce_backward
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.6.0'
 - id: coalesced_
   description: 'Sets the `coalesced` flag of a sparse coordinate (COO) tensor in place
 

@@ -1305,6 +1305,7 @@ _FULL_CONFIG = (
         ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
     ),
     ("coalesce", coalesce, None, (AUTOGRAD_DISPATCH_KEY,)),
+    ("coalesce_backward", coalesce_backward),
     ("col2im", col2im),
     ("col_indices", col_indices, None, (AUTOGRAD_DISPATCH_KEY,)),
     ("col_indices_copy", col_indices_copy, None, (AUTOGRAD_DISPATCH_KEY,)),

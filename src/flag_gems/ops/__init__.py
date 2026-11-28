@@ -703,6 +703,7 @@ from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.clone import clone
 from flag_gems.ops.coalesce import coalesce
+from flag_gems.ops.coalesce_backward import coalesce_backward
 from flag_gems.ops.col2im import col2im
 from flag_gems.ops.col_indices import col_indices
 from flag_gems.ops.col_indices_copy import col_indices_copy, col_indices_copy_out
@@ -2469,6 +2470,7 @@ __all__ = [
     "clip_",
     "clone",
     "coalesce",
+    "coalesce_backward",
     "col2im",
     "col_indices",
     "col_indices_copy",
