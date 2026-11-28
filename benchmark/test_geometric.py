@@ -43,6 +43,23 @@ def test_geometric_inplace():
     bench.run()
 
 
+def _backward_input_fn(shape, dtype, device):
+    yield torch.empty(shape, dtype=dtype, device=device).clone(),
+
+
+@pytest.mark.geometric_backward_
+def test_geometric_backward_():
+    bench = base.GenericBenchmark(
+        op_name="geometric_backward_",
+        input_fn=_backward_input_fn,
+        torch_op=lambda x: x.clone().geometric_(0.5),
+        gems_op=lambda x: flag_gems.geometric_(x.clone(), 0.5),
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
+
+
 @pytest.mark.geometric
 @pytest.mark.skip_native(
     vendors=["ascend"], reason="torch-npu geometric falls back to CPU"

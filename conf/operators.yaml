@@ -9622,6 +9622,17 @@ ops:
   - Distribution
   stages:
   - beta: '5.1'
+- id: geometric_backward_
+  description: Backward of in-place geometric sampling through autograd.
+  for:
+  - geometric_
+  labels:
+  - aten
+  - skip_precision_check
+  kind:
+  - Distribution
+  stages:
+  - alpha: '5.4'
 - id: geqrf
   description: 'Computes the packed Householder QR factorization of a (batched) m
     x n matrix (LAPACK GEQRF): `a` holds R in and above the diagonal and the Householder
