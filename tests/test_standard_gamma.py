@@ -170,6 +170,20 @@ def test_standard_gamma_generator_advances_state():
 
 
 @pytest.mark.standard_gamma_backward
+def test_standard_gamma_native_autograd_contract():
+    """Native ATen exposes an alpha gradient for the sampled gamma tensor."""
+    alpha = torch.tensor([0.5, 1.0, 2.0], device=flag_gems.device, requires_grad=True)
+    sample = torch._standard_gamma(alpha)
+    grad_output = torch.tensor([0.5, 1.0, 2.0], device=alpha.device)
+    assert sample.grad_fn is not None
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+    expected = grad_output * torch._standard_gamma_grad(alpha.detach(), sample.detach())
+    torch.testing.assert_close(grad_alpha, expected)
+    assert torch.isfinite(grad_alpha).all()
+    assert torch.any(grad_alpha != 0)
+
+
+@pytest.mark.standard_gamma_backward
 @pytest.mark.parametrize("shape", utils.POINTWISE_SHAPES)
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
 def test_standard_gamma_backward(shape, dtype):
@@ -317,19 +331,19 @@ def _fused_reference(alpha, sample, grad_output, dtype):
 
 @pytest.mark.standard_gamma_backward
 @pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
-def test_standard_gamma_backward_empty_and_scalar(dtype):
+@pytest.mark.parametrize("shape", [(), (0,), (2, 0, 3)])
+def test_standard_gamma_backward_empty_and_scalar(dtype, shape):
     """Zero-element and 0-dim inputs keep the native shape/dtype contract."""
-    for shape in ((), (0,), (2, 0, 3)):
-        alpha = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
-        alpha.requires_grad_()
-        sample = flag_gems.standard_gamma(alpha)
-        grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
+    alpha = torch.rand(shape, dtype=dtype, device=flag_gems.device) * 4.0 + 0.5
+    alpha.requires_grad_()
+    sample = flag_gems.standard_gamma(alpha)
+    grad_output = torch.randn(shape, dtype=dtype, device=flag_gems.device)
 
-        (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
+    (grad_alpha,) = torch.autograd.grad(sample, alpha, grad_output)
 
-        assert grad_alpha.shape == alpha.shape
-        assert grad_alpha.dtype == alpha.dtype
-        assert grad_alpha.numel() == alpha.numel()
+    assert grad_alpha.shape == alpha.shape
+    assert grad_alpha.dtype == alpha.dtype
+    assert grad_alpha.numel() == alpha.numel()
 
 
 @pytest.mark.standard_gamma_backward

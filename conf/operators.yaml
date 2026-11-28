@@ -22111,7 +22111,7 @@ ops:
   kind:
   - Math
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: standard_gamma_grad
   description: Triton kernel implementation for _standard_gamma_grad.
   for:
