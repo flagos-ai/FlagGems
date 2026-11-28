@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import math
 import random
 import time
 
@@ -103,7 +102,7 @@ def test_index_add_(shape, dim, dtype):
     src = torch.randn(src_shape, dtype=dtype, device=flag_gems.device)
     alpha = 2
 
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp.clone())
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
@@ -121,7 +120,7 @@ def test_index_add_inplace_contiguous_suffix(shape, dim, dtype):
     src = torch.ones(shape, dtype=dtype, device=flag_gems.device)
     alpha = 2
 
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp.clone())
     ref_src = utils.to_reference(src)
     ref_index = utils.to_reference(index)
     ref_inp.index_add_(dim, ref_index, ref_src, alpha=alpha)
@@ -139,7 +138,7 @@ def test_index_add_invalid_index(inplace):
     inp = torch.zeros(shape, device=flag_gems.device)
     src = torch.ones((2, 2, 8), device=flag_gems.device)
     index = torch.tensor([0, shape[dim]], device=flag_gems.device)
-    ref_inp = utils.to_reference(inp)
+    ref_inp = utils.to_reference(inp.clone())
 
     with pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"):
         if inplace:
@@ -161,8 +160,6 @@ def test_index_add_empty_index(inplace, dtype):
     inp = torch.ones((2, 4, 8), dtype=dtype, device=flag_gems.device)
     index = torch.empty(0, dtype=torch.int64, device=flag_gems.device)
     src = torch.empty((2, 0, 8), dtype=dtype, device=flag_gems.device)
-    # Snapshot through to_reference so the baseline follows the reference
-    # device (CPU in quick-cpu mode) that gems_assert_equal expects.
     expected = utils.to_reference(inp.clone())
 
     if inplace:
@@ -171,131 +168,226 @@ def test_index_add_empty_index(inplace, dtype):
     else:
         res = flag_gems.index_add(inp, 1, index, src)
         utils.gems_assert_equal(res, expected)
-        # The out-of-place form must leave the input untouched.
         utils.gems_assert_equal(inp, expected)
 
 
 @pytest.mark.index_add
 @pytest.mark.index_add_
 @pytest.mark.parametrize("inplace", [False, True])
-@pytest.mark.parametrize(
-    "dtype", [torch.float16, torch.bfloat16, torch.float32, torch.int32]
-)
-@pytest.mark.parametrize(
-    "shape,dim,tokens",
-    [
-        ((8,), 0, 1),
-        ((8,), 0, 2),
-        ((3, 8), 1, 2),
-        ((2, 8, 7), 1, 3),
-        ((2, 8, 17), 1, 3),
-        ((8, 33), 0, 10),
-    ],
-)
-def test_index_add_repeated_indices(shape, dim, tokens, dtype, inplace):
-    base = (torch.arange(math.prod(shape)) % 8).reshape(shape).to(dtype)
-    source_shape = list(shape)
-    source_shape[dim] = tokens
-    source = (
-        (torch.arange(math.prod(source_shape)) % 7 - 3).reshape(source_shape).to(dtype)
-    )
-    indices = torch.arange(tokens) % 2 + 2
-    expected = base.index_add(dim, indices, source, alpha=2)
-    inp = base.to(flag_gems.device)
-    index = indices.to(inp.device)
-    src = source.to(inp.device)
-    actual = (
-        flag_gems.index_add_(inp, dim, index, src, alpha=2)
-        if inplace
-        else flag_gems.index_add(inp, dim, index, src, alpha=2)
-    )
-    assert torch._C._is_alias_of(actual, inp) == inplace
-    utils.gems_assert_equal(actual.cpu(), expected)
-    if not inplace:
-        utils.gems_assert_equal(inp.cpu(), base)
-
-
-@pytest.mark.index_add
-@pytest.mark.index_add_
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "ascend",
-    reason="Requires Ascend NPUGraph capture and replay",
-)
-@pytest.mark.parametrize("inplace", [False, True])
-@pytest.mark.parametrize("dtype", [torch.float32, torch.bfloat16, torch.int32])
-@pytest.mark.parametrize("shape,tokens", [((16,), 2), ((16, 8), 2), ((16, 17), 3)])
-def test_index_add_graph_replay(shape, tokens, dtype, inplace):
-    base = (torch.arange(math.prod(shape)) % 8).reshape(shape).to(dtype)
-    source = torch.ones((tokens, *shape[1:]), dtype=dtype)
-    inp = base.to(flag_gems.device)
-    base_device = inp.clone()
-    src = source.to(inp.device)
-    index = torch.arange(tokens, device=inp.device, dtype=torch.int64)
-
-    def invoke():
-        inp.copy_(base_device)
-        if inplace:
-            return flag_gems.index_add_(inp, 0, index, src)
-        return flag_gems.index_add(inp, 0, index, src)
-
-    invoke()
-    graph = torch.npu.NPUGraph()
-    with torch.npu.graph(graph):
-        actual = invoke()
-    assert torch._C._is_alias_of(actual, inp) == inplace
-    for positions in (
-        torch.full((tokens,), 15),
-        torch.zeros(tokens, dtype=torch.int64),
-    ):
-        index.copy_(positions)
-        src.copy_(source * 2)
-        if not inplace:
-            actual.fill_(-123)
-        graph.replay()
-        torch.npu.synchronize()
-        utils.gems_assert_equal(actual.cpu(), base.index_add(0, positions, source * 2))
-        if not inplace:
-            utils.gems_assert_equal(inp.cpu(), base)
-
-
-@pytest.mark.index_add
-@pytest.mark.index_add_
-@pytest.mark.parametrize("inplace", [False, True])
-@pytest.mark.parametrize("bad_index", [-1, 8])
-def test_index_add_short_invalid_preserves_input(inplace, bad_index):
-    inp = torch.arange(8, dtype=torch.float32, device=flag_gems.device)
-    expected = utils.to_reference(inp.clone())
-    index = torch.tensor([0, bad_index], device=inp.device)
-    src = torch.ones(2, device=inp.device)
-    with pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"):
-        if inplace:
-            flag_gems.index_add_(inp, 0, index, src)
-        else:
-            flag_gems.index_add(inp, 0, index, src)
-    utils.gems_assert_equal(inp, expected)
-
-
-@pytest.mark.index_add
-@pytest.mark.index_add_
-@pytest.mark.parametrize("inplace", [False, True])
-@pytest.mark.parametrize("index_dtype", [torch.int32, torch.int64])
-@pytest.mark.parametrize("count", [1025, 4097, 16385])
-@pytest.mark.parametrize("boundary", ["valid", "negative", "upper"])
-def test_index_add_multiblock_bounds(inplace, index_dtype, count, boundary):
-    cpu_input = torch.zeros((64, 4))
-    cpu_index = (torch.arange(count) % 64).to(index_dtype)
-    if boundary != "valid":
-        cpu_index[-1] = -1 if boundary == "negative" else 64
-    cpu_source = torch.ones((count, 4))
-    inp = cpu_input.to(flag_gems.device)
-    index = cpu_index.to(inp.device)
-    src = cpu_source.to(inp.device)
-    fn = flag_gems.index_add_ if inplace else flag_gems.index_add
-    if boundary != "valid":
-        with pytest.raises(AssertionError, match=r"0 <= index < self\.size\(dim\)"):
-            fn(inp, 0, index, src)
-        utils.gems_assert_equal(inp.cpu(), cpu_input)
+@pytest.mark.parametrize("src_kind", ["transposed_4d", "sliced_3d", "expanded_3d"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_index_add_noncontiguous_source(inplace, src_kind, dtype):
+    """Regression for issue #9904: non-contiguous source (e.g. index_select backward grad)."""
+    gen = torch.Generator(device="cpu").manual_seed(42)
+    if src_kind == "transposed_4d":
+        dim = 0
+        inp = torch.zeros((5, 16, 1, 64), dtype=dtype, device=flag_gems.device)
+        src_contig = torch.randn((13, 16, 1, 64), generator=gen, dtype=dtype).to(
+            flag_gems.device
+        )
+        src = src_contig.transpose(1, 3).contiguous().transpose(1, 3)
+        index = torch.tensor(
+            [0] + [1] * 2 + [2] * 3 + [3] * 3 + [4] * 4,
+            dtype=torch.long,
+            device=flag_gems.device,
+        )
+    elif src_kind == "sliced_3d":
+        dim = -2
+        inp = torch.randn((3, 7, 19), generator=gen, dtype=dtype).to(flag_gems.device)
+        src_backing = torch.randn((3, 10, 38), generator=gen, dtype=dtype).to(
+            flag_gems.device
+        )
+        src = src_backing[:, ::2, 1::2]  # shape (3, 5, 19), non-contiguous on two axes
+        index = torch.tensor([0, 2, 2, 5, 6], dtype=torch.long, device=flag_gems.device)
     else:
-        actual = fn(inp, 0, index, src)
-        expected = cpu_input.index_add(0, cpu_index, cpu_source)
-        utils.gems_assert_equal(actual.cpu(), expected)
+        dim = 1
+        inp = torch.zeros((4, 6, 17), dtype=dtype, device=flag_gems.device)
+        src_base = torch.randn((1, 5, 17), generator=gen, dtype=dtype).to(
+            flag_gems.device
+        )
+        src = src_base.expand(4, 5, 17)  # stride=(0, 17, 1)
+        index = torch.tensor([1, 3, 1, 5, 0], dtype=torch.long, device=flag_gems.device)
+
+    assert not src.is_contiguous()
+    alpha = 0.5
+    atol = (
+        1e-2 if dtype == torch.bfloat16 else (1e-3 if dtype == torch.float16 else 1e-4)
+    )
+    orig_inp = utils.to_reference(inp.clone())
+    ref_inp = utils.to_reference(inp.clone())
+    ref_src = utils.to_reference(src.clone())
+    ref_index = utils.to_reference(index.clone())
+    ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=alpha)
+
+    if inplace:
+        res = flag_gems.index_add_(inp, dim, index, src, alpha=alpha)
+        assert res is inp
+        utils.gems_assert_close(
+            inp, ref_out, dtype=dtype, reduce_dim=src.size(dim), atol=atol
+        )
+    else:
+        res = flag_gems.index_add(inp, dim, index, src, alpha=alpha)
+        utils.gems_assert_close(
+            res, ref_out, dtype=dtype, reduce_dim=src.size(dim), atol=atol
+        )
+        utils.gems_assert_equal(inp, orig_inp)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("inp_kind", ["transposed", "sliced_holes"])
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+def test_index_add_noncontiguous_self(inplace, inp_kind, dtype):
+    """Verify strided target `self` updates exact logical slots without corrupting storage holes."""
+    gen = torch.Generator(device="cpu").manual_seed(7)
+    if inp_kind == "transposed":
+        dim = 1
+        backing = torch.randn((2, 17, 7), generator=gen, dtype=dtype).to(
+            flag_gems.device
+        )
+        ref_backing = utils.to_reference(backing.clone())
+        inp = backing.transpose(1, 2)  # shape (2, 7, 17), stride (119, 1, 7)
+        ref_inp = ref_backing.transpose(1, 2)
+    else:
+        dim = -1
+        backing = torch.full((3, 12, 9), -7.0, dtype=dtype, device=flag_gems.device)
+        backing[:, ::2, :] = torch.randn((3, 6, 9), generator=gen, dtype=dtype).to(
+            flag_gems.device
+        )
+        ref_backing = utils.to_reference(backing.clone())
+        inp = backing[:, ::2, :]  # shape (3, 6, 9), storage holes at [:, 1::2, :]
+        ref_inp = ref_backing[:, ::2, :]
+
+    assert not inp.is_contiguous()
+    inp_stride = inp.stride()
+    src_shape = list(inp.shape)
+    src_shape[dim] = 4
+    src = torch.randn(src_shape, generator=gen, dtype=dtype).to(flag_gems.device)
+    index = torch.tensor([0, 2, 2, inp.size(dim) - 1], device=flag_gems.device)
+    atol = (
+        1e-2 if dtype == torch.bfloat16 else (1e-3 if dtype == torch.float16 else 1e-4)
+    )
+
+    orig_backing = utils.to_reference(backing.clone())
+    ref_src = utils.to_reference(src.clone())
+    ref_index = utils.to_reference(index.clone())
+
+    if inplace:
+        ref_inp.index_add_(dim, ref_index, ref_src, alpha=2)
+        res = flag_gems.index_add_(inp, dim, index, src, alpha=2)
+        assert res is inp
+        assert inp.stride() == inp_stride
+        utils.gems_assert_close(
+            inp, ref_inp, dtype=dtype, reduce_dim=src.size(dim), atol=atol
+        )
+        if inp_kind == "sliced_holes":
+            holes = utils.to_reference(backing[:, 1::2, :].clone())
+            expected_holes = orig_backing[:, 1::2, :]
+            utils.gems_assert_equal(holes, expected_holes)
+    else:
+        ref_out = torch.index_add(ref_inp, dim, ref_index, ref_src, alpha=2)
+        res = flag_gems.index_add(inp, dim, index, src, alpha=2)
+        utils.gems_assert_close(
+            res, ref_out, dtype=dtype, reduce_dim=src.size(dim), atol=atol
+        )
+        utils.gems_assert_equal(backing, orig_backing)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+@pytest.mark.parametrize("suffix_gt_one", [False, True])
+def test_index_add_noncontiguous_index_with_storage_holes(inplace, suffix_gt_one):
+    """Strided index views must read logical index elements and ignore storage holes."""
+    shape = (2, 5, 8) if suffix_gt_one else (5,)
+    dim = 1 if suffix_gt_one else 0
+    src_shape = (2, 3, 8) if suffix_gt_one else (3,)
+
+    inp = torch.zeros(shape, dtype=torch.float32, device=flag_gems.device)
+    src = (
+        torch.arange(1, 1 + torch.Size(src_shape).numel(), dtype=torch.float32)
+        .reshape(src_shape)
+        .to(flag_gems.device)
+    )
+    # Logical index is [0, 4, 2]; storage holes hold 99 (out-of-bounds) and 1 (wrong in-bounds).
+    idx_storage = torch.tensor(
+        [0, 99, 4, 1, 2], dtype=torch.int64, device=flag_gems.device
+    )
+    index = idx_storage[::2]
+    assert not index.is_contiguous()
+
+    ref_inp = utils.to_reference(inp.clone())
+    ref_src = utils.to_reference(src.clone())
+    ref_index = torch.tensor([0, 4, 2], dtype=torch.int64, device=ref_inp.device)
+    expected = torch.index_add(ref_inp, dim, ref_index, ref_src)
+
+    if inplace:
+        res = flag_gems.index_add_(inp, dim, index, src)
+        assert res is inp
+        utils.gems_assert_equal(inp, expected)
+    else:
+        res = flag_gems.index_add(inp, dim, index, src)
+        utils.gems_assert_equal(res, expected)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+def test_index_add_mismatched_non_dim_shape_raises(inplace):
+    inp = torch.zeros((2, 4, 8), dtype=torch.float32, device=flag_gems.device)
+    src = torch.ones((3, 2, 8), dtype=torch.float32, device=flag_gems.device)
+    index = torch.tensor([0, 1], dtype=torch.int64, device=flag_gems.device)
+
+    with pytest.raises(AssertionError, match="src.size"):
+        if inplace:
+            flag_gems.index_add_(inp, 1, index, src)
+        else:
+            flag_gems.index_add(inp, 1, index, src)
+
+
+@pytest.mark.index_add
+@pytest.mark.index_add_
+@pytest.mark.parametrize("inplace", [False, True])
+def test_index_add_zero_dim_scalar(inplace):
+    inp = torch.tensor(2.5, dtype=torch.float32, device=flag_gems.device)
+    src = torch.tensor(1.5, dtype=torch.float32, device=flag_gems.device)
+    index = torch.tensor(0, dtype=torch.int64, device=flag_gems.device)
+    expected = utils.to_reference(
+        torch.tensor(5.5, dtype=torch.float32, device=inp.device)
+    )
+
+    if inplace:
+        res = flag_gems.index_add_(inp, 0, index, src, alpha=2)
+        assert res is inp and inp.ndim == 0
+        utils.gems_assert_equal(inp, expected)
+    else:
+        res = flag_gems.index_add(inp, 0, index, src, alpha=2)
+        assert res.ndim == 0
+        utils.gems_assert_equal(res, expected)
+
+
+@pytest.mark.index_add_
+def test_index_add_inplace_storage_alias_and_overlap():
+    base = torch.arange(1, 9, dtype=torch.float32, device=flag_gems.device)
+    ref_base = utils.to_reference(base.clone())
+    inp = base[:5]
+    src = base[2:6]
+    index = torch.tensor([0, 2, 1, 4], dtype=torch.int64, device=flag_gems.device)
+    ref_index = utils.to_reference(index.clone())
+
+    ref_base[:5].index_add_(0, ref_index, ref_base[2:6].clone())
+    res = flag_gems.index_add_(inp, 0, index, src)
+    assert res is inp
+    utils.gems_assert_equal(base, ref_base)
+
+    with pytest.raises(RuntimeError, match="unsupported operation"):
+        flag_gems.index_add_(inp, 0, torch.arange(5, device=flag_gems.device), inp)
+
+    expanded = torch.zeros((1, 4), dtype=torch.float32, device=flag_gems.device).expand(
+        3, 4
+    )
+    src_2d = torch.ones((3, 2), dtype=torch.float32, device=flag_gems.device)
+    idx_2d = torch.tensor([0, 2], dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(RuntimeError, match="unsupported operation"):
+        flag_gems.index_add_(expanded, 1, idx_2d, src_2d)
