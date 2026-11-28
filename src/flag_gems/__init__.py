@@ -1535,6 +1535,7 @@ _FULL_CONFIG = (
     ("feature_dropout_", feature_dropout_),
     ("fft_ifftshift", fft_ifftshift),
     ("fft_irfftn", fft_irfftn),
+    ("fft_r2c_backward", fft_r2c_backward),
     ("fft_rfft", fft_rfft),
     ("fill.Scalar", fill_scalar),
     ("fill.Scalar_out", fill_scalar_out),
