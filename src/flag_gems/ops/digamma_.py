@@ -163,11 +163,12 @@ def digamma_kernel(
     tl.store(output_ptr + offsets, result, mask=mask)
 
 
-def digamma(A):
-    logger.debug("GEMS DIGAMMA")
-    if not isinstance(A, torch.Tensor):
-        raise TypeError("digamma expects a torch.Tensor as the first argument")
+def _digamma_impl(A: torch.Tensor) -> torch.Tensor:
+    """Forward kernel without the autograd bridge.
 
+    ``DigammaFunction.forward`` calls this directly so the autograd wrapper
+    does not re-enter itself.
+    """
     # PyTorch promotes integral inputs to float32 for digamma
     # (INT_TO_FLOAT promotion in native_functions semantics).
     if A.is_floating_point():
@@ -189,3 +190,24 @@ def digamma(A):
     with torch_device_fn.device(A.device):
         digamma_kernel[grid](A, output, n_elements, BLOCK_SIZE=1024)
     return output
+
+
+def digamma(A):
+    logger.debug("GEMS DIGAMMA")
+    if not isinstance(A, torch.Tensor):
+        raise TypeError("digamma expects a torch.Tensor as the first argument")
+
+    # This Torch build has no standalone ``aten::digamma_backward`` schema, so a
+    # differentiable input is routed through the FlagGems ``autograd.Function``
+    # bridge to reach the Triton trigamma backward kernel. Pure forward calls
+    # (and the in-place variant) keep their previous behaviour.
+    if (
+        isinstance(A, torch.Tensor)
+        and A.requires_grad
+        and torch.is_grad_enabled()
+        and not A.is_complex()
+    ):
+        from flag_gems.ops.digamma_backward import DigammaFunction
+
+        return DigammaFunction.apply(A)
+    return _digamma_impl(A)
