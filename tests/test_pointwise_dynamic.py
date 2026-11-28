@@ -39,7 +39,7 @@ else:
 
 from flag_gems.utils.tensor_wrapper import StridedBuffer
 
-from .accuracy_utils import _SKIP_FP64
+from . import accuracy_utils as utils
 
 MAX_GRID_SIZES = (65535, 65535, 65535)
 MAX_GRID_SIZE_X = MAX_GRID_SIZES[0]
@@ -354,6 +354,43 @@ def test_dynamic_function_with_predefined_out(use_block_pointer):
     o = torch.empty([SIZE, SIZE, SIZE], device=flag_gems.device)
     out = axpy(x, y, alpha, out0=o)
     torch.testing.assert_close(out, alpha * x + y)
+
+
+@pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4108: not working"
+)
+def test_dynamic_function_with_predefined_out_rejects_unsafe_cast(
+    use_block_pointer,
+):
+    config = CodeGenConfig(
+        max_tile_size=1024,
+        max_grid_size=MAX_GRID_SIZES,
+        max_num_warps_per_cta=32,
+        prefer_block_pointer=use_block_pointer,
+        prefer_1d_tile=False,
+    )
+
+    @pointwise_dynamic(
+        num_inputs=2,
+        is_tensor=[True, True],
+        promotion_methods=[(0, 1, "DEFAULT")],
+        config=config,
+    )
+    @triton.jit
+    def add_func(x, y):
+        return x + y
+
+    SIZE = 10
+    x = torch.ones([SIZE, SIZE], dtype=torch.int64, device=flag_gems.device)
+    y = torch.ones([SIZE, SIZE], dtype=torch.float32, device=flag_gems.device)
+    out = torch.full([SIZE, SIZE], 7, dtype=torch.int64, device=flag_gems.device)
+    before = out.clone()
+
+    with pytest.raises(RuntimeError, match="can't be cast"):
+        add_func(x, y, out0=out)
+
+    assert torch.equal(out, before)
 
 
 @pytest.mark.parametrize("use_block_pointer", USE_BLOCK_POINTER)
@@ -999,7 +1036,10 @@ def test_dynamic_function_with_multiprocess(use_block_pointer):
 
 # Complex number tests
 
-COMPLEX_DTYPES = [torch.complex64, pytest.param(torch.complex128, marks=_SKIP_FP64)]
+COMPLEX_DTYPES = [
+    torch.complex64,
+    pytest.param(torch.complex128, marks=utils._SKIP_FP64),
+]
 
 
 @pytest.mark.parametrize("dtype", COMPLEX_DTYPES)
