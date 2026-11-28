@@ -6283,6 +6283,25 @@ ops:
   - Math
   stages:
   - alpha: '5.3'
+- id: euclidean_dist_backward
+  description: 'Backward pass of the pairwise Euclidean distance: reproduces the
+    native autograd formula grad_x1[i, d] = x1[i, d] * ratio.sum(-1)[i] -
+    (ratio @ x2)[i, d] (and the transposed form for grad_x2), where ratio =
+    grad / dist with zero-distance pairs contributing zero. The distance
+    matrix is rebuilt with the same padded-GEMM structure ATen uses
+    (x1_ = [-2*x1 | sq1 | 1], x2_ = [x2 | 1 | sq2], one K = D + 2 matmul with
+    RNE-TF32-rounded operands for the large branch, direct difference
+    accumulation for the small branch).'
+  for:
+  - euclidean_dist_backward
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.6.0'
 - id: exp
   description: Returns a new tensor with the exponential of the elements of the input
     tensor `input`.
