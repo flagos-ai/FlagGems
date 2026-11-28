@@ -33,7 +33,41 @@ def test_irshift(shapes, dtype):
 
     data_ptr = res_a.data_ptr()
 
-    ret = flag_gems.bitwise_right_shift_(res_a, res_b)
+    before = (
+        res_a.device,
+        res_a.dtype,
+        tuple(res_a.shape),
+        res_a.stride(),
+        res_a.data_ptr(),
+    )
+    other_before = (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    )
+    other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
+    ret = flag_gems.__irshift__(res_a, res_b)
+    assert isinstance(ret, torch.Tensor)
+    assert ret is res_a
+    assert (
+        ret.device,
+        ret.dtype,
+        tuple(ret.shape),
+        ret.stride(),
+        ret.data_ptr(),
+    ) == before
+    assert (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    ) == other_before
+    assert torch.equal(
+        res_b.cpu().contiguous().reshape(-1).view(torch.uint8), other_bytes
+    )
 
     assert ret is res_a
     assert res_a.data_ptr() == data_ptr
@@ -63,7 +97,41 @@ def test_irshift_edge_cases(dtype):
 
     data_ptr = res_a.data_ptr()
 
-    ret = flag_gems.bitwise_right_shift_(res_a, res_b)
+    before = (
+        res_a.device,
+        res_a.dtype,
+        tuple(res_a.shape),
+        res_a.stride(),
+        res_a.data_ptr(),
+    )
+    other_before = (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    )
+    other_bytes = res_b.cpu().contiguous().reshape(-1).view(torch.uint8).clone()
+    ret = flag_gems.__irshift__(res_a, res_b)
+    assert isinstance(ret, torch.Tensor)
+    assert ret is res_a
+    assert (
+        ret.device,
+        ret.dtype,
+        tuple(ret.shape),
+        ret.stride(),
+        ret.data_ptr(),
+    ) == before
+    assert (
+        res_b.device,
+        res_b.dtype,
+        tuple(res_b.shape),
+        res_b.stride(),
+        res_b.data_ptr(),
+    ) == other_before
+    assert torch.equal(
+        res_b.cpu().contiguous().reshape(-1).view(torch.uint8), other_bytes
+    )
 
     assert ret is res_a
     assert res_a.data_ptr() == data_ptr
