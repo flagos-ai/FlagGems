@@ -63,15 +63,24 @@ def fill_tensor_kernel(
 
 
 def fill_tensor(input, value):
-    if not value.is_cuda:
-        return fill_scalar(input, value.item())
-    logger.debug("GEMS_ASCEND FILL")
     if value.ndim != 0:
         raise RuntimeError(
             f"fill_ only supports 0-dimension value tensor but got tensor with {value.ndim} dimensions."
         )
+    if torch.is_grad_enabled() and (input.requires_grad or value.requires_grad):
+        # The flat kernels below are not differentiable; use the generic
+        # pointwise fill, which wraps the store in an autograd.Function.
+        from flag_gems.ops.fill import fill_tensor as _generic_fill_tensor
+
+        return _generic_fill_tensor(input, value)
+    logger.debug("GEMS_ASCEND FILL")
+    if value.device != input.device:
+        # CPU scalar tensor: fetch it once instead of staging a device load.
+        return fill_scalar(input, value.item())
     out = torch.empty_like(input)
     N = out.numel()
+    if N == 0:
+        return out
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)
     BLOCK_SIZE = (N + grid - 1) // grid
@@ -83,9 +92,15 @@ def fill_tensor(input, value):
 
 
 def fill_scalar(input, value):
+    if torch.is_grad_enabled() and input.requires_grad:
+        from flag_gems.ops.fill import fill_scalar as _generic_fill_scalar
+
+        return _generic_fill_scalar(input, value)
     logger.debug("GEMS_ASCEND FILL")
     out = torch.empty_like(input)
     N = out.numel()
+    if N == 0:
+        return out
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)
     BLOCK_SIZE = (N + grid - 1) // grid
@@ -97,8 +112,18 @@ def fill_scalar(input, value):
 
 
 def fill_tensor_(self, value):
-    if not value.is_cuda:
-        return fill_scalar_(self, value.item())
+    if torch.is_grad_enabled() and (self.requires_grad or value.requires_grad):
+        from flag_gems.ops.fill import fill_tensor_ as _generic_fill_tensor_
+
+        return _generic_fill_tensor_(self, value)
+    if not self.is_contiguous():
+        # The kernels below store to flat offsets 0..numel-1 from the view's
+        # data pointer and ignore strides, so a strided view would be written
+        # outside its own memory while part of the view stays untouched. The
+        # generic pointwise fill walks the view's strides instead.
+        from flag_gems.ops.fill import fill_tensor_ as _strided_fill_tensor_
+
+        return _strided_fill_tensor_(self, value)
     logger.debug("GEMS_ASCEND FILL_TENSOR_")
     if value.ndim != 0:
         raise RuntimeError(
@@ -107,6 +132,8 @@ def fill_tensor_(self, value):
     N = self.numel()
     if N == 0:
         return self
+    if value.device != self.device:
+        return fill_scalar_(self, value.item())
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)
     BLOCK_SIZE = (N + grid - 1) // grid
@@ -122,6 +149,16 @@ def fill_scalar_(self, value):
     N = self.numel()
     if N == 0:
         return self
+    if torch.is_grad_enabled() and self.requires_grad:
+        from flag_gems.ops.fill import fill_scalar_ as _generic_fill_scalar_
+
+        return _generic_fill_scalar_(self, value)
+    if not self.is_contiguous():
+        # Same stride hazard as `fill_tensor_`: the flat store kernel would
+        # write outside a strided view. Use the stride-aware generic fill.
+        from flag_gems.ops.fill import fill_scalar_ as _strided_fill_scalar_
+
+        return _strided_fill_scalar_(self, value)
     # FIXME: 910B3&910B4 have 40 AIV cores while 910B1 has 50, 910B2 has 48.
     grid = min(40, N)
     BLOCK_SIZE = (N + grid - 1) // grid

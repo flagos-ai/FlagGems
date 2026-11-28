@@ -339,3 +339,54 @@ def test_fill_sliced_view_tensor(shape, slc, dtype, value):
     flag_gems.fill_tensor_(x[slc], value_tensor)
 
     utils.gems_assert_equal(x, ref_x)
+
+
+FILL_STRIDED_VIEW_CASES = [
+    # Slices whose stride is not 1 in the last dimension: the flat store kernel
+    # would write past the view, so these guard the stride-aware fallback.
+    ((4, 8), (slice(None), slice(None, None, 2))),
+    ((8, 4), (slice(None, None, 2), slice(None))),
+    ((2, 3, 8), (slice(None), slice(None), slice(1, None, 3))),
+]
+
+
+@pytest.mark.fill_scalar_
+@pytest.mark.parametrize("shape, slc", FILL_STRIDED_VIEW_CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
+def test_fill_scalar_strided_view(shape, slc, dtype):
+    """In-place fill must only touch the elements of a strided view (Issue #9914)."""
+    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = utils.to_reference(x, False)
+    x_view = x[slc]
+    assert not x_view.is_contiguous()
+
+    ref_x[slc] = 3
+    flag_gems.fill_scalar_(x_view, 3)
+
+    utils.gems_assert_equal(x, ref_x)
+
+
+@pytest.mark.fill_tensor_
+@pytest.mark.parametrize("shape, slc", FILL_STRIDED_VIEW_CASES)
+@pytest.mark.parametrize("dtype", utils.FLOAT_DTYPES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro",
+    reason="Issues #3861: some ops hang in op tests",
+)
+def test_fill_tensor_strided_view(shape, slc, dtype):
+    """Tensor-valued in-place fill must stay inside a strided view (Issue #9914)."""
+    x = torch.ones(shape, device=flag_gems.device, dtype=dtype)
+    ref_x = utils.to_reference(x, False)
+    x_view = x[slc]
+    assert not x_view.is_contiguous()
+
+    value_tensor = torch.tensor(3, device=flag_gems.device, dtype=dtype)
+    ref_value_tensor = utils.to_reference(value_tensor, False)
+    ref_x[slc] = ref_value_tensor
+    flag_gems.fill_tensor_(x_view, value_tensor)
+
+    utils.gems_assert_equal(x, ref_x)

@@ -48,7 +48,10 @@ def _fill_scalar_(input, value):
 
 
 def _fill_tensor_(input, value):
-    if not value.is_cuda:
+    # Compare devices rather than `value.is_cuda`: on non-CUDA backends (e.g.
+    # Ascend NPU) a device tensor is not "cuda" and would otherwise be turned
+    # into a host scalar, losing its gradient and forcing a sync.
+    if value.device != input.device:
         return _fill_scalar_(input, value.item())
     with torch_device_fn.device(input.device):
         fill_tensor_func(input, value, out0=input)
@@ -62,7 +65,7 @@ def _fill_scalar(input, value):
 
 
 def _fill_tensor(input, value):
-    if not value.is_cuda:
+    if value.device != input.device:
         return _fill_scalar(input, value.item())
     out = torch.empty_like(input)
     with torch_device_fn.device(input.device):
@@ -173,7 +176,7 @@ def fill_tensor_out(input, value, *, out=None):
     logger.debug("GEMS FILL_TENSOR_OUT")
     if out is None:
         return fill_tensor(input, value)
-    if not value.is_cuda:
+    if value.device != input.device:
         return fill_scalar_out(input, value.item(), out=out)
     if value.ndim != 0:
         raise RuntimeError(
