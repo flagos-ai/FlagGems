@@ -45,6 +45,18 @@ def is_cuda_available():
 CUDA_AVAILABLE = is_cuda_available()
 
 
+def is_backend_supported():
+    """This case's reference is a pure torch dequantization (baseline_scaled_mm only uses torch.mm),
+    and vLLM backs only the CUDA-side fast path, so a non-CUDA backend (e.g. GCU) should run the
+    case as long as the operator is registered -- otherwise cutlass_scaled_mm has no GCU coverage.
+    """
+    if not hasattr(flag_gems, "cutlass_scaled_mm"):
+        return False
+    if flag_gems.device == "cuda":
+        return VLLM_AVAILABLE and CUDA_AVAILABLE
+    return flag_gems.vendor_name == "enflame" and flag_gems.device != "cpu"
+
+
 def to_int8(tensor: torch.Tensor):
     return torch.round(tensor.clamp(min=-128, max=127)).to(dtype=torch.int8)
 

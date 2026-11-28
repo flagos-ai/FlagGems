@@ -33,7 +33,21 @@ Target-specific facts that drive the code below:
 * aten divides nowhere: it multiplies by the fp32 reciprocal, so ``x / scale``
   is not bit-equivalent and must not be used.
 
-No int64 arithmetic is used (the S60 backend does not support int64).
+GCU400 (L600) rework, acos/arcsin family style:
+
+* The contiguous fast path is a persistent 48-CTA grid-stride kernel
+  (``tl.range`` stride loop): the tile count never enters the grid, so any
+  tensor size is launch-safe, and ``HAS_TAIL`` keeps fully-divisible sizes on
+  a maskless load/store arm.
+* Tile ladder is DSM-bound: every raw tile stays <= 256KB (fp64 <= 32768,
+  fp32/16-bit <= 65536 lanes).  Doubling the top buckets overflows
+  ``max_dsm = 917504`` at compile time (the S60 ladder used 262144-lane
+  fp32 tiles = 1MiB, which fails on this part).
+* Offsets are int32: the flat path guards n <= 2**31 (verified bit-exact at
+  the 2**31 boundary, where the offset index widens to int64 under the
+  standard int64-enabled env).  Larger tensors keep the original
+  strided-kernel routing (int32 offsets, pre-existing domain, unchanged).
+* No int64 arithmetic is used anywhere.
 """
 
 import logging
@@ -50,36 +64,52 @@ from flag_gems.utils import libentry
 logger = logging.getLogger(__name__)
 
 _MAGIC_C = tl.constexpr(8388608.0)
-_BLOCK_MIN = 1024
-_BLOCK_MAX = 131072
-_BLOCK_MAX_HUGE = 262144
 _STRIDED_BLOCK = 4096
 _STRIDED_WARPS = 2
 _MAX_RANK = 8
 _MAX_GRID_X = 65535
+# Persistent-grid constants (acos/arcsin family): 24 SIPs, 2 programs each
+# while a tile stays within the 448KB half-DSM budget -> true 48-way occupancy.
+NUM_SIPS = 24
+FLAT_GRID = NUM_SIPS * 2
+# Largest tile the strided _grid growth loop may reach.  Matches the flat
+# ladder's top bucket (65536 lanes); growth beyond 32768 only happens near
+# the 2**31 int32-domain edge, where the original 262144 cap would instead
+# overflow max_dsm = 917504 at compile time for fp32 tiles.
+_GROW_BLOCK_CAP = 65536
+# int32 offset domain of both kernels (offs = pid * BLOCK + arange).
+_INT32_LIMIT = 2**31
 
 
-def _pick_block(n):
-    """One program per tensor up to 128K elements: launch cost is 11.2us +
-    0.46us per program on this vendor, so few large tiles win by a wide margin."""
-    block = 1 << max(10, (n - 1).bit_length())
-    if block > _BLOCK_MAX:
-        block = _BLOCK_MAX
-    if (n + block - 1) // block > 256:
-        block = _BLOCK_MAX_HUGE
-    return block
-
-
-def _pick_warps(block, grid):
-    if block <= 16384:
-        return 2
-    if block <= 32768:
-        return 4
-    if grid <= 2:
-        return 8
-    if grid <= 4:
-        return 4
-    return 2
+def _flat_config(n, itemsize):
+    """Tile ladder swept on GCU400 (acos/arcsin family + this op's own A/B).
+    Every raw tile is <= 256KB: fp64 <= 32768, fp32/16-bit <= 65536 lanes;
+    doubling the fp32 bucket exceeds max_dsm (917504) and fails the compile.
+    The 16-bit top bucket is 65536, not 131072: at 131072 lanes the fp32
+    compute vector alone is 512KB and the tile drops out of the 2-programs-
+    per-SIP half-DSM budget (measured 3x medians: 8192^2 fp16 223.5 -> 221.1us,
+    32M fp16 119.0 -> 115.6us)."""
+    if itemsize == 8:
+        if n <= 2**13:
+            return 1024, 1
+        if n <= 2**21:
+            return 4096, 2
+        return 32768, 2
+    if itemsize == 4:
+        if n <= 2**17:
+            return 1024, 1
+        if n <= 2**21:
+            return 4096, 2
+        if n <= 2**25:
+            return 32768, 2
+        return 65536, 2
+    if n <= 2**13:
+        return 1024, 1
+    if n <= 2**21:
+        return 4096, 2
+    if n <= 2**25:
+        return 32768, 2
+    return 65536, 2
 
 
 _SUPPORTED_DTYPES = (
@@ -135,40 +165,53 @@ def _scalar_name(dtype):
 
 
 @libentry()
-@triton.jit(do_not_specialize=["n", "gx", "zp", "qmin", "qmax"])
+@triton.jit(do_not_specialize=["n", "zp", "qmin", "qmax"])
 def fake_quantize_per_tensor_affine_cachemask_kernel(
     x_ptr,
     y_ptr,
     m_ptr,
     n,
-    gx,
     scale,
     inv_scale,
     zp,
     qmin,
     qmax,
     BLOCK: tl.constexpr,
+    HAS_TAIL: tl.constexpr,
 ):
-    pid = tl.program_id(0) + tl.program_id(1) * gx
-    offs = pid * BLOCK + tl.arange(0, BLOCK)
-    act = offs < n
-    v = tl.load(x_ptr + offs, mask=act, other=0.0).to(tl.float32)
-    sf = scale.to(tl.float32)
-    invf = inv_scale.to(tl.float32)
-    y = v * invf
-    # round-half-to-even on the magnitude (|y| + 2**23 lands in a binade whose
-    # ulp is one).  Done on |y| because this backend's fused chain is *not*
-    # ties-to-even for negative operands.  libdevice.rint is exact but ~5x
-    # slower end-to-end here, so the arithmetic form is used.
-    ap = tl.abs(y)
-    r = (ap + _MAGIC_C) - _MAGIC_C
-    r = tl.where(y < 0.0, -r, r)
-    q = r + zp
-    inr = (q >= qmin) & (q <= qmax)
-    qc = tl.minimum(tl.maximum(q, qmin), qmax)
-    o = (qc - zp) * sf
-    tl.store(y_ptr + offs, o.to(y_ptr.dtype.element_ty), mask=act)
-    tl.store(m_ptr + offs, inr, mask=act)
+    pid = tl.program_id(0)
+    num_pids = tl.num_programs(0)
+    if HAS_TAIL:
+        num_blocks = (n + BLOCK - 1) // BLOCK
+    else:
+        num_blocks = n // BLOCK
+    for block in tl.range(pid, num_blocks, num_pids):
+        offs = block * BLOCK + tl.arange(0, BLOCK)
+        if HAS_TAIL:
+            act = offs < n
+            v = tl.load(x_ptr + offs, mask=act, other=0.0).to(tl.float32)
+        else:
+            v = tl.load(x_ptr + offs).to(tl.float32)
+        sf = scale.to(tl.float32)
+        invf = inv_scale.to(tl.float32)
+        y = v * invf
+        # round-half-to-even on the magnitude (|y| + 2**23 lands in a binade whose
+        # ulp is one).  Done on |y| because this backend's fused chain is *not*
+        # ties-to-even for negative operands.  libdevice.rint is exact but ~5x
+        # slower end-to-end here, so the arithmetic form is used.
+        ap = tl.abs(y)
+        r = (ap + _MAGIC_C) - _MAGIC_C
+        r = tl.where(y < 0.0, -r, r)
+        q = r + zp
+        inr = (q >= qmin) & (q <= qmax)
+        qc = tl.minimum(tl.maximum(q, qmin), qmax)
+        o = (qc - zp) * sf
+        if HAS_TAIL:
+            tl.store(y_ptr + offs, o.to(y_ptr.dtype.element_ty), mask=act)
+            tl.store(m_ptr + offs, inr, mask=act)
+        else:
+            tl.store(y_ptr + offs, o.to(y_ptr.dtype.element_ty))
+            tl.store(m_ptr + offs, inr)
 
 
 @libentry()
@@ -330,8 +373,10 @@ def _fq_strided_kernel(
 
 def _grid(n, block):
     blocks = (n + block - 1) // block
-    # Grow the tile (never the y dimension) so every launched program is busy.
-    while block < 262144 and blocks > _MAX_GRID_X:
+    # Grow the tile (never the y dimension) so every launched program is busy,
+    # capped at a DSM-safe 65536 lanes (the old 262144 cap overflows max_dsm
+    # on GCU400 for fp32 tiles).
+    while block < _GROW_BLOCK_CAP and blocks > _MAX_GRID_X:
         block *= 2
         blocks = (n + block - 1) // block
     gx = blocks if blocks <= _MAX_GRID_X else _MAX_GRID_X
@@ -344,23 +389,27 @@ def _launch(x, out, mask, scale, inv_scale, zp, qmin, qmax):
     if n == 0:
         return
     with torch_device_fn.device(x.device):
-        if x.is_contiguous() and out.is_contiguous() and mask.is_contiguous():
-            block = _pick_block(n)
-            nblocks = (n + block - 1) // block
-            grid, gx, block = _grid(n, block)
+        if (
+            x.is_contiguous()
+            and out.is_contiguous()
+            and mask.is_contiguous()
+            and n <= _INT32_LIMIT
+        ):
+            block, warps = _flat_config(n, x.element_size())
+            grid = (min(triton.cdiv(n, block), FLAT_GRID),)
             fake_quantize_per_tensor_affine_cachemask_kernel[grid](
                 x,
                 out,
                 mask,
                 n,
-                gx,
                 scale,
                 inv_scale,
                 zp,
                 qmin,
                 qmax,
                 BLOCK=block,
-                num_warps=_pick_warps(block, nblocks),
+                HAS_TAIL=(n % block) != 0,
+                num_warps=warps,
             )
             return
 
@@ -464,7 +513,7 @@ def _run(x, scale, zero_point, quant_min, quant_max, out0=None, out1=None):
 def fake_quantize_per_tensor_affine_cachemask(
     input, scale, zero_point, quant_min, quant_max
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK")
+    logger.debug("GEMS_ENFLAME FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK")
     return _run(input, scale, zero_point, quant_min, quant_max)
 
 
@@ -478,5 +527,5 @@ def fake_quantize_per_tensor_affine_cachemask_out(
     out0,
     out1,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_OUT")
+    logger.debug("GEMS_ENFLAME FAKE_QUANTIZE_PER_TENSOR_AFFINE_CACHEMASK_OUT")
     return _run(input, scale, zero_point, quant_min, quant_max, out0, out1)

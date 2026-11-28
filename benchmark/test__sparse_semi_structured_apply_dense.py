@@ -113,6 +113,11 @@ class SparseSemiStructuredApplyDenseBenchmark(OperatorBenchmark):
         super().set_shapes(shape_file_path, default_shapes=_BENCH_CASES)
 
 
+@pytest.mark.skip_native(
+    vendors=["enflame"],
+    reason="aten::_sparse_semi_structured_apply_dense has no CPU/GCU kernel, "
+    "so there is no native baseline to compare against",
+)
 @pytest.mark.sparse_semi_structured_apply_dense
 def test__sparse_semi_structured_apply_dense():
     # The operator accepts Half/BFloat16 only; bfloat16 is kept out on a device

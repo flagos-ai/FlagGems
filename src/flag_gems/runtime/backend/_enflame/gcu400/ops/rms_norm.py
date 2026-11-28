@@ -27,43 +27,54 @@ from ..utils.config_utils import MAX_GRID_DIM
 logger = logging.getLogger(__name__)
 
 MAX_BLOCK_SIZE = 32768
-_FORWARD_WARPS = 4  # warp count of the forward launch, fixed after shape sweeps
+_FORWARD_WARPS = (
+    4  # Number of warps for the forward launch, fixed after sweeping shapes
+)
 
 # ---- Row-batch (2D [ROWS_PER_CTA, BLOCK] tile) budget --------------------
-# Ported from this backend's verified layernorm-family row-batch kernels (layernorm.py /
-# fused/gcu400/skip_layernorm.py, the 225-config validation set in compiler_issues/
-# vllm_fused_q_kv_rmsnorm_rowbatch_bcast_miscompile.md):
-# - tile element budget: fp32 live set (x tile + squared product + [1,BLOCK] weight) stays within each
+# Ported from the verified layernorm-family row-batch kernels in this backend (layernorm.py /
+# fused/gcu400/skip_layernorm.py, compiler_issues/
+# vllm_fused_q_kv_rmsnorm_rowbatch_bcast_miscompile.md and its 225-config validation set):
+# - tile element budget: the fp32 live set (x tile + squared products + [1,BLOCK] weights) stays within each
 #   program's DSM budget;
-# - R >= 32 with a 32768-element tile is a triton_gcu silent wrong-value region; tile <= 16384 and
-#   R <= 32 are verified correct across 225 (shape, dtype, R, num_warps) combinations.
-# Extension region (16384 < tile <= dtype budget): calibrated by compiled gcu.dsm_memory_size -
+# - R >= 32 with a 32768-element tile is a triton_gcu silent-wrong-result region; tile <= 16384 with
+#   R <= 32 has been verified correct across 225 (shape, dtype, R, num_warps) combinations.
+# Extended region (16384 < tile <= dtype budget): calibrated from measured gcu.dsm_memory_size in compiler output -
 # fp16 R=16/B=4096 (tile 65536) dsm=282KB, fp32 R=8/B=4096 (tile
-# 32768) dsm=299KB, both < the 448KB dual-program line keeping 48-way; fp32 tile 65536 measured
-# dsm=561KB exceeds the line, locks 24-way and is slower. In the extension region R is always capped at 16 (far from the
-# R>=32 wrong-value trigger axis).
-# Measured gain of large tile tiers ((4096,4096) do_bench median): fp16 R=4 68.6us ->
+# 32768) dsm=299KB, both < 448KB dual-program line, keeping 48-way; fp32 tile 65536 is measured
+# at dsm=561KB, over the line, locking to 24-way and actually slower. In the extended region R is always capped at 16
+# (far from the R>=32 wrong-result trigger axis).
+# Measured benefit of the large-tile band ((4096,4096) do_bench median): fp16 R=4 68.6us ->
 # R=8 49.5us -> R=16 40.9us (1.64TB/s); fp32 R=4 88.3 -> R=8 71.6us.
 _ROW_BATCH_MAX_BLOCK = 16384
 _ROW_TILE_ELEM_MAX = 16384
 _ROW_TILE_ELEM_MAX_F16 = 65536
 _ROW_TILE_ELEM_MAX_F32 = 32768
 _ROWS_PER_CTA_CAP = 32
-_ROWS_PER_CTA_CAP_EXT = 16  # R cap in the extension region (tile > 16384)
+_ROWS_PER_CTA_CAP_EXT = 16  # Upper limit of R for the extended region (tile > 16384)
 _ROWS_PER_CTA_MIN = 4
 _TARGET_CTAS = 48
-# Below this lane count, per-program fixed cost outweighs the parallelism gain of a row-batch tile.
+# When a row-batch tile has fewer lanes than this, the per-program fixed cost outweighs the parallelism gain.
 _ROW_TILE_MIN_LANES = 4096
-# Row batching is used only when rows fill the device (R=4 gives >= 48 tiles); smaller inputs keep the per-row legacy
-# kernel.
+# Row-batch is used only when the row count fills the device (>= 48 tiles at R=4); smaller inputs keep the row-by-row
+# legacy kernel.
 _ROW_BATCH_MIN_ROWS = _TARGET_CTAS * _ROWS_PER_CTA_MIN
-# When a 1-D tail arm is compiled into the kernel, num_warps must be 1 (nw>=2 degrades the whole 2-D hot path
-# by 1.3-1.9x, measured 2026-11-08 on vllm skip_layer_norm); when the tail arm is compiled out
-# (HAS_TAIL=False) and there is no [R] side-output store, a [1,BLOCK] 2-D shaped weight +
-# software-pipelined loop + num_warps=2 is verified correct in the fused_add_rms_norm row-batch kernel.
-# With a [R] side-output store (SAVE_INV_RMS), conservatively lock nw=1 (same as layernorm.py).
+# When the 1-D tail branch is compiled into the kernel, num_warps=1 is required (nw>=2 makes the tail degrade the whole
+# 2-D hot path by
+# 1.3-1.9x, measured on 2026-11-08 with vllm skip_layer_norm); with the tail branch compiled out entirely
+# (HAS_TAIL=False) and no [R] secondary-output store, [1,BLOCK] 2-D shaped weights +
+# a software-pipelined loop + num_warps=2 has been verified correct in the fused_add_rms_norm row-batch kernel.
+# With an [R] secondary-output store (SAVE_INV_RMS), conservatively lock nw=1 (same as layernorm.py).
 _TAIL_NUM_WARPS = 1
 _ROWS_NUM_WARPS = 2
+
+# ---- wide row (N > MAX_BLOCK_SIZE) chunk width ------------------------------
+# A wide row needs two passes to normalize and is limited by stream bandwidth.
+# For 2-byte dtypes, dropping the chunk from 32768 to 16384 and using a persistent
+# grid of _TARGET_CTAS programs takes the (1024,65536) do_bench median from
+# 0.378ms to 0.237ms (-37%, ~1.7TB/s measured stream-bandwidth ceiling); for
+# 4-byte dtypes a small chunk is 10-18% slower, so MAX_BLOCK_SIZE is kept.
+_WIDE_ROW_BLOCK_F16 = 16384
 
 
 def _row_tile_elem_max(dtype):
@@ -307,20 +318,18 @@ def rms_norm_rows_kernel(
     BLOCK_SIZE: tl.constexpr,
     ROWS: tl.constexpr,
     EXACT: tl.constexpr,  # N == BLOCK_SIZE: no column mask
-    HAS_TAIL: tl.constexpr,  # M % ROWS != 0: 1-D tail arm compiled into the kernel
+    HAS_TAIL: tl.constexpr,  # M % ROWS != 0: compile the 1-D tail branch into the kernel
     SAVE_INV_RMS: tl.constexpr,
 ):
-    """Row-batch kernel: each program normalizes several rows via a [ROWS, BLOCK_SIZE] 2-D tile,
-    amortizing the per-program fixed cost (load dispatch + reduction tree + weight load) that dominates large M
-    in the one-row-per-program form. A persistent tile loop with grid <= 48
-    removes inter-wave CTA retire/relaunch gaps, and the launch grid stays 1-D, never reaching
-    GCU's 65535 grid.x limit. The residual row tail uses the 1-D row body (the 2-D masked tail variant is
-    a silent wrong-value region on this backend). Weights are loaded once outside the loop with [1, BLOCK_SIZE] 2-D
-    shape:
-    a 1-D vector broadcast operand at BLOCK 512/1024 + num_warps>=2 is a verified wrong-value window, while the 2-D
-    shaped form is
-    verified correct across all trigger windows in the fused_add_rms_norm row-batch kernel.
-    Weight is loop-invariant: loaded once per program with [1, BLOCK_SIZE] 2-D shape.
+    """Row-batch kernel: each program normalizes several rows through a [ROWS, BLOCK_SIZE] 2-D tile,
+    amortizing the per-program fixed cost that dominates one-row-per-program at large M (load
+    dispatch + reduction tree + weight load). A persistent tile loop with grid <= 48 removes the
+    inter-wave CTA retire/relaunch gap and keeps the launch grid 1-D, never touching the GCU
+    65535 grid.x cap. Residual tail rows use the 1-D row body (the 2-D masked tail variant is a
+    silent wrong-value window on this backend). Weights are loaded once outside the loop as a
+    [1, BLOCK_SIZE] 2-D shape: 1-D vector broadcast operands are a known wrong-value window at
+    BLOCK 512/1024 with num_warps >= 2, while the 2-D form is verified correct across every
+    trigger window of the fused_add_rms_norm row-batch kernel.
     """
     pid = tl.program_id(0)
     num_programs = tl.num_programs(0)
@@ -547,7 +556,9 @@ class RmsNorm(torch.autograd.Function):
                     num_warps=num_warps,
                 )
             else:
-                # Persistence switch for "in-kernel time-step loop" of packed forward.
+                # Each program handles multiple rows: w is loaded only once and the program count decreases with M
+                wide_block = BLOCK_SIZE
+                wide_persistent = False
                 if single_block:
                     if M >= 512:
                         rows = 8
@@ -556,9 +567,23 @@ class RmsNorm(torch.autograd.Function):
                     else:
                         rows = 2
                 else:
+                    # Wide row (N > MAX_BLOCK_SIZE, does not fit one tile): two chunk
+                    # passes per row, limited by stream bandwidth rather than chunk
+                    # width. For 2-byte dtypes, shrinking the chunk to
+                    # _WIDE_ROW_BLOCK_F16 and switching to a persistent grid
+                    # (<= _TARGET_CTAS programs) takes (1024,65536) do_bench from
+                    # 0.378ms to 0.237ms (-37%); 4-byte dtypes stay optimal with a
+                    # large chunk and the full grid (a small chunk is 10-18% slower).
                     rows = 1
+                    if x.element_size() <= 2:
+                        wide_block = min(triton.next_power_of_2(N), _WIDE_ROW_BLOCK_F16)
+                        wide_persistent = wide_block < BLOCK_SIZE
                 total_programs = triton.cdiv(M, rows)
-                grid_m = min(total_programs, MAX_GRID_DIM)
+                grid_m = (
+                    min(total_programs, _TARGET_CTAS)
+                    if wide_persistent
+                    else min(total_programs, MAX_GRID_DIM)
+                )
 
                 rms_norm_kernel[grid_m,](
                     y,
@@ -573,7 +598,7 @@ class RmsNorm(torch.autograd.Function):
                     N,
                     eps,
                     total_programs,
-                    BLOCK_SIZE,
+                    wide_block,
                     rows,
                     single_block,
                     save_inv_rms,
@@ -644,5 +669,5 @@ class RmsNorm(torch.autograd.Function):
 
 
 def rms_norm(x, normalized_shape, weight, eps=1e-5):
-    logger.debug("GEMS_ENFLAME_GCU400 RMS_NORM")
+    logger.debug("GEMS_ENFLAME RMS_NORM")
     return RmsNorm.apply(x, normalized_shape, weight, eps)

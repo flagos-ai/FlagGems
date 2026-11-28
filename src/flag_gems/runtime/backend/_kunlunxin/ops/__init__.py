@@ -102,6 +102,7 @@ from ._foreach_copy import _foreach_copy  # noqa: F401
 from ._foreach_copy_ import _foreach_copy_
 from ._foreach_erfc import _foreach_erfc
 from ._foreach_erfc_ import _foreach_erfc_
+from ._foreach_exp_ import _foreach_exp_  # noqa: F401
 from ._foreach_expm1 import _foreach_expm1, _foreach_expm1_  # noqa: F401
 from ._foreach_floor import _foreach_floor
 from ._foreach_floor_ import _foreach_floor_
@@ -157,7 +158,6 @@ from ._foreach_unary import (  # noqa: F401
     _foreach_cos,
     _foreach_cos_,
     _foreach_exp,
-    _foreach_exp_,
     _foreach_log10,
     _foreach_log10_,
     _foreach_reciprocal_,
@@ -236,6 +236,9 @@ from ._upsample_nearest_exact2d_backward import _upsample_nearest_exact2d_backwa
 from ._upsample_nearest_exact3d import _upsample_nearest_exact3d
 from ._weight_norm_differentiable_backward import (  # noqa: F401
     weight_norm_differentiable_backward,
+)
+from ._wrapped_quantized_linear_prepacked import (  # noqa: F401
+    _wrapped_quantized_linear_prepacked,
 )
 from .abs import abs, abs_
 from .absolute import absolute, absolute_
@@ -1310,6 +1313,7 @@ __all__ = [
     "_upsample_nearest_exact3d",
     "_upsample_nearest_exact3d_backward_grad_input",
     "_weight_norm",
+    "_wrapped_quantized_linear_prepacked",
     "abs",
     "abs_",
     "absolute",

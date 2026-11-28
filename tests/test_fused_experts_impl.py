@@ -325,8 +325,23 @@ try:
     )
 
     HAS_VLLM_FUSED_MOE = True
+    VLLM_FUSED_MOE_SKIP_REASON = "vLLM is required"
 except ImportError:
     HAS_VLLM_FUSED_MOE = False
+    VLLM_FUSED_MOE_SKIP_REASON = "vLLM is required"
+except Exception as vllm_import_error:
+    # vLLM's fused-MoE import pulls in transformers -> sklearn, which raises a
+    # numpy ABI ValueError on this image and would abort collection of the
+    # entire run instead of only losing the optional vLLM reference.  Only the
+    # enflame backend degrades to a skipped vLLM comparison; every other vendor
+    # keeps the original hard failure.
+    if flag_gems.vendor_name != "enflame":
+        raise
+    HAS_VLLM_FUSED_MOE = False
+    VLLM_FUSED_MOE_SKIP_REASON = (
+        "enflame GCU: importing vllm.model_executor.layers.fused_moe raises "
+        f"{type(vllm_import_error).__name__}: {vllm_import_error}"
+    )
 
 
 def _vllm_fused_moe_reference_unusable():
@@ -345,7 +360,7 @@ VLLM_FUSED_MOE_REFERENCE_UNUSABLE = _vllm_fused_moe_reference_unusable()
 
 
 @pytest.mark.fused_experts_impl
-@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason="vLLM is required")
+@pytest.mark.skipif(not HAS_VLLM_FUSED_MOE, reason=VLLM_FUSED_MOE_SKIP_REASON)
 @pytest.mark.parametrize("config", FUSED_MOE_CONFIGS)
 @pytest.mark.parametrize("dtype", [torch.bfloat16, torch.float16])
 @pytest.mark.skipif(

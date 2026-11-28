@@ -32,6 +32,8 @@ FP8_DTYPE = (
 
 
 def _fp8_available():
+    if flag_gems.vendor_name == "enflame":
+        return hasattr(torch, "float8_e5m2")
     if flag_gems.device == "npu":
         return torch.npu.is_available() and hasattr(torch, "float8_e4m3fn")
     if flag_gems.device == "musa":
@@ -185,7 +187,7 @@ class AscendGraphMode(Enum):
 @pytest.mark.topk_w8a16
 @pytest.mark.skipif(
     flag_gems.vendor_name
-    not in ("ascend", "thead", "hygon", "mthreads", "nvidia", "metax"),
+    not in ("ascend", "thead", "hygon", "mthreads", "nvidia", "metax", "enflame"),
     reason="topk_w8a16_fp8 requires an implemented backend",
 )
 @pytest.mark.skipif(not _fp8_available(), reason="required FP8 format is unavailable")

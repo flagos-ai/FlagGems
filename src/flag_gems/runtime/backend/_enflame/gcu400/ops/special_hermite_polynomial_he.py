@@ -100,7 +100,7 @@ def hermite_he_func_scalar_x_fp64(x, n):
 
 
 def special_hermite_polynomial_he(x, n):
-    logger.debug("GEMS_ENFLAME_GCU400 SPECIAL_HERMITE_POLYNOMIAL_HE")
+    logger.debug("GEMS_ENFLAME SPECIAL_HERMITE_POLYNOMIAL_HE")
     if isinstance(x, torch.Tensor):
         assert x.dtype in (
             torch.float32,

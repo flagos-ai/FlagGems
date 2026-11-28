@@ -3119,7 +3119,7 @@ def convolution_backward(
     groups,
     output_mask,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 CONVOLUTION_BACKWARD")
+    logger.debug("GEMS_ENFLAME CONVOLUTION_BACKWARD")
     return _convolution_backward_impl(
         grad_output,
         input,
@@ -3152,7 +3152,7 @@ def convolution_backward_out(
     out1,
     out2,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 CONVOLUTION_BACKWARD_OUT")
+    logger.debug("GEMS_ENFLAME CONVOLUTION_BACKWARD_OUT")
     if not all(output_mask):
         raise RuntimeError(
             "convolution_backward.out: a defined out tensor cannot represent an undefined masked gradient"

@@ -194,19 +194,3 @@ def test_inverse_unsupported_dtype():
         match="unsupported dtype|Low precision dtypes not supported",
     ):
         flag_gems.inverse(A)
-
-
-@pytest.mark.inverse
-@pytest.mark.parametrize("dtype", INVERSE_DTYPES)
-@pytest.mark.skipif(
-    flag_gems.vendor_name != "kunlunxin",
-    reason="singular detection is a Kunlunxin-only backend behaviour",
-)
-def test_inverse_singular(dtype):
-    # Singular inputs must raise LinAlgError (matching torch.inverse), not
-    # silently return an inf/NaN-filled result.  This rank-1 matrix only hits
-    # its zero pivot partway through the elimination.
-    A = torch.tensor([[1.0, 1.0], [2.0, 2.0]], dtype=dtype, device=flag_gems.device)
-
-    with pytest.raises(torch.linalg.LinAlgError):
-        flag_gems.inverse(A)

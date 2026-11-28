@@ -13,7 +13,10 @@
 # limitations under the License.
 
 import logging
+import struct
+from functools import lru_cache
 
+import numpy as np
 import torch
 import triton
 import triton.language as tl
@@ -45,7 +48,13 @@ _FLOAT_DTYPES = (torch.float16, torch.bfloat16, torch.float32)
 @libentry()
 @triton.jit(do_not_specialize=["N_total"])
 def threshold__flat_kernel(
-    x_ptr, out_ptr, N_total, threshold, value, BLOCK: tl.constexpr
+    x_ptr,
+    out_ptr,
+    N_total,
+    threshold,
+    value,
+    BLOCK: tl.constexpr,
+    NATIVE_PRED: tl.constexpr,
 ):
     pid = tl.program_id(0)
     num_pids = tl.num_programs(0)
@@ -55,7 +64,16 @@ def threshold__flat_kernel(
         off = block_id * BLOCK + arange
         m = off < N_total
         x = tl.load(x_ptr + off, mask=m)
-        y = tl.where(x > threshold, x, value).to(out_ptr.dtype.element_ty)
+        if NATIVE_PRED:
+            # fp16 + exactly representable threshold: native-width compare
+            # agrees with the fp32-upcast compare on every value (no rounding
+            # band), and NaN still falls through to x.
+            y = tl.where(x <= threshold.to(x.dtype), value.to(x.dtype), x)
+        else:
+            # aten semantics `x <= t ? value : x` with the fp32-upcast compare;
+            # the select itself runs in the element dtype (bit-identical).
+            cond = x.to(tl.float32) <= threshold
+            y = tl.where(cond, value.to(x.dtype), x)
         tl.store(out_ptr + off, y, mask=m)
 
 
@@ -70,11 +88,25 @@ def threshold_func(x, threshold, value):
     return tl.where(x_fp32 <= threshold_fp32, value_fp32, x_fp32).to(x.dtype)
 
 
+@lru_cache(maxsize=1024)
+def _f16_predicate_exact(t):
+    # True iff fp16(fp32(t)) == fp32(t) as reals: then the fp16-native compare
+    # is bit-identical to the fp32-upcast compare (no threshold rounding band).
+    try:
+        t32 = struct.unpack("f", struct.pack("f", t))[0]
+    except OverflowError:
+        return False
+    if t32 != t32:  # NaN threshold: keep the fp32-upcast compare
+        return False
+    return float(np.float16(t32)) == t32
+
+
 def _choose_block(N_total):
     # do_bench(median) sweep on GCU400 (threshold.py, same hardware): mid
     # shapes peak at BLOCK 32768, the 16M-1G band gains ~1.5-3% from 65536;
-    # tiny shapes use one exact next_pow2 tile.  131072 was rejected: no
-    # gain and it exceeds the 917504B DSM budget.
+    # tiny shapes use one exact next_pow2 tile.  131072 was rejected for this
+    # kernel (16M +2.8% / 2^26 +1.3% / 1G within noise, 2026-11-16 rescan)
+    # and exceeds the 917504B DSM budget for fp32.
     if N_total <= _SINGLE_CTA_N:
         return triton.next_power_of_2(N_total)
     if N_total <= _MID_N:
@@ -87,6 +119,7 @@ def _launch_flat(x, out, threshold, value):
     BLOCK = _choose_block(N_total)
     grid_size = min(triton.cdiv(N_total, BLOCK), NUM_SIPS * 2)
     num_warps = 4 if x.dtype == torch.float32 else 2
+    native_pred = x.dtype == torch.float16 and _f16_predicate_exact(threshold)
     # The external llvm converter intermittently fails on cold compiles
     # (nondeterministic, host-level userland flake windows on shared nodes);
     # retrying the launch recompiles and succeeds (rad2deg / sinh / atan2_
@@ -101,6 +134,7 @@ def _launch_flat(x, out, threshold, value):
                     threshold,
                     value,
                     BLOCK=BLOCK,
+                    NATIVE_PRED=native_pred,
                     num_warps=num_warps,
                 )
             return

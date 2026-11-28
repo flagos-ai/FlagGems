@@ -42,8 +42,7 @@ FP8_DTYPES = (
 )
 
 _SKIP_FP64 = pytest.mark.skipif(
-    not fp64_is_supported,
-    reason="enflame/GCU does not support FP64/FP4/COMPLEX128",
+    not fp64_is_supported, reason="FP64 is not supported on this backend"
 )
 
 

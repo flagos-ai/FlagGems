@@ -133,7 +133,7 @@ def _batch_norm_no_update(
     momentum=0.1,
     eps=1e-05,
 ):
-    logger.debug("GEMS_ENFLAME_GCU400 _BATCH_NORM_NO_UPDATE")
+    logger.debug("GEMS_ENFLAME _BATCH_NORM_NO_UPDATE")
 
     input_3d = make_3d_for_bn(input)
 

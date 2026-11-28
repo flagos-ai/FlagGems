@@ -228,6 +228,16 @@ def test_logcumsumexp_backward_wide_range(dtype, monkeypatch):
     from torch so the test measures the backward, not the forward kernel's own
     range limits (tracked separately in artifacts/forward_range_limitation.md).
     """
+    if flag_gems.vendor_name == "enflame":
+        # This case injects the native forward result on purpose, and the GCU
+        # native ``logcumsumexp`` itself overflows for this input: measured on
+        # (8, 4096) with a ~2000 spread it returns both +inf and -inf, so every
+        # exp(x - y) below becomes 0 or nan regardless of the backward kernel.
+        # Forward-side platform limitation, not a backward defect.
+        pytest.skip(
+            "enflame GCU: native logcumsumexp returns +-inf for a ~2000 spread, "
+            "so the injected forward result cannot exercise the backward"
+        )
     torch.manual_seed(7)
     shape = (8, 4096)
     dim = -1

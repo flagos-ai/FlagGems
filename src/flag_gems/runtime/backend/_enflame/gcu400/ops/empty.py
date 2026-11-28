@@ -16,42 +16,23 @@
 import logging
 
 import torch
-import triton
-import triton.language as tl
-
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import triton_lang_extension as tle
-from flag_gems.utils.shape_utils import volume
 
 logger = logging.getLogger(__name__)
 
-# GCU400 caps grid.x at 65535. The generic one-block-per-program launch needs
-# cdiv(N, 1024) programs, which overflows the limit for large tensors (e.g.
-# 16x128x64x1280 requires 163840 blocks and fails with OutOfResources). Grow
-# BLOCK instead of the grid, mirroring _foreach_zero in this backend.
-_MAX_GRID_X = 65535
-_BASE_BLOCK = 8192
 
+def _contiguous_strides(shape):
+    """Compute contiguous strides with ATen's computeStride parity.
 
-@triton.jit
-def empty_kernel(
-    output_ptr,
-    n_elements,
-    BLOCK_SIZE: tl.constexpr,
-):
-    """Empty kernel that does nothing - just allocates uninitialized memory."""
-    pid = tle.program_id(axis=0)
-    block_start = pid * BLOCK_SIZE
-    offsets = block_start + tl.arange(0, BLOCK_SIZE)
-    mask = offsets < n_elements
-    # Empty means uninitialized, so we don't write anything
-    # But we need at least one store to make the kernel valid
-    # Store a dummy value that the user will ignore anyway
-    tl.store(
-        output_ptr + offsets,
-        tl.zeros((BLOCK_SIZE,), dtype=output_ptr.dtype.element_ty),
-        mask=mask,
-    )
+    A size-0 dimension takes the running product without contributing to it,
+    so empty(2, 0, 3) yields strides (3, 3, 1), matching aten on CPU and gcu.
+    """
+    strides = [0] * len(shape)
+    stride = 1
+    for dim in range(len(shape) - 1, -1, -1):
+        strides[dim] = stride
+        if shape[dim] != 0:
+            stride *= shape[dim]
+    return tuple(strides)
 
 
 def empty(
@@ -64,7 +45,7 @@ def empty(
     memory_format=None,
 ):
     """Returns a tensor filled with uninitialized data."""
-    logger.debug("GEMS_ENFLAME_GCU400 EMPTY")
+    logger.debug("GEMS_ENFLAME EMPTY")
     if dtype is None:
         dtype = torch.get_default_dtype()
     if device is None:
@@ -75,39 +56,29 @@ def empty(
         layout = torch.strided
     if pin_memory is None:
         pin_memory = False
-    if memory_format is None:
-        memory_format = torch.contiguous_format
 
-    # Allocate via empty_strided instead of torch.empty to avoid self-recursion
-    # through aten::empty.memory_format. Meta is used only to get strides for
-    # the requested memory_format (compatible with PyTorch < 2.8 without
-    # torch.library.get_kernel).
     shape = tuple(size)
-    meta = torch.empty(shape, dtype=dtype, device="meta", memory_format=memory_format)
-    out = torch.empty_strided(
+    if memory_format is None or memory_format is torch.contiguous_format:
+        # empty() has no device-side work: the storage is uninitialized, so no
+        # kernel is launched at all. The contiguous strides are computed here to
+        # skip the meta-device dispatcher round trip on the default path.
+        strides = _contiguous_strides(shape)
+    else:
+        # Non-contiguous memory formats keep the meta-device stride lookup. It
+        # also reproduces aten's factory rejections verbatim (e.g.
+        # preserve_format is invalid for empty, channels_last needs rank 4).
+        strides = torch.empty(
+            shape, dtype=dtype, device="meta", memory_format=memory_format
+        ).stride()
+    # Allocate via empty_strided instead of torch.empty to avoid self-recursion
+    # through aten::empty.memory_format, which flag_gems overrides on some
+    # backends. This stays a pure host-side allocation: no kernel, no fallback
+    # into aten compute ops.
+    return torch.empty_strided(
         shape,
-        meta.stride(),
+        strides,
         dtype=dtype,
         layout=layout,
         device=device,
         pin_memory=pin_memory,
     )
-    # Skip triton kernel for complex dtypes — triton cannot canonicalize complex
-    # pointer types on some backends, and empty() returns uninitialized memory
-    # anyway so skipping the store is functionally safe for all backends.
-    if dtype.is_complex:
-        return out
-    N = volume(shape)
-    # Skip kernel launch for zero-element tensors to avoid invalid grid size on
-    # backends that validate coreDim > 0 (e.g., Ascend NPU). With N=0 the kernel's
-    # store is fully masked out anyway, so skipping is semantically identical.
-    if N == 0:
-        return out
-    # Keep the flat 1-D grid within the GCU400 grid.x hardware limit by
-    # growing BLOCK for large N instead of launching more programs.
-    block_size = _BASE_BLOCK
-    while triton.cdiv(N, block_size) > _MAX_GRID_X:
-        block_size *= 2
-    with torch_device_fn.device(device):
-        empty_kernel[(triton.cdiv(N, block_size),)](out, N, BLOCK_SIZE=block_size)
-    return out

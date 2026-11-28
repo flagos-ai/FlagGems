@@ -156,7 +156,7 @@ def linalg_tensorsolve(self, other, dims=None):
     # ``aten::linalg_tensorsolve(Tensor self, Tensor other, int[]? dims=None)``
     # defaults ``dims``, so it defaults here too; otherwise the public
     # ``torch.linalg.tensorsolve(A, B)`` call cannot bind.
-    logger.debug("GEMS_ENFLAME_GCU400 LINALG_TENSORSOLVE")
+    logger.debug("GEMS_ENFLAME LINALG_TENSORSOLVE")
     A = self
     B = other
     a = A.dim()
@@ -287,86 +287,3 @@ def linalg_tensorsolve(self, other, dims=None):
 
 
 __all__ = ["linalg_tensorsolve"]
-
-
-# ---------------------------------------------------------------------------
-# torch.ops.aten.linalg_tensorsolve reference-arm guard (torch_gcu P21)
-#
-# The native gcu path leaves the 0-dim ``info`` output of
-# ``aten::_linalg_solve_ex`` unwritten for a zero-batch system, so the
-# solve composite reads an uninitialized value (observed -1140593920
-# where 0 is required) and ``_linalg_check_errors`` turns it into
-# "torch.linalg.solve: The solver failed because the input matrix is
-# singular" -- a plain 0x0 solve succeeds on CPU.  The accuracy harness's
-# reference arm therefore raises on the very empty-system case this op
-# handles natively.  Route only the broken domain (all-gcu tensors with
-# at least one zero-sized input) through CPU aten for an independent
-# ground truth and move the result back to the original device.  Every
-# other call shape passes straight through to the real packet, and
-# attribute lookups (``.default`` and friends) forward through a guarded
-# overload so OpOverload-style access keeps working.  When FlagGems' own
-# ATen registration is active the dispatcher already answers gcu calls
-# with the Triton implementation (empty systems included), so the guard
-# stands down entirely.  Drop once torch_gcu writes ``info`` for
-# zero-batch systems.
-# ---------------------------------------------------------------------------
-
-
-def _reference_leg_needs_cpu_roundtrip(args):
-    """Return the gcu device to land on when the reference arm must be
-    computed on CPU, else ``None`` to pass the call through untouched."""
-    tensors = [a for a in args if isinstance(a, torch.Tensor)]
-    if not tensors or any(t.device.type != "gcu" for t in tensors):
-        return None
-    if not any(t.numel() == 0 for t in tensors):
-        return None
-    if torch._C._dispatch_has_kernel_for_dispatch_key(
-        "aten::linalg_tensorsolve", "PrivateUse1"
-    ):
-        return None
-    return tensors[0].device
-
-
-class _GuardedOverload:
-    def __init__(self, overload):
-        self._overload = overload
-
-    def __call__(self, *args, **kwargs):
-        target = _reference_leg_needs_cpu_roundtrip(args)
-        if target is not None:
-            host_args = [a.cpu() if isinstance(a, torch.Tensor) else a for a in args]
-            return self._overload(*host_args, **kwargs).to(target)
-        return self._overload(*args, **kwargs)
-
-    def __getattr__(self, name):
-        return getattr(self._overload, name)
-
-
-class _AtenLinalgTensorsolveProxy:
-    def __init__(self, packet):
-        self._packet = packet
-
-    def __call__(self, *args, **kwargs):
-        target = _reference_leg_needs_cpu_roundtrip(args)
-        if target is not None:
-            host_args = [a.cpu() if isinstance(a, torch.Tensor) else a for a in args]
-            return self._packet.default(*host_args, **kwargs).to(target)
-        return self._packet(*args, **kwargs)
-
-    def __getattr__(self, name):
-        attr = getattr(self._packet, name)
-        if isinstance(attr, torch._ops.OpOverload):
-            return _GuardedOverload(attr)
-        return attr
-
-
-def _install_aten_linalg_tensorsolve_proxy():
-    current = getattr(torch.ops.aten, "linalg_tensorsolve", None)
-    if current is None or getattr(current, "_flaggems_gcu_tensorsolve_proxy", False):
-        return
-    proxy = _AtenLinalgTensorsolveProxy(current)
-    proxy._flaggems_gcu_tensorsolve_proxy = True
-    torch.ops.aten.linalg_tensorsolve = proxy
-
-
-_install_aten_linalg_tensorsolve_proxy()

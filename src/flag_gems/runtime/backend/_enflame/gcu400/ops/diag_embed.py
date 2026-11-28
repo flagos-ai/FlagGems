@@ -5,12 +5,27 @@
 # You may obtain a copy of the License at
 #
 #     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
+"""GCU400-specific ``diag_embed``: a Triton path tiered by output form.
+
+The shared implementation first zeroes the whole output with ``torch.zeros``, then writes the
+diagonal through a ``torch.diagonal`` non-contiguous view with a generated ``pointwise_dynamic``
+kernel; on GCU the latter is slowed down by multi-dim index decomposition, and small shapes
+additionally pay one more launch.
+
+* Diagonal axis is the last two output dims (after normalization dim1=rank-2, dim2=rank-1, any
+  offset): a single-launch persistent two-stage kernel fills the output in one pass -- each
+  program claims a contiguous chunk run, first vector-zero-fills the whole output range through
+  an int view, then after ``tl.debug_barrier`` scatter-writes the diagonal elements falling in
+  this run using flat diagonal indices. Locating a diagonal element needs one i32 division plus
+  one i64 affine address per element, with no per-element where/select machinery tax (diagflat
+  family calibration: a 2-D tile per-element compare/select is 1.6-1.9x slower than a flat
+  fill). Outputs <= ``FUSED_MAX_ELEMENTS`` take this path; larger outputs make the fill and
+  scatter serial segments too long, so they fall back to ``torch.zeros`` + a scattered-write second launch.
+* Other dim combinations: small outputs use a single coordinate-decomposition kernel writing the
+  whole output; large outputs keep the efficient block zeroing of ``torch.zeros`` and then
+  scatter the diagonal by flat input index, avoiding per-element decomposition of the whole
+  output (integer division costs far more than it gains on large outputs).
+"""
 
 """GCU400-specific ``diag_embed``: two Triton paths tiered by output size.
 
@@ -27,17 +42,17 @@ slowed by multi-dimensional index decomposition on GCU, and small shapes pay an 
   output (integer division costs far more than it saves on large outputs).
 """
 
-import logging
-from contextlib import nullcontext
+import logging  # noqa: E402
+from contextlib import nullcontext  # noqa: E402
 
-import torch
-import triton
-import triton.language as tl
+import torch  # noqa: E402
+import triton  # noqa: E402
+import triton.language as tl  # noqa: E402
 
-from flag_gems.runtime import torch_device_fn
-from flag_gems.utils import libentry
+from flag_gems.runtime import torch_device_fn  # noqa: E402
+from flag_gems.utils import libentry  # noqa: E402
 
-from ..utils.pointwise_dynamic import pointwise_dynamic
+from ..utils.pointwise_dynamic import pointwise_dynamic  # noqa: E402
 
 logger = logging.getLogger(__name__)
 
@@ -49,20 +64,28 @@ NUM_WARPS = 4
 NUM_STAGES = 1
 USE_DEVICE_CONTEXT = 1
 FALLBACK_TO_ORIGINAL = 0
-# Above this output element count, use the zeros + diagonal scatter path:
-# a single kernel's per-element coordinate decomposition is dragged down by integer division on large outputs.
+# When the number of output elements exceeds this threshold, take the zeros + diagonal scatter path:
+# Per-element coordinate decomposition in a single kernel gets bogged down by integer division on large outputs.
 SMALL_OUTPUT_LIMIT = 2097152
 # Whether the large-output path uses a hand-written scatter kernel instead of pointwise_dynamic codegen.
 LARGE_USE_SCATTER = 1
 SCATTER_BLOCK_SIZE = 8192
 SCATTER_NUM_WARPS = 4
-# The scatter kernel uses int64 addresses and can cover outputs beyond 2^30 elements; the cap is
-# kept as protection for extreme sizes and is not triggered by normal cases.
+# The scatter kernel uses int64 addresses and can cover outputs with more than 2^30 elements; keep the upper limit
+# as a safeguard for extreme scales; normal cases will not hit it.
 SCATTER_INDEX_LIMIT = 1 << 40
+# Persistent fused path (last two dimensions are the diagonal axes): number of zero-filled tile bytes per program
+# and the program count (diagflat tuning: 24 persistent programs beat 48 and non-multiples of 24).
+FUSED_TILE_BYTES = 131072
+FUSED_PROGS = 24
+FUSED_SPAN_CAP = 4096
+# Output element cap for the fused path: for larger outputs the fill+scatter serial section gets longer,
+# so the two-launch zeros+scatter is faster instead (measured and tuned at (1024,1024)).
+FUSED_MAX_ELEMENTS = 64 * 1024 * 1024
 # --- TUNING PARAMS END ---
 
-# The kernel decomposes coordinates with a fixed 4-D expansion; when actual rank < 4 the extra dimensions are filled
-# with size=1.
+# The kernel unrolls coordinate decomposition for a fixed 4 dimensions; when the actual rank is less than 4, extra
+# dimensions are filled with size=1.
 _MAX_RANK = 4
 
 
@@ -187,8 +210,143 @@ def _diag_embed_scatter_kernel(
         tl.store(y_ptr + output_index, value, mask=valid)
 
 
+@libentry()
+@triton.jit(
+    do_not_specialize=["count", "m", "m2", "n", "base_term", "ndiag", "chunks", "cpb"]
+)
+def _diag_embed_fused_kernel(
+    fill_ptr,
+    out_ptr,
+    src_ptr,
+    count,
+    m,
+    m2,
+    n,
+    base_term,
+    ndiag,
+    chunks,
+    cpb,
+    RATIO: tl.constexpr,
+    BLOCK: tl.constexpr,
+    SPAN: tl.constexpr,
+):
+    """Persistent two-stage: vectorized zero fill of a whole run, then one barrier before this run's diagonal.
+
+    The output is zero-filled through an int view of ``RATIO`` elements at a time (fill_ptr), and
+    the diagonal is scattered in the native dtype (out_ptr). Program ``pid`` claims the contiguous
+    chunk run ``[pid * cpb, min(pid * cpb + cpb, chunks))``; runs do not overlap in address space,
+    so zeroes and diagonal values race only within this program: ``tl.debug_barrier`` guarantees
+    this run's zeroes land before its diagonal values.
+
+    The output address of diagonal element ``i`` (flat x index, ``i = outer * n + rr``) is
+    ``outer * m2 + rr * (m + 1) + base_term``, where
+    ``base_term = max(-offset, 0) * (m + 1) + offset`` folds both signs of offset into a constant
+    term. The address is non-decreasing in ``i``, so one scalar division at the run ends gives the
+    ``[first, last)`` index window, stepped by SPAN inside; crossings of the window boundary
+    (across outer segments) are filtered by an ``addr < hi`` mask, and diagonal elements written
+    twice by two adjacent overlapping runs always hold the same value, so the duplicate write is harmless.
+    """
+    pid = tl.program_id(0)
+    start = pid * cpb
+    end = tl.minimum(start + cpb, chunks)
+    zero = tl.zeros([BLOCK], dtype=fill_ptr.dtype.element_ty)
+    for chunk in range(start, end):
+        base = chunk * BLOCK
+        offsets = base + tl.arange(0, BLOCK)
+        if base + BLOCK <= count:
+            tl.store(fill_ptr + offsets, zero)
+        else:
+            tl.store(fill_ptr + offsets, zero, mask=offsets < count)
+    tl.debug_barrier()
+    if ndiag > 0:
+        lo = start.to(tl.int64) * BLOCK * RATIO
+        hi = end.to(tl.int64) * BLOCK * RATIO
+        first = ((lo // m2) * n).to(tl.int32)
+        last = tl.minimum(ndiag, ((hi + m2 - 1) // m2) * n).to(tl.int32)
+        if last > first:
+            for head in range(first, last, SPAN):
+                idx = head + tl.arange(0, SPAN)
+                outer = idx // n
+                diag = idx - outer * n
+                addr = outer.to(tl.int64) * m2 + diag.to(tl.int64) * (m + 1) + base_term
+                valid = (idx < last) & (addr < hi)
+                value = tl.load(
+                    src_ptr + idx,
+                    mask=valid,
+                    other=tl.zeros([SPAN], dtype=src_ptr.dtype.element_ty),
+                )
+                tl.store(out_ptr + addr, value, mask=valid)
+
+
+_FILL_VIEWS = {
+    1: torch.uint8,
+    2: torch.int16,
+    4: torch.int32,
+    8: torch.int64,
+}
+
+
+def _fused_fill_ratio(itemsize, last_dim):
+    """Widening factor for the zero-fill view: bool is written 4 bytes at a time, others stay native.
+
+    torch.zeros bool fill bandwidth is about half of a wide-lane fill (1GiB measured 438us vs
+    348us); in Triton packing 4 bools into one int32 lane saturates write bandwidth, while
+    2/4-byte dtypes already saturate the floor at native lane width and need no widening. The
+    view requires the last dim to be divisible by the factor, degrading one step when it is not.
+    """
+    if itemsize != 1:
+        return 1
+    for ratio in (4, 2, 1):
+        if last_dim % ratio == 0:
+            return ratio
+    return 1
+
+
+def _diag_embed_fused(x, y_shape, m, n, offset):
+    """Diagonal axis is the last two output dims in the contiguous case: one persistent launch fills the output."""
+    if not x.is_contiguous():
+        x = x.contiguous()
+    y = torch.empty(y_shape, dtype=x.dtype, device=x.device)
+    y_count = y.numel()
+    ratio = _fused_fill_ratio(y.element_size(), m)
+    view_dtype = _FILL_VIEWS[y.element_size() * ratio]
+    view_count = y_count // ratio
+    block = min(
+        max(16, FUSED_TILE_BYTES // (y.element_size() * ratio)),
+        triton.next_power_of_2(max(16, view_count // FUSED_PROGS)),
+    )
+    chunks = triton.cdiv(view_count, block)
+    nprog = min(FUSED_PROGS, chunks)
+    cpb = triton.cdiv(chunks, nprog)
+    diag_in_run = (cpb * block * ratio) // (m + 1) + 2
+    span = min(FUSED_SPAN_CAP, max(16, triton.next_power_of_2(diag_in_run)))
+    base_term = max(-offset, 0) * (m + 1) + offset
+    device_context = (
+        torch_device_fn.device(x.device) if USE_DEVICE_CONTEXT else nullcontext()
+    )
+    with device_context:
+        _diag_embed_fused_kernel[(nprog,)](
+            y.view(view_dtype),
+            y,
+            x,
+            view_count,
+            m,
+            m * m,
+            n,
+            base_term,
+            x.numel(),
+            chunks,
+            cpb,
+            RATIO=ratio,
+            BLOCK=block,
+            SPAN=span,
+            num_warps=NUM_WARPS,
+        )
+    return y
+
+
 def _diag_embed_original(x, offset, dim1, dim2, y_shape):
-    """Original zeros + diagonal-view path, used when the flat-index limit is exceeded or for forced comparison."""
+    """The original zeros + diagonal-view path, for outputs beyond the flat index limit or forced comparison."""
     y = torch.zeros(y_shape, dtype=x.dtype, device=x.device)
     diagonal_view = torch.diagonal(y, offset, dim1, dim2)
     _diagonal_copy_func.instantiate(x.ndim)(x, out0=diagonal_view)
@@ -248,6 +406,19 @@ def _diag_embed_large(x, offset, dim1, dim2, y_shape, diagonal_length, y_strides
 def diag_embed(x, offset=0, dim1=-2, dim2=-1):
     logger.debug("GEMS_GCU400 DIAG_EMBED")
 
+    # Route differentiable inputs through this backend's autograd bridge, so the gradient comes
+    # from the GCU400 gather kernel instead of the shared one. Inside ``forward`` grad mode is off,
+    # so the nested call below takes the plain path.
+    if (
+        torch.is_grad_enabled()
+        and isinstance(x, torch.Tensor)
+        and x.requires_grad
+        and x.is_floating_point()
+    ):
+        from .diag_embed_backward import DiagEmbedFunction
+
+        return DiagEmbedFunction.apply(x, offset, dim1, dim2)
+
     rank = x.ndim + 1
     assert dim1 >= -rank and dim1 < rank, f"Invalid dim1: {dim1}"
     assert dim2 >= -rank and dim2 < rank, f"Invalid dim2: {dim2}"
@@ -271,13 +442,23 @@ def diag_embed(x, offset=0, dim1=-2, dim2=-1):
     for dimension in y_shape:
         total_elements *= dimension
 
-    # y is stored in contiguous layout; per-dimension strides come from suffix products of shape.
+    if FALLBACK_TO_ORIGINAL or rank > _MAX_RANK:
+        return _diag_embed_original(x, offset, dim1, dim2, y_shape)
+    # When the diagonal axes are exactly the last two output dimensions (any offset), use a single-launch persistent
+    # kernel
+    # to fill the output in one go: zero-fill + scatter of this run's diagonal elements, with no per-element
+    # where/select
+    # fixed overhead, and no second launch for zeros.
+    if dim1 == rank - 2 and dim2 == rank - 1 and total_elements <= FUSED_MAX_ELEMENTS:
+        if x.numel() == 0:
+            return torch.zeros(y_shape, dtype=x.dtype, device=x.device)
+        return _diag_embed_fused(x, y_shape, last_dim, diagonal_length, offset)
+
+    # y is stored in a contiguous layout, and each dimension's stride is derived from the suffix product of the shape.
     y_strides = [1] * rank
     for axis in range(rank - 2, -1, -1):
         y_strides[axis] = y_strides[axis + 1] * y_shape[axis + 1]
 
-    if FALLBACK_TO_ORIGINAL or rank > _MAX_RANK:
-        return _diag_embed_original(x, offset, dim1, dim2, y_shape)
     if total_elements > SMALL_OUTPUT_LIMIT:
         if total_elements > SCATTER_INDEX_LIMIT:
             return _diag_embed_original(x, offset, dim1, dim2, y_shape)

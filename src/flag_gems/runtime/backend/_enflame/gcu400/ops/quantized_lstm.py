@@ -594,7 +594,7 @@ def quantized_lstm(
             when batch_first is set.
         hy, cy: Final states, each matching the layout of the h0 and c0 inputs.
     """
-    logger.debug("GEMS_ENFLAME_GCU400 QUANTIZED_LSTM")
+    logger.debug("GEMS_ENFLAME QUANTIZED_LSTM")
 
     cache = _PARAM_CACHE
 
