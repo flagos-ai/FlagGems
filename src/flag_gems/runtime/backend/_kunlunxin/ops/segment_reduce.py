@@ -387,18 +387,22 @@ def _segment_reduce_uniform_inner1_forward_kernel(
             compute_dtype
         )
         nan_mask = (values != values) & mask
-        has_nan = tl.sum(nan_mask.to(tl.int32), axis=1) > 0
+        # Keep at most 2 same-axis reductions per kernel: >=3 coexisting
+        # reductions can share scratch and corrupt each other on this
+        # toolchain. Derive has_nan from nan_value's NaN-ness (sum over nan
+        # lanes is NaN iff a NaN exists, else 0) instead of a separate sum.
         nan_value = tl.sum(tl.where(nan_mask, values, 0.0), axis=1)
         result = tl.max(tl.where(mask & ~nan_mask, values, float("-inf")), axis=1)
+        has_nan = nan_value != nan_value
         result = tl.where(has_nan, nan_value, result)
     elif IS_MIN:
         values = tl.load(data + data_offsets, mask=mask, other=float("inf")).to(
             compute_dtype
         )
         nan_mask = (values != values) & mask
-        has_nan = tl.sum(nan_mask.to(tl.int32), axis=1) > 0
         nan_value = tl.sum(tl.where(nan_mask, values, 0.0), axis=1)
         result = tl.min(tl.where(mask & ~nan_mask, values, float("inf")), axis=1)
+        has_nan = nan_value != nan_value
         result = tl.where(has_nan, nan_value, result)
 
     output_offsets = pid * BLOCK_M + tl.arange(0, BLOCK_M)
@@ -719,11 +723,14 @@ def _segment_reduce_forward_kernel(
                     data + data_offsets, mask=mask, other=float("-inf")
                 ).to(compute_dtype)
                 nan_mask = (values != values) & mask
-                has_nan = tl.sum(nan_mask.to(tl.int32), axis=0) > 0
+                # Keep at most 2 same-axis reductions per kernel (>=3 can
+                # share scratch and corrupt each other on this toolchain);
+                # derive has_nan from nan_value NaN-ness to stay at 2.
                 nan_value = tl.sum(tl.where(nan_mask, values, 0.0), axis=0)
                 chunk = tl.max(
                     tl.where(mask & ~nan_mask, values, float("-inf")), axis=0
                 )
+                has_nan = nan_value != nan_value
                 chunk = tl.where(has_nan, nan_value, chunk)
                 acc = tl.where(has_nan, chunk, tl.maximum(acc, chunk))
             elif IS_MIN:
@@ -731,9 +738,9 @@ def _segment_reduce_forward_kernel(
                     compute_dtype
                 )
                 nan_mask = (values != values) & mask
-                has_nan = tl.sum(nan_mask.to(tl.int32), axis=0) > 0
                 nan_value = tl.sum(tl.where(nan_mask, values, 0.0), axis=0)
                 chunk = tl.min(tl.where(mask & ~nan_mask, values, float("inf")), axis=0)
+                has_nan = nan_value != nan_value
                 chunk = tl.where(has_nan, nan_value, chunk)
                 acc = tl.where(has_nan, chunk, tl.minimum(acc, chunk))
 

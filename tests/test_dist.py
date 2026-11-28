@@ -38,13 +38,18 @@ def composed_dist(x, y, p=2.0):
 _ASCEND_SUPPORTED_P = (0.0, 1.0, 2.0)
 
 
+# kunlunxin eager's native dist is inaccurate for p in {0, +inf, -inf}
+# (returns inf for p=0 and a constant 1.0 for +/-inf instead of the count /
+# max|diff| / min|diff|), so fall back to the composed reference there.
+_KUNLUNXIN_UNSUPPORTED_P = (0.0, float("inf"), float("-inf"))
+
+
 def _ref_dist(x, y, p=2.0):
-    if (
-        flag_gems.vendor_name == "ascend"
-        and not cfg.TO_CPU
-        and p not in _ASCEND_SUPPORTED_P
-    ):
-        return composed_dist(x, y, p=p)
+    if not cfg.TO_CPU:
+        if flag_gems.vendor_name == "ascend" and p not in _ASCEND_SUPPORTED_P:
+            return composed_dist(x, y, p=p)
+        if flag_gems.vendor_name == "kunlunxin" and p in _KUNLUNXIN_UNSUPPORTED_P:
+            return composed_dist(x, y, p=p)
     return torch.dist(x, y, p)
 
 

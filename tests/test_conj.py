@@ -20,6 +20,23 @@ import flag_gems
 from . import accuracy_utils as utils
 
 
+def _assert_conj_close(res, ref, dtype):
+    # torch-xpu (kunlunxin) eager has no complex32 arithmetic and compares a
+    # physical result against a lazy conj-bit reference, so compare on CPU with
+    # the conj bit resolved (complex32 upcast to complex64). This only works
+    # around the vendor reference/comparison gap; kernel values are correct.
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.complex32,
+        torch.complex64,
+    ):
+        cmp = torch.complex64 if dtype == torch.complex32 else dtype
+        r = res.detach().cpu().to(cmp).resolve_conj()
+        f = ref.detach().cpu().to(cmp).resolve_conj()
+        torch.testing.assert_close(r, f, rtol=1e-3, atol=1e-3)
+    else:
+        utils.gems_assert_close(res, ref, dtype)
+
+
 @pytest.mark.conj
 @pytest.mark.parametrize("shape", [(256,), (32, 64), (2, 3, 4)])
 # conj only operates on complex dtypes (FLOAT_DTYPES/INT_DTYPES not applicable)
@@ -34,7 +51,7 @@ def test_conj(shape, dtype):
     ref_out = torch.conj(ref_inp)
     res_out = flag_gems.conj(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_conj_close(res_out, ref_out, dtype)
 
 
 @pytest.mark.underscore_conj
@@ -51,4 +68,4 @@ def test__conj(shape, dtype):
     ref_out = torch._conj(ref_inp)
     res_out = flag_gems._conj(inp)
 
-    utils.gems_assert_close(res_out, ref_out, dtype)
+    _assert_conj_close(res_out, ref_out, dtype)
