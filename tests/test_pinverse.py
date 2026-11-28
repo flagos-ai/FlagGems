@@ -113,6 +113,11 @@ def test_pinverse_rcond_and_rank_deficiency(rcond):
         with pytest.raises(NotImplementedError, match="negative rcond"):
             flag_gems.pinverse(inp, rcond=rcond)
         return
+    if flag_gems.vendor_name == "kunlunxin" and rcond != rcond:
+        pytest.skip(
+            "kunlunxin's native torch.pinverse disagrees with CPU for a "
+            "NaN rcond against a rank-deficient input"
+        )
     reference = torch.pinverse(utils.to_reference(inp), rcond=rcond)
 
     result = flag_gems.pinverse(inp, rcond=rcond)
@@ -138,6 +143,10 @@ def test_pinverse_nonfinite(value, rcond):
     ref_inp = utils.to_reference(inp)
     if ref_inp.device.type == "cpu" and (torch.isnan(ref_inp).any() or rcond < 0):
         pytest.skip("CPU and CUDA SVD differ for this non-finite input")
+    if flag_gems.vendor_name == "kunlunxin" and torch.isnan(ref_inp).any():
+        pytest.skip(
+            "kunlunxin's native torch.pinverse disagrees with CPU for a " "NaN input"
+        )
     reference = torch.pinverse(ref_inp, rcond=rcond)
 
     result = flag_gems.pinverse(inp, rcond=rcond)
@@ -157,6 +166,11 @@ def test_pinverse_nonfinite(value, rcond):
 def test_pinverse_invalid_input(shape, dtype):
     if not utils.fp64_is_supported and dtype in (torch.float64, torch.complex128):
         pytest.skip("enflame/GCU does not support FP64/FP4/COMPLEX128")
+    if flag_gems.vendor_name == "kunlunxin" and dtype in (
+        torch.float64,
+        torch.complex128,
+    ):
+        pytest.skip("kunlunxin does not support FP64/COMPLEX128")
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
     with pytest.raises(RuntimeError):
         flag_gems.pinverse(inp)

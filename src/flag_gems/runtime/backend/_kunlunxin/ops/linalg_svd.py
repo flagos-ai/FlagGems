@@ -95,7 +95,15 @@ def _osj_svd_impl(A, sweeps=12, full_matrices=False):
     U = torch.gather(U, 2, idxg)[:, :m, :k].contiguous()
 
     UtA = bmm(U.transpose(-2, -1), A)
-    Vh = UtA * (1.0 / S_sorted).unsqueeze(-1)
+    # A zero (or exactly-zero) singular value makes 1.0 / S_sorted == inf;
+    # UtA's corresponding row is also 0 there, so the product is 0 * inf ==
+    # NaN instead of the mathematically correct 0 (Vh is never consumed for
+    # a zero singular value anyway, by every caller's own tolerance check).
+    # Clamping the divisor away from zero keeps 1 / S_sorted finite so the
+    # product with UtA's all-zero row is exactly 0, with no effect on any
+    # singular value that is actually nonzero.
+    inv_s = 1.0 / S_sorted.clamp(min=torch.finfo(S_sorted.dtype).tiny)
+    Vh = UtA * inv_s.unsqueeze(-1)
 
     if full_matrices:
         if m > k:

@@ -795,6 +795,7 @@ from .pairwise_distance import pairwise_distance
 from .pdist_forward import pdist_forward
 from .per_token_group_quant_fp8 import SUPPORTED_FP8_DTYPE, per_token_group_quant_fp8
 from .permute_copy import permute_copy
+from .pinverse import pinverse  # noqa: F401
 from .pixel_unshuffle import pixel_unshuffle, pixel_unshuffle_out
 from .polar import polar
 from .polygamma import polygamma, polygamma_, polygamma_out
@@ -1903,6 +1904,7 @@ __all__ = [
     "pdist_forward",
     "per_token_group_quant_fp8",
     "permute_copy",
+    "pinverse",
     "pixel_unshuffle",
     "pixel_unshuffle_out",
     "polar",
