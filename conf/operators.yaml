@@ -14431,6 +14431,19 @@ ops:
   - Math
   stages:
   - stable: '2.1'
+- id: minimum_backward
+  description: The backward computation of `minimum()`, exercised through
+    the autograd of the forward operator.
+  for:
+  - minimum
+  labels:
+  - aten
+  - pointwise
+  - KernelGen
+  kind:
+  - Math
+  stages:
+  - beta: '5.5.0'
 - id: miopen_batch_norm
   description: Computes batch normalization on the input tensor using the MIOpen convention
     and updates the running statistics.

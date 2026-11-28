@@ -31,3 +31,18 @@ def test_minimum():
         dtypes=consts.FLOAT_DTYPES,
     )
     bench.run()
+
+
+@pytest.mark.minimum_backward
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_minimum_backward():
+    bench = base.BinaryPointwiseBenchmark(
+        op_name="minimum_backward",
+        torch_op=torch.minimum,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems.minimum)
+    bench.run()
