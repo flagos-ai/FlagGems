@@ -325,6 +325,7 @@ from .mvlgamma import mvlgamma
 from .nan_to_num import nan_to_num
 from .nanmedian import nanmedian, nanmedian_dim, nanmedian_dim_values, nanmedian_out
 from .nansum import nansum, nansum_out
+from .neg import neg
 from .nll_loss2d import nll_loss2d
 from .nll_loss_backward import heur_block_n, nll_loss_backward
 from .nll_loss_nd import nll_loss_forward, nll_loss_nd_backward
@@ -719,6 +720,7 @@ __all__ = [
     "nansum",
     "nansum_out",
     "native_layer_norm",
+    "neg",
     "nll_loss2d",
     "nll_loss_backward",
     "nll_loss_forward",
