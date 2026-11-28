@@ -20,6 +20,7 @@ from flag_gems.fused.bincount import bincount
 from flag_gems.fused.concat_and_cache_mla import concat_and_cache_mla
 from flag_gems.fused.cross_entropy_loss import cross_entropy_loss
 from flag_gems.fused.fused_add_rms_norm import fused_add_rms_norm
+from flag_gems.fused.fused_rs_norm_ag import fused_qkv_norm_ag, fused_rs_add_rms_norm_ag
 from flag_gems.fused.fused_deepseek_v4_qnorm_rope_kv_rope_insert import (
     fused_deepseek_v4_qnorm_rope_kv_rope_insert,
 )
@@ -54,6 +55,8 @@ __all__ = [
     "dreglu",
     "dswiglu",
     "fused_add_rms_norm",
+    "fused_rs_add_rms_norm_ag",
+    "fused_qkv_norm_ag",
     "fused_deepseek_v4_qnorm_rope_kv_rope_insert",
     "geglu",
     "gelu_and_mul",
