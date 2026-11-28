@@ -27,6 +27,7 @@ if flag_gems.vendor_name == "cambricon":
         CodeGenConfig,
         ComplexMode,
         FunctionSchema,
+        PointwiseDynamicFunction,
         pointwise_dynamic,
     )
 else:
@@ -34,6 +35,7 @@ else:
         CodeGenConfig,
         ComplexMode,
         FunctionSchema,
+        PointwiseDynamicFunction,
         pointwise_dynamic,
     )
 
@@ -510,6 +512,30 @@ def test_dynamic_function_with_nd_buffer(use_1d_tile, use_block_pointer):
     assert out0 is o
     torch.testing.assert_close(out0, alpha * x + y)
     torch.testing.assert_close(out1, alpha * x - y)
+
+
+def test_use_fast_path_requires_contiguous_when_allocating_outputs():
+    """A permuted, dense input may only take the physical-order fast path when
+    the operands share that layout.  Allocated outputs are C-contiguous on
+    backends whose empty_like ignores strides (torch_npu), so collapsing a
+    permuted input next to them computes over the wrong element order."""
+    x = torch.randn([60, 40], device=flag_gems.device).t()
+    assert not x.is_contiguous()
+    assert torch.ops.aten.is_non_overlapping_and_dense(x)
+    # outputs provided by the caller keep their layout, so the collapse is safe
+    assert PointwiseDynamicFunction.use_fast_path([x])
+    # an output still has to be allocated -> must not collapse
+    assert not PointwiseDynamicFunction.use_fast_path([x], [0])
+
+
+def test_permuted_dense_input_with_allocated_output():
+    """Pointwise ops on a permuted (dense, non-contiguous) input must match the
+    logical element order even when the output is allocated by the wrapper."""
+    base = torch.randn([60, 40], device=flag_gems.device)
+    x = base.t()
+    out = flag_gems.sin(x)
+    assert out.shape == x.shape
+    torch.testing.assert_close(out, torch.sin(x))
 
 
 @pytest.mark.parametrize("use_1d_tile", [True, False])

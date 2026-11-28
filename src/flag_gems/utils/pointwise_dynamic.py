@@ -1624,14 +1624,22 @@ class PointwiseDynamicFunction:
         return torch.view_as_complex(out.contiguous()).to(result_dtype)
 
     @staticmethod
-    def use_fast_path(tensors):
-        return all_the_same_shape(tensors) and (
-            all_c_contiguous(tensors)
-            or (
-                all_the_same_stride(tensors)
-                and torch.ops.aten.is_non_overlapping_and_dense(tensors[0])
-            )
-        )
+    def use_fast_path(tensors, outputs_that_need_allocation=()):
+        if not all_the_same_shape(tensors):
+            return False
+        if all_c_contiguous(tensors):
+            return True
+        # A non-contiguous but dense set of operands can be walked in physical
+        # order only while every operand shares that order.  Outputs allocated
+        # here take the backend's default layout, and some backends (torch_npu)
+        # ignore the input strides in empty_like; collapsing a permuted input
+        # with a C-contiguous output would compute over the wrong element
+        # order.  Fall back to the rank-N path in that case.
+        if outputs_that_need_allocation:
+            return False
+        return all_the_same_stride(
+            tensors
+        ) and torch.ops.aten.is_non_overlapping_and_dense(tensors[0])
 
     def prepare_args(self, *args, _skip_tensor_check=False, **kwargs):
         # output allocation(when needed)
@@ -1670,7 +1678,9 @@ class PointwiseDynamicFunction:
         INT32_MAX = torch.iinfo(torch.int32).max
         if tensors[0].numel() > INT32_MAX:
             self.config.prefer_block_pointer = False
-        if self.use_fast_path(tensors):  # dimension collapse & use physical ordering
+        if self.use_fast_path(
+            tensors, outputs_that_need_allocation
+        ):  # dimension collapse & use physical ordering
             allocated_outputs = [
                 self._alloc_output(
                     tensors[0].shape,
