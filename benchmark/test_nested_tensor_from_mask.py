@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -50,4 +52,17 @@ def test_nested_tensor_from_mask(dtype):
         torch_op=torch._nested_tensor_from_mask,
         dtypes=[dtype],
     )
+    bench.run()
+
+
+@pytest.mark.nested_tensor_from_mask_backward
+@pytest.mark.parametrize("dtype", consts.FLOAT_DTYPES)
+def test_nested_tensor_from_mask_backward(dtype):
+    bench = NestedTensorFromMaskBenchmark(
+        op_name="nested_tensor_from_mask",
+        torch_op=torch._nested_tensor_from_mask,
+        dtypes=[dtype],
+        is_backward=True,
+    )
+    bench.set_gems(flag_gems._nested_tensor_from_mask)
     bench.run()

@@ -15608,6 +15608,19 @@ ops:
   - Tensor
   stages:
   - alpha: 5.5.0
+- id: nested_tensor_from_mask_backward
+  description: The backward computation of `_nested_tensor_from_mask`, exercised
+    through autograd. Scatters the packed gradient rows of the nested values buffer
+    back to the padded dense (N, L, D) source layout, zero-filling padding rows.
+  for:
+  - _nested_tensor_from_mask
+  labels:
+  - aten
+  - KernelGen
+  kind:
+  - Tensor
+  stages:
+  - beta: '5.5.0'
 - id: nested_tensor_from_mask_left_aligned
   description: 'Checks whether a 3D tensor `t` (N * L * D) combined with a 2D boolean
     padding
