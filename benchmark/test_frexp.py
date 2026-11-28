@@ -17,6 +17,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
 
 
@@ -27,4 +29,17 @@ def test_frexp():
         torch_op=torch.frexp,
         dtypes=consts.FLOAT_DTYPES,
     )
+    bench.run()
+
+
+@pytest.mark.frexp_backward
+def test_frexp_backward():
+    bench = base.UnaryPointwiseBenchmark(
+        op_name="frexp",
+        torch_op=lambda x: torch.frexp(x)[0],
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    # UnaryPointwiseBenchmark expects a tensor output to seed autograd.
+    bench.set_gems(lambda x: flag_gems.frexp(x)[0])
     bench.run()
