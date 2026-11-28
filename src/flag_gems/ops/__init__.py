@@ -700,6 +700,7 @@ from flag_gems.ops.clamp import (
     clamp_tensor_,
 )
 from flag_gems.ops.clamp_max import clamp_max, clamp_max_  # noqa: F401
+from flag_gems.ops.clamp_max_backward import clamp_max_backward
 from flag_gems.ops.clip import clip, clip_
 from flag_gems.ops.clone import clone
 from flag_gems.ops.coalesce import coalesce
@@ -2461,6 +2462,7 @@ __all__ = [
     "clamp_",
     "clamp_max",
     "clamp_max_",
+    "clamp_max_backward",
     "clamp_min",
     "clamp_min_",
     "clamp_tensor",

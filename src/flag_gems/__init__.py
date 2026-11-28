@@ -1276,9 +1276,12 @@ _FULL_CONFIG = (
     ("clamp.Tensor", clamp_tensor),
     ("clamp_", clamp_),
     ("clamp_.Tensor", clamp_tensor_),
-    # Autograd fallthrough: the ClampMaxFunction wrapper owns
-    # the differentiable path. Without it the device-key override drops ATen's
-    # autograd formula and the backward falls back to the native kernel.
+    # Autograd fallthrough: the ClampMaxFunction wrapper owns the
+    # differentiable path. Without it the device-key override drops ATen's
+    # autograd formula and torch.clamp_max() takes the native backward.
+    # There is deliberately no "clamp_max_backward" entry: ATen has no
+    # aten::clamp_max_backward schema, so there is nothing to register -- the
+    # backward kernel is reached only through ClampMaxFunction.
     (
         "clamp_max",
         clamp_max,
