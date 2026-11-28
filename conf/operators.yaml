@@ -15225,7 +15225,7 @@ ops:
   kind:
   - NeuralNetwork
   stages:
-  - beta: '5.4'
+  - beta: '5.5.0'
 - id: native_batch_norm_legit_functional
   description: 'Functional version of batch normalization that returns the saved mean
     and inverse standard deviation, along with updated running estimates.

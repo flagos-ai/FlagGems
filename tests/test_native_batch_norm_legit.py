@@ -398,7 +398,10 @@ def test_native_batch_norm_legit_backward_noncontiguous(dtype):
 
 @pytest.mark.native_batch_norm_legit_backward
 @pytest.mark.parametrize("dtype", FLOAT_DTYPES)
-def test_native_batch_norm_legit_backward_output_mask(dtype):
+@pytest.mark.parametrize(
+    "mask", [[True, True, True], [True, False, False], [False, True, False]]
+)
+def test_native_batch_norm_legit_backward_output_mask(dtype, mask):
     shape = (4, 8, 5, 7)
     channels = shape[1]
     inp = torch.randn(shape, dtype=dtype, device=flag_gems.device)
@@ -409,38 +412,37 @@ def test_native_batch_norm_legit_backward_output_mask(dtype):
     # grad_weight/grad_bias are undivided channel sums, so the tolerance follows
     # the number of reduced elements (same rule as test_batch_norm_backward).
     reduction = math.prod(shape) // channels
-    for mask in ([True, True, True], [True, False, False], [False, True, False]):
-        res = _bn_legit_bwd_run(
-            grad,
-            inp,
-            weight,
-            None,
-            None,
-            save_mean,
-            save_invstd,
-            True,
-            1e-5,
-            mask,
-        )
-        ref = torch.ops.aten.native_batch_norm_backward.default(
-            utils.to_reference(grad, True),
-            utils.to_reference(inp, True),
-            utils.to_reference(weight, True),
-            None,
-            None,
-            utils.to_reference(save_mean, True),
-            utils.to_reference(save_invstd, True),
-            True,
-            1e-5,
-            mask,
-        )
-        for actual, expected in zip(res, ref):
-            assert (actual is None) == (expected is None)
-            if actual is not None:
-                utils.gems_assert_close(
-                    actual,
-                    expected.to(actual.dtype),
-                    dtype,
-                    reduce_dim=reduction,
-                    atol=1e-2,
-                )
+    res = _bn_legit_bwd_run(
+        grad,
+        inp,
+        weight,
+        None,
+        None,
+        save_mean,
+        save_invstd,
+        True,
+        1e-5,
+        mask,
+    )
+    ref = torch.ops.aten.native_batch_norm_backward.default(
+        utils.to_reference(grad, True),
+        utils.to_reference(inp, True),
+        utils.to_reference(weight, True),
+        None,
+        None,
+        utils.to_reference(save_mean, True),
+        utils.to_reference(save_invstd, True),
+        True,
+        1e-5,
+        mask,
+    )
+    for actual, expected in zip(res, ref):
+        assert (actual is None) == (expected is None)
+        if actual is not None:
+            utils.gems_assert_close(
+                actual,
+                expected.to(actual.dtype),
+                dtype,
+                reduce_dim=reduction,
+                atol=1e-2,
+            )
