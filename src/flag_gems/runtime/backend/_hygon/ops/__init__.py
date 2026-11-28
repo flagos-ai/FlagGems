@@ -216,6 +216,7 @@ from .bmm_w8a8_fp8 import bmm_w8a8_fp8
 from .cholesky_inverse import cholesky_inverse
 from .cholesky_solve import cholesky_solve, cholesky_solve_out
 from .clamp import clamp, clamp_, clamp_min, clamp_min_, clamp_tensor, clamp_tensor_
+from .clone import clone
 from .conj_physical import conj_physical
 from .conv2d import conv2d
 from .conv_depthwise2d import conv_depthwise2d
@@ -604,6 +605,7 @@ __all__ = [
     "clamp_min_",
     "clamp_tensor",
     "clamp_tensor_",
+    "clone",
     "conj_physical",
     "conv2d",
     "conv_depthwise2d",
