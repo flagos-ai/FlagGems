@@ -706,6 +706,20 @@ def _labels(dtype: torch.dtype) -> str:
     return str(dtype).replace("torch.", "").capitalize()
 
 
+_SCRATCH: dict = {}
+
+
+def _scratch_for(any_tensor: torch.Tensor, n: int) -> torch.Tensor:
+    """Per-(device, n) scratch big enough for n elements (reused)."""
+    dev = any_tensor.device
+    key = (dev, any_tensor.dtype, n)
+    buf = _SCRATCH.get(key)
+    if buf is None or buf.numel() < n:
+        buf = torch.empty(n, dtype=any_tensor.dtype, device=dev)
+        _SCRATCH[key] = buf
+    return buf
+
+
 def _pick_block(n: int) -> int:
     for block in (8192, 4096, 2048, 1024):
         if n % block == 0:
@@ -813,20 +827,6 @@ def _launch16(
         ):
             return
     _foreach16_kernel[grid](*args, num_warps=8)
-
-
-_SCRATCH: dict = {}
-
-
-def _scratch_for(any_tensor: torch.Tensor, n: int) -> torch.Tensor:
-    """Per-(device, n) scratch big enough for n elements (reused)."""
-    dev = any_tensor.device
-    key = (dev, any_tensor.dtype, n)
-    buf = _SCRATCH.get(key)
-    if buf is None or buf.numel() < n:
-        buf = torch.empty(n, dtype=any_tensor.dtype, device=dev)
-        _SCRATCH[key] = buf
-    return buf
 
 
 def _launch1(
