@@ -109,3 +109,28 @@ def test_repeat_interleave_self_tensor(shape, dim, dtype):
     res_out = flag_gems.repeat_interleave_self_tensor(inp, repeats, dim)
 
     utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.repeat_interleave_tensor
+@pytest.mark.parametrize("shape", utils.UT_SHAPES_1D)
+def test_repeat_interleave_dispatch_output_size(shape):
+    # torch.repeat_interleave(..., output_size=...) is the public entry point
+    # is the public entry point where the argument was originally dropped;
+    # this goes through aten dispatch, not the private flag_gems API
+    repeats = torch.randint(1, 10, shape, dtype=torch.int64, device=flag_gems.device)
+    ref_repeats = utils.to_reference(repeats)
+    ref_out = torch.repeat_interleave(ref_repeats)
+    n = ref_out.numel()
+
+    with flag_gems.use_gems(include=["repeat_interleave"]):
+        res_out = torch.repeat_interleave(repeats, output_size=n)
+
+    utils.gems_assert_equal(res_out, ref_out)
+
+
+@pytest.mark.repeat_interleave_tensor
+def test_repeat_interleave_wrong_output_size_raises():
+    # a wrong output_size must not silently corrupt memory
+    repeats = torch.tensor([3, 2, 1], dtype=torch.int64, device=flag_gems.device)
+    with pytest.raises(Exception, match="output_size|device_assert|out of bounds"):
+        flag_gems.repeat_interleave_tensor(repeats, output_size=999)
