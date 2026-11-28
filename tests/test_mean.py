@@ -108,6 +108,32 @@ def test_mean_dim(shape, dim, keepdim, dtype):
     utils.gems_assert_close(res_out, ref_out, dtype)
 
 
+# Regressions for the spacemit mean_dim kernel: the first case has M=2048
+# rows, which used to exceed the usable one-dimensional launch grid and leave
+# the whole output untouched; the second has row length 513, which is longer
+# than both tuned tiles (TILE_N in {256, 512}) and ends in a masked tail.
+MEAN_DIM_MASKED_TILE_CASES = [
+    ((1, 2048, 8, 8), [2, 3], True),
+    ((2, 3, 513), [2], True),
+]
+
+
+@pytest.mark.mean_dim
+@pytest.mark.parametrize("shape, dim, keepdim", MEAN_DIM_MASKED_TILE_CASES)
+@pytest.mark.skipif(
+    flag_gems.vendor_name == "tsingmicro", reason="Issue #4131: not working"
+)
+def test_mean_dim_masked_tiles(shape, dim, keepdim):
+    gen = torch.Generator(device="cpu").manual_seed(0)
+    inp = torch.randn(shape, generator=gen, dtype=torch.float32).to(flag_gems.device)
+    ref_inp = utils.to_reference(inp, True)
+
+    ref_out = torch.mean(ref_inp, dim, keepdim)
+    res_out = flag_gems.mean_dim(inp, dim, keepdim)
+
+    utils.gems_assert_close(res_out, ref_out, torch.float32)
+
+
 MEAN_EMPTY_DIM_CASES = [
     ((2, 0), 1),
     ((0, 3), 0),
