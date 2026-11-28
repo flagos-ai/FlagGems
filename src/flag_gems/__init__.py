@@ -2011,7 +2011,12 @@ _FULL_CONFIG = (
     ("multiply_.Scalar", multiply_),
     ("multiply_.Tensor", multiply_),
     ("mv", mv),
-    ("mvlgamma", mvlgamma),
+    (
+        "mvlgamma",
+        mvlgamma,
+        None,
+        ((AUTOGRAD_DISPATCH_KEY, torch.library.fallthrough_kernel),),
+    ),
     ("mvlgamma_", mvlgamma_),
     ("nan_to_num", nan_to_num),
     ("nan_to_num_", nan_to_num_),

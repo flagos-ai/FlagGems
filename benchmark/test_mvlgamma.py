@@ -15,7 +15,16 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts
+
+
+class MvlgammaBackwardBenchmark(base.UnaryPointwiseBenchmark):
+    def get_input_iter(self, cur_dtype):
+        for shape in self.shapes:
+            # p=5 requires x > 2; the margin also exercises non-integer inputs.
+            yield torch.rand(shape, dtype=cur_dtype, device=self.device) + 3.0,
 
 
 @pytest.mark.mvlgamma
@@ -24,5 +33,17 @@ def test_mvlgamma():
         op_name="mvlgamma",
         torch_op=lambda a: torch.mvlgamma(a, 5),
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+@pytest.mark.mvlgamma_backward
+def test_mvlgamma_backward():
+    bench = MvlgammaBackwardBenchmark(
+        op_name="mvlgamma_backward",
+        torch_op=lambda a: torch.mvlgamma(a, 5),
+        gems_op=lambda a: flag_gems.mvlgamma(a, 5),
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()
