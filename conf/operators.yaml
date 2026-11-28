@@ -1344,6 +1344,18 @@ ops:
   - Tensor
   stages:
   - alpha: '5.5'
+- id: alias_backward
+  description: Materializes the input gradient of alias with one pure Triton kernel.
+  for:
+  - alias
+  labels:
+  - aten
+  - KernelGen
+  - pointwise
+  kind:
+  - Tensor
+  stages:
+  - alpha: '5.5'
 - id: alias_copy
   description: 'Creates a new tensor that shares the same storage data as the original
     tensor,
