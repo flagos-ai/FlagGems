@@ -218,7 +218,8 @@ def logsumexp(inp, dim, keepdim=False):
     if inp.numel() == 0:
         shape = list(inp.shape)
         shape[dim] = 1
-        out = inp.new_full(shape, float("-inf"))
+        dtype = torch.result_type(inp, 0.0)
+        out = inp.new_full(shape, float("-inf"), dtype=dtype)
         return out if keepdim else out.squeeze(dim)
     K = inp.numel() // M // N
 

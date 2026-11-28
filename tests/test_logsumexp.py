@@ -21,6 +21,8 @@ from .accuracy_utils import (
     FLOAT_DTYPES,
     REDUCTION_SHAPES,
     gems_assert_close,
+    gems_log_logger,
+    gems_log_prefix,
     to_reference,
 )
 from .conftest import QUICK_MODE
@@ -257,6 +259,28 @@ def test_logsumexp_backward_no_grad_input():
     inp = torch.randn((8, 16), device=flag_gems.device)
     out = flag_gems.logsumexp(inp, dim=1)
     assert not out.requires_grad and out.grad_fn is None
+
+
+@pytest.mark.logsumexp
+@pytest.mark.skipif(
+    flag_gems.logsumexp.__module__ != "flag_gems.ops.logsumexp",
+    reason="covers the generic logsumexp implementation",
+)
+@pytest.mark.parametrize(
+    "shape, dim",
+    [
+        ((0,), 0),
+        ((0, 2), 1),
+    ],
+)
+@pytest.mark.parametrize("keepdim", [False, True])
+def test_logsumexp_empty_integer(shape, dim, keepdim, caplog):
+    inp = torch.empty(shape, dtype=torch.int64, device=flag_gems.device)
+    ref_out = torch.logsumexp(to_reference(inp), dim=dim, keepdim=keepdim)
+    with caplog.at_level("DEBUG", logger=gems_log_logger(flag_gems.logsumexp)):
+        res_out = flag_gems.logsumexp(inp, dim=dim, keepdim=keepdim)
+    assert f"{gems_log_prefix(flag_gems.logsumexp)} LOGSUMEXP" in caplog.text
+    torch.testing.assert_close(res_out, ref_out.to(res_out.device), rtol=0, atol=0)
 
 
 @pytest.mark.logsumexp
