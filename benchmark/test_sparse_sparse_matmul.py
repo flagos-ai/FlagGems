@@ -85,3 +85,76 @@ def test_sparse_sparse_matmul(monkeypatch):
     )
 
     bench.run()
+
+
+class SparseSparseMatmulBackwardBenchmark(SparseSparseMatmulBenchmark):
+    """Backward of ``_sparse_sparse_matmul`` through real autograd.
+
+    The forward runs once per case outside the timed closure (the eager copy is
+    rebuilt so the graph is fresh), and the timer only calls
+    ``torch.autograd.grad`` for both saved operands, so the measured latency is
+    the gradient path rather than the SpGEMM forward.
+
+    The upstream gradient is an independent sparse COO tensor of shape (M, N)
+    drawn from the same density generator as the operands: any COO gradient is
+    a legal ``grad_output`` for this operator, a dense one is rejected by ATen's
+    own SpGEMM (``mat1_.is_sparse()`` internal assert), and reusing the
+    product's support would make the 4096 case an O(M*N) gradient that fails in
+    native cuSPARSE as well.  Both sides therefore time the same contract.
+    """
+
+    # Same default BLAS M/N/K family as the forward benchmark.  The generic
+    # ``MAX_BACKWARD_ELEMENTS`` filter multiplies the whole ``(B, M, N, K)``
+    # tuple, which would drop the larger defaults even though a sparse COO
+    # backward only stores O(nnz) values; override it and let each case run.
+    MAX_BACKWARD_ELEMENTS = None
+
+    def _benchmark_callable(self, op, *args, **kwargs):
+        a, b = args[:2]
+        out = op(a, b)
+        m, n = out.shape
+        grad = _make_sparse_coo((m, n), out.dtype, out.device, seed=7)
+        xs = [a, b]
+        fn = lambda: torch.autograd.grad(
+            (out,), xs, grad_outputs=(grad,), retain_graph=True
+        )
+        return fn, xs
+
+    def get_case_iter(self, dtype):
+        """Enumerate exactly the cases the timed run executes.
+
+        One case per default BLAS ``(B, M, N, K)`` shape at this dtype, with the
+        same ``seed=ordinal`` the legacy ``get_input_iter`` feeds to
+        ``input_fn``, so case IDs and timed inputs stay 1:1 with the run above.
+        """
+        for ordinal, (_b, m, n, k) in enumerate(self.shapes):
+            yield base.BenchmarkCaseSpec(
+                case_id=self._case_id(dtype, ordinal),
+                ordinal=ordinal,
+                dtype=dtype,
+                shape={"b": _b, "m": m, "n": n, "k": k},
+                params={"density": DENSITY, "grad_seed": 7},
+                builder_args=(m, n, k, dtype, self.device, ordinal),
+            )
+
+    def build_inputs(self, case):
+        input_iter = iter(self.input_fn(*case.builder_args))
+        inputs = next(input_iter)
+        try:
+            next(input_iter)
+        except StopIteration:
+            return inputs
+        raise ValueError(f"Case '{case.case_id}' produced more than one input tuple.")
+
+
+@pytest.mark.sparse_sparse_matmul_backward
+def test_sparse_sparse_matmul_backward():
+    bench = SparseSparseMatmulBackwardBenchmark(
+        op_name="sparse_sparse_matmul",
+        input_fn=_input_fn,
+        torch_op=_torch_sparse_sparse_matmul,
+        gems_op=flag_gems._sparse_sparse_matmul,
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
