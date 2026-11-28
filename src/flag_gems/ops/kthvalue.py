@@ -22,12 +22,58 @@ from flag_gems.ops.topk import topk as gems_topk
 logger = logging.getLogger(__name__)
 
 
+class KthvalueFunction(torch.autograd.Function):
+    @staticmethod
+    def forward(ctx, inp, k, dim, keepdim):
+        ctx.dim = dim
+        ctx.keepdim = keepdim
+        ctx.input_size = tuple(inp.shape)
+        values, indices = _kthvalue_forward(inp, k, dim, keepdim)
+        ctx.save_for_backward(indices)
+        return values, indices
+
+    @staticmethod
+    def backward(ctx, grad_values, grad_indices):
+        (indices,) = ctx.saved_tensors
+        grad_input = kthvalue_backward(
+            grad_values, indices, ctx.input_size, ctx.dim, ctx.keepdim
+        )
+        return grad_input, None, None, None
+
+
+def kthvalue_backward(grad_values, indices, input_size, dim=-1, keepdim=False):
+    """Backward of ``kthvalue``.
+
+    ``values`` has no gradient: the k-th smallest element is picked by
+    position, so the ``indices`` (a long tensor of the selected slice) carries
+    the gradient of ``values``.
+    """
+    logger.debug("GEMS KTHVALUE_BACKWARD")
+    d = dim % len(input_size)
+    idx = indices if keepdim else indices.unsqueeze(d)
+    grad = grad_values if keepdim else grad_values.unsqueeze(d)
+    grad_input = torch.zeros(
+        input_size, dtype=grad_values.dtype, device=grad_values.device
+    )
+    grad_input.scatter_(d, idx, grad)
+    return grad_input
+
+
 def kthvalue(inp, k, dim=-1, keepdim=False):
+    logger.debug("GEMS KTHVALUE")
+    return KthvalueFunction.apply(inp, k, dim, keepdim)
+
+
+def _kthvalue_forward(inp, k, dim=-1, keepdim=False):
     """
     Returns the kth smallest elements and their indices along the given dimension.
 
     This implementation uses topk with largest=False to get the k smallest elements,
     then extracts the kth element from the result.
+
+    Unlike the inplace topk variants, ``kthvalue`` itself does not support
+    ``keepdim`` autograd: the values output requires ``requires_grad=True`` on
+    the input, which the caller provides.
     """
     logger.debug("GEMS KTHVALUE")
 
