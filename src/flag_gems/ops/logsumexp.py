@@ -573,3 +573,26 @@ class _LogSumExp(torch.autograd.Function):
         else:
             grad_in = _backward_multi_axis(grad_out, contiguous, out, ctx.dims)
         return grad_in, None, None
+
+
+def logsumexp_backward(grad_out, inp, out, dim, keepdim=False):
+    """Return the input gradient using the logsumexp value saved by the forward."""
+    dims = tuple(dim) if isinstance(dim, (list, tuple)) else (dim,)
+    normalized = []
+    for axis in dims:
+        if not -inp.ndim <= axis < inp.ndim:
+            raise IndexError(f"Dimension out of range: {axis}")
+        axis %= inp.ndim
+        if axis in normalized:
+            raise RuntimeError(f"dim {axis} appears multiple times")
+        normalized.append(axis)
+    if not normalized:
+        return grad_out.clone()
+    if not keepdim:
+        for axis in sorted(normalized):
+            out = out.unsqueeze(axis)
+    grad_out, out = _broadcast_keepdim(grad_out, out, normalized, keepdim)
+    inp = inp.contiguous()
+    if len(normalized) == 1:
+        return _backward_block(grad_out, inp, out, normalized[0])
+    return _backward_multi_axis(grad_out, inp, out, normalized)

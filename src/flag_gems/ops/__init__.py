@@ -1172,10 +1172,10 @@ from flag_gems.ops.linear import linear
 from flag_gems.ops.linear_backward import linear_backward
 from flag_gems.ops.linspace import linspace
 from flag_gems.ops.log import log
-from flag_gems.ops.log1p import log1p, log1p_out
+from flag_gems.ops.log1p import log1p, log1p_backward, log1p_out
 from flag_gems.ops.log1p_ import log1p_
-from flag_gems.ops.log2 import log2, log2_
-from flag_gems.ops.log10 import log10, log10_, log10_out
+from flag_gems.ops.log2 import log2, log2_, log2_backward
+from flag_gems.ops.log10 import log10, log10_, log10_backward, log10_out
 from flag_gems.ops.log_ import log_
 from flag_gems.ops.log_normal import log_normal
 from flag_gems.ops.log_normal_ import log_normal_
@@ -1193,7 +1193,11 @@ from flag_gems.ops.log_softmax import (
 )
 from flag_gems.ops.logaddexp import logaddexp, logaddexp_out
 from flag_gems.ops.logaddexp2 import logaddexp2, logaddexp2_out
-from flag_gems.ops.logcumsumexp import logcumsumexp, logcumsumexp_out
+from flag_gems.ops.logcumsumexp import (
+    logcumsumexp,
+    logcumsumexp_backward,
+    logcumsumexp_out,
+)
 from flag_gems.ops.logdet import logdet
 from flag_gems.ops.logical_and import logical_and, logical_and_
 from flag_gems.ops.logical_not import logical_not, logical_not_
@@ -1204,13 +1208,13 @@ from flag_gems.ops.logit import logit, logit_out
 from flag_gems.ops.logit_ import logit_
 from flag_gems.ops.logit_backward import logit_backward
 from flag_gems.ops.logspace import logspace
-from flag_gems.ops.logsumexp import logsumexp
+from flag_gems.ops.logsumexp import logsumexp, logsumexp_backward
 from flag_gems.ops.lstm import lstm
 from flag_gems.ops.lstm_cell import lstm_cell
 from flag_gems.ops.lt import lt, lt_scalar
 from flag_gems.ops.lt_ import lt_, lt_scalar_
 from flag_gems.ops.lu_solve import lu_solve, lu_solve_out
-from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_out
+from flag_gems.ops.lu_unpack import lu_unpack, lu_unpack_backward, lu_unpack_out
 from flag_gems.ops.make_dual_copy import _make_dual_copy, _make_dual_copy_out
 from flag_gems.ops.make_per_channel_quantized_tensor import (
     _make_per_channel_quantized_tensor,
@@ -1230,7 +1234,7 @@ from flag_gems.ops.matrix_exp import matrix_exp
 from flag_gems.ops.matrix_exp_backward import matrix_exp_backward
 from flag_gems.ops.matrix_H import matrix_H
 from flag_gems.ops.matrix_power import matrix_power, matrix_power_out
-from flag_gems.ops.max import max, max_dim
+from flag_gems.ops.max import max, max_backward, max_dim
 from flag_gems.ops.max_pool1d import max_pool1d
 from flag_gems.ops.max_pool1d_with_indices import max_pool1d_with_indices
 from flag_gems.ops.max_pool2d_with_indices import (
@@ -1243,13 +1247,19 @@ from flag_gems.ops.max_pool3d_with_indices import max_pool3d_with_indices
 from flag_gems.ops.max_pool3d_with_indices_backward import (
     max_pool3d_with_indices_backward,
 )
-from flag_gems.ops.max_unpool2d import max_unpool2d
-from flag_gems.ops.max_unpool3d import max_unpool3d
+from flag_gems.ops.max_unpool2d import max_unpool2d, max_unpool2d_backward
+from flag_gems.ops.max_unpool3d import max_unpool3d, max_unpool3d_backward
 from flag_gems.ops.maximum import maximum, maximum_backward
 from flag_gems.ops.mean import mean, mean_dim
-from flag_gems.ops.median import median, median_dim, median_dim_values, median_out
+from flag_gems.ops.median import (
+    median,
+    median_backward,
+    median_dim,
+    median_dim_values,
+    median_out,
+)
 from flag_gems.ops.mH import mH
-from flag_gems.ops.min import min, min_dim
+from flag_gems.ops.min import min, min_backward, min_dim
 from flag_gems.ops.minimum import minimum
 from flag_gems.ops.miopen_batch_norm import miopen_batch_norm
 from flag_gems.ops.miopen_batch_norm_backward import miopen_batch_norm_backward
@@ -2948,12 +2958,15 @@ __all__ = [
     "log",
     "log10",
     "log10_",
+    "log10_backward",
     "log10_out",
     "log1p",
     "log1p_",
+    "log1p_backward",
     "log1p_out",
     "log2",
     "log2_",
+    "log2_backward",
     "log_",
     "log_normal",
     "log_normal_",
@@ -2970,6 +2983,7 @@ __all__ = [
     "logaddexp2_out",
     "logaddexp_out",
     "logcumsumexp",
+    "logcumsumexp_backward",
     "logcumsumexp_out",
     "logdet",
     "logical_and",
@@ -2986,6 +3000,7 @@ __all__ = [
     "logit_out",
     "logspace",
     "logsumexp",
+    "logsumexp_backward",
     "lstm",
     "lstm_cell",
     "lt",
@@ -2995,6 +3010,7 @@ __all__ = [
     "lu_solve",
     "lu_solve_out",
     "lu_unpack",
+    "lu_unpack_backward",
     "lu_unpack_out",
     "margin_ranking_loss",
     "masked_fill",
@@ -3011,6 +3027,7 @@ __all__ = [
     "matrix_power",
     "matrix_power_out",
     "max",
+    "max_backward",
     "max_dim",
     "max_pool1d",
     "max_pool1d_with_indices",
@@ -3021,17 +3038,21 @@ __all__ = [
     "max_pool3d_with_indices",
     "max_pool3d_with_indices_backward",
     "max_unpool2d",
+    "max_unpool2d_backward",
     "max_unpool3d",
+    "max_unpool3d_backward",
     "maximum",
     "maximum_backward",
     "mean",
     "mean_dim",
     "median",
+    "median_backward",
     "median_dim",
     "median_dim_values",
     "median_out",
     "mH",
     "min",
+    "min_backward",
     "min_dim",
     "minimum",
     "miopen_batch_norm",
