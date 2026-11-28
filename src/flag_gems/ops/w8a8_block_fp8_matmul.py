@@ -12,19 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import functools
-import logging
-import os
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List
 
 import torch
 import triton
 import triton.language as tl
-import yaml
 
 import flag_gems
-
-logger = logging.getLogger(__name__)
+from flag_gems.utils.w8a8_block_fp8_configs import get_w8a8_block_fp8_configs
 
 
 def _get_default_w8a8_block_fp8_config(block_n: int, block_k: int) -> Dict[str, Any]:
@@ -120,54 +115,6 @@ def w8a8_block_fp8_matmul_kernel(
     c_ptrs = C + stride_cm * offs_cm[:, None] + stride_cn * offs_cn[None, :]
     c_mask = (offs_cm[:, None] < M) & (offs_cn[None, :] < N)
     tl.store(c_ptrs, c, mask=c_mask)
-
-
-@functools.lru_cache
-def get_w8a8_block_fp8_configs(
-    N: int, K: int, block_n: int, block_k: int
-) -> Optional[Dict[int, Any]]:
-    if not torch.cuda.is_available():
-        logger.debug(
-            "CUDA is unavailable on this backend; using default W8A8 block FP8 config."
-        )
-        return None
-
-    device_name = torch.cuda.get_device_name().replace(" ", "_")
-    file_name = f"fp8_w8a8-{block_n}-{block_k}.yaml"
-
-    config_dir = os.path.join(os.path.dirname(__file__), "..", "utils", "configs")
-    cfg_file = os.path.join(config_dir, file_name)
-
-    if os.path.exists(cfg_file):
-        with open(cfg_file) as f:
-            logger.info(
-                "Using config from %s for W8A8 block FP8 kernel.",
-                cfg_file,
-            )
-            dev_data = yaml.safe_load(f).get(device_name, {})
-            NK_data = dev_data.get(f"{N},{K}", {})
-
-            result = {}
-            for k, p in NK_data.items():
-                # unpack the list into dictionary
-                result[int(k)] = {
-                    "BLOCK_SIZE_M": p[0],
-                    "BLOCK_SIZE_N": p[1],
-                    "BLOCK_SIZE_K": p[2],
-                    "GROUP_SIZE_M": p[3],
-                    "num_warps": p[4],
-                    "num_stages": p[5],
-                }
-            if not result:
-                return None
-            return result
-
-    logger.warning(
-        "Using default W8A8 Block FP8 kernel config. Performance might "
-        "be sub-optimal! Config file not found at %s",
-        cfg_file,
-    )
-    return None
 
 
 def w8a8_block_fp8_matmul(
