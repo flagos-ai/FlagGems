@@ -557,6 +557,35 @@ def test_kernel_check_session_passes_if_all_operators_have_kernel(runner):
     assert session.exitstatus == pytest.ExitCode.OK
 
 
+@pytest.mark.parametrize(
+    "operator,invoked_kernel,status,expected",
+    [
+        ("is_same_size", False, "passed", pytest.ExitCode.OK),
+        ("is_same_size", True, "passed", pytest.ExitCode.TESTS_FAILED),
+        ("is_same_size", False, "failed", pytest.ExitCode.TESTS_FAILED),
+        ("abs", False, "passed", pytest.ExitCode.TESTS_FAILED),
+    ],
+)
+def test_kernel_check_session_metadata_baseline(
+    runner, operator, invoked_kernel, status, expected
+):
+    _, config, _ = runner
+    config.preflight_only = False
+    config.override_registry = None
+    config.kernel_check = True
+    config.kernel_check_records = [
+        {"operator": operator, "invoked_kernel": invoked_kernel, "status": status}
+    ]
+    session = SimpleNamespace(
+        exitstatus=pytest.ExitCode.OK,
+        config=SimpleNamespace(
+            pluginmanager=SimpleNamespace(get_plugin=lambda name: None)
+        ),
+    )
+    conftest.pytest_sessionfinish(session, 0)
+    assert session.exitstatus == expected
+
+
 def test_kernel_check_session_fails_if_any_operator_has_no_kernel(runner):
     """Even if one operator has a kernel, another without one should fail."""
     bench, config, _ = runner

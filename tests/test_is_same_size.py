@@ -102,3 +102,19 @@ def test_is_same_size_scalar_tensor(caplog):
     assert res_diff == torch.ops.aten.is_same_size(ref_a, ref_c)
     assert res_same is True
     assert res_diff is False
+
+
+@pytest.mark.is_same_size
+@pytest.mark.skipif(
+    flag_gems.vendor_name != "ascend", reason="Ascend metadata-only implementation"
+)
+def test_is_same_size_fake_tensor():
+    from torch._subclasses.fake_tensor import FakeTensorMode
+
+    with FakeTensorMode():
+        original = torch.empty((0, 4), device=flag_gems.device)
+        same = torch.empty((0, 4), device=flag_gems.device, dtype=torch.int32)
+        different = torch.empty((0, 8), device=flag_gems.device)
+
+        assert flag_gems.is_same_size(original, same) is True
+        assert flag_gems.is_same_size(original, different) is False
