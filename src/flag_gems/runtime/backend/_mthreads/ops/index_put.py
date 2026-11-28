@@ -68,7 +68,14 @@ def generate_index_put_kernel(
     code.writeline("@libentry()")
     code.writeline("@libtuner(")
     with code.indent():
-        code.writeline('configs=runtime.get_tuned_config("index_put"),')
+        if inp_rank == indices_len:
+            # Fully advanced indexing has no trailing slice. Flatten the
+            # index axis so each program can update many independent entries.
+            code.writeline(
+                "configs=[triton.Config({'BLOCK_SIZE0': 128, 'BLOCK_SIZE1': 1}, num_warps=4)],"
+            )
+        else:
+            code.writeline('configs=runtime.get_tuned_config("index_put"),')
         code.writeline('key=["M", "N"],')
         code.writeline('restore_value=["input_ptr"],')
         code.writeline('strategy=["align32", "align32"],')
@@ -103,12 +110,13 @@ def generate_index_put_kernel(
     with code.indent():
         code.writeline("pid0 = ext.program_id(axis=0)")
         code.writeline("pid1 = ext.program_id(axis=1)")
-        code.writeline(
-            "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
-        )
         if inp_rank == indices_len:
-            code.writeline("offset1 = pid1 * 1 + tl.arange(0, 1)[None, :]")
+            code.writeline("offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)")
+            code.writeline("offset1 = 0")
         else:
+            code.writeline(
+                "offset0 = pid0 * BLOCK_SIZE0 + tl.arange(0, BLOCK_SIZE0)[:, None]"
+            )
             code.writeline(
                 "offset1 = pid1 * BLOCK_SIZE1 + tl.arange(0, BLOCK_SIZE1)[None, :]"
             )
@@ -126,8 +134,16 @@ def generate_index_put_kernel(
         code.writeline("mask0 = offset0 < M")
         for i in range(indices_len):
             comp = [f"indices_idx{j} * indices{i}_stride{j}" for j in range(index_rank)]
+            if comp:
+                code.writeline(
+                    f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+                )
+            else:
+                code.writeline(
+                    f"cur_index{i} = tl.load(indices{i}_ptr + 0) + offset0 * 0"
+                )
             code.writeline(
-                f"cur_index{i} = tl.load(indices{i}_ptr + {' + '.join(comp)}, mask=mask0, other=0)"
+                f"cur_index{i} = tl.where(cur_index{i} < 0, cur_index{i} + input_shape{i}, cur_index{i})"
             )
         code.newline()
         index_mask = [
