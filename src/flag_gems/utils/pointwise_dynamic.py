@@ -24,7 +24,7 @@ from triton.runtime.jit import JITFunction
 
 from flag_gems.runtime import torch_device_fn
 from flag_gems.utils.code_cache import code_cache_dir
-from flag_gems.utils.code_utils import IndentedBuffer, write_atomic
+from flag_gems.utils.code_utils import IndentedBuffer, file_lock, write_atomic
 from flag_gems.utils.codegen_config_utils import CodeGenConfig, get_codegen_config
 from flag_gems.utils.device_info import get_device_capability
 from flag_gems.utils.shape_utils import (
@@ -1833,30 +1833,35 @@ class PointwiseDynamicFunction:
         # created via exec string. We can help inspect to find the source by hacking linecache
         # library, but we find generating a module simpler, since we can generating 2 functions
         # the kernel and the wrapper, and the wrapper calls the kernel.
-        write_atomic(file_path, code.getvalue())
+        # All ranks may generate the same module path when they share
+        # FLAGGEMS_CACHE_DIR.  Keep the atomic write and the import under one
+        # process lock: an atomic rename alone does not prevent another rank
+        # from replacing the path between spec creation and exec_module().
+        with file_lock(file_path):
+            write_atomic(file_path, code.getvalue())
 
-        # load
-        spec = importlib.util.spec_from_file_location(
-            f"_gen_module_{self._scalar_fn_cache_key}_rank_{ndim}",
-            file_path,
-        )
-        m = importlib.util.module_from_spec(spec)
-        # do not expose it to sys.modules
-        # sys.modules["_add_module"] = m
+            # load
+            spec = importlib.util.spec_from_file_location(
+                f"_gen_module_{self._scalar_fn_cache_key}_rank_{ndim}",
+                file_path,
+            )
+            m = importlib.util.module_from_spec(spec)
+            # do not expose it to sys.modules
+            # sys.modules["_add_module"] = m
 
-        # NOTE: [why not import the scalar function]
-        # we do not re-import the scalar function, although the generated kernel **calls** it
-        # Since a function's __name__ may be changed, from the module where it is defined import its
-        # __name__ is not same; Also the same may be rebind to something else, importing via name
-        # cannot guarantee that scalar function is imported.
-        # So we copy the scalar function and its __globals__ to the generated module to do this
-        # https://stackoverflow.com/questions/11170949/how-to-make-a-copy-of-a-python-module-at-runtime
-        spec.loader.exec_module(m)
-        m.__dict__.update(self._scalar_fn.__globals__)
-        m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
+            # NOTE: [why not import the scalar function]
+            # we do not re-import the scalar function, although the generated kernel **calls** it
+            # Since a function's __name__ may be changed, from the module where it is defined import its
+            # __name__ is not same; Also the same may be rebind to something else, importing via name
+            # cannot guarantee that scalar function is imported.
+            # So we copy the scalar function and its __globals__ to the generated module to do this
+            # https://stackoverflow.com/questions/11170949/how-to-make-a-copy-of-a-python-module-at-runtime
+            spec.loader.exec_module(m)
+            m.__dict__.update(self._scalar_fn.__globals__)
+            m.__dict__[self._scalar_fn.__name__] = self._scalar_fn
 
-        overload = getattr(m, wrapper_name)
-        entry = getattr(m, kernel_name)
+            overload = getattr(m, wrapper_name)
+            entry = getattr(m, kernel_name)
         self.overloads[key] = overload
 
         # Cache kernel info for C++ integration

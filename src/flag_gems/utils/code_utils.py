@@ -62,6 +62,7 @@ import keyword
 import os
 import re
 import threading
+import time
 import uuid
 from collections import defaultdict
 from io import StringIO
@@ -182,6 +183,50 @@ class NameSpace:
             return True
 
         return False
+
+
+@contextlib.contextmanager
+def file_lock(path_: str):
+    """Serialize access to a generated file across processes.
+
+    The lock lives next to the generated file so all processes that share a
+    ``FLAGGEMS_CACHE_DIR`` also share the same lock.  ``flock`` releases the
+    lock when a process exits, including abnormal exits, which avoids stale
+    lock files after a worker failure.
+    """
+    path = Path(path_)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    lock_path = path.with_name(f".{path.name}.lock")
+
+    if os.name == "nt":
+        import msvcrt
+
+        with lock_path.open("a+b") as lock_file:
+            lock_file.seek(0, os.SEEK_END)
+            if lock_file.tell() == 0:
+                lock_file.write(b"\0")
+                lock_file.flush()
+            lock_file.seek(0)
+            while True:
+                try:
+                    msvcrt.locking(lock_file.fileno(), msvcrt.LK_LOCK, 1)
+                    break
+                except OSError:
+                    time.sleep(0.05)
+            try:
+                yield
+            finally:
+                lock_file.seek(0)
+                msvcrt.locking(lock_file.fileno(), msvcrt.LK_UNLCK, 1)
+    else:
+        import fcntl
+
+        with lock_path.open("a+") as lock_file:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX)
+            try:
+                yield
+            finally:
+                fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
 
 
 def write_atomic(
