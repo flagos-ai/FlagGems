@@ -10032,6 +10032,19 @@ ops:
   - Math
   stages:
   - stable: '2.0'
+- id: gt_backward_
+  description: Backward of in-place greater-than comparison, returning zero gradients
+    for floating-point receiver and tensor operand.
+  for:
+  - gt_.Scalar
+  - gt_.Tensor
+  labels:
+  - aten
+  - pointwise
+  kind:
+  - Math
+  stages:
+  - alpha: '5.4'
 - id: gt_scalar
   description: The scalar version of `gt()`.
   for:

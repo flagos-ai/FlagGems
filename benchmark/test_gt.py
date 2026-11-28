@@ -15,6 +15,8 @@
 import pytest
 import torch
 
+import flag_gems
+
 from . import base, consts, utils
 
 
@@ -40,5 +42,40 @@ def test_gt_scalar():
         op_name="gt_scalar",
         torch_op=torch.gt,
         dtypes=consts.FLOAT_DTYPES,
+    )
+    bench.run()
+
+
+def _backward_scalar_input_fn(shape, dtype, device):
+    yield utils.generate_tensor_input(shape, dtype, device), 0.5
+
+
+def _backward_tensor_input_fn(shape, dtype, device):
+    x = utils.generate_tensor_input(shape, dtype, device)
+    yield x, utils.generate_tensor_input(shape, dtype, device)
+
+
+@pytest.mark.gt_backward_
+def test_gt_scalar_backward_():
+    bench = base.GenericBenchmark(
+        op_name="gt_scalar_",
+        input_fn=_backward_scalar_input_fn,
+        torch_op=lambda x, scalar: x.clone().gt_(scalar),
+        gems_op=lambda x, scalar: flag_gems.gt_scalar_(x.clone(), scalar),
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
+    )
+    bench.run()
+
+
+@pytest.mark.gt_backward_
+def test_gt_tensor_backward_():
+    bench = base.GenericBenchmark(
+        op_name="gt_tensor_",
+        input_fn=_backward_tensor_input_fn,
+        torch_op=lambda x, y: x.clone().gt_(y),
+        gems_op=lambda x, y: flag_gems.gt_tensor_(x.clone(), y),
+        dtypes=consts.FLOAT_DTYPES,
+        is_backward=True,
     )
     bench.run()

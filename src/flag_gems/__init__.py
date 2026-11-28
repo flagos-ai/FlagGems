@@ -1635,8 +1635,10 @@ _FULL_CONFIG = (
     ("gru_cell", gru_cell),
     ("gt.Scalar", gt_scalar),
     ("gt.Tensor", gt),
-    ("gt_.Scalar", gt_scalar_),
-    ("gt_.Tensor", gt_tensor_),
+    # Route grad-requiring in-place comparisons through the FlagGems wrappers:
+    # ATen's native Autograd kernel would otherwise bypass their custom Function.
+    ("gt_.Scalar", gt_scalar_, None, (f"Autograd{backend_info.dispatch_key}",)),
+    ("gt_.Tensor", gt_tensor_, None, (f"Autograd{backend_info.dispatch_key}",)),
     ("hamming_window", hamming_window),
     ("hamming_window.periodic", hamming_window_periodic),
     ("hamming_window.periodic_alpha", hamming_window_periodic_alpha),
