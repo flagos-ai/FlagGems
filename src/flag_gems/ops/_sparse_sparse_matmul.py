@@ -41,11 +41,11 @@ pipeline:
 4. ``_sspm_emit`` gathers the stored (row, col, val) triples in row-major
    order, preserving structural zeros, and writes the output metadata.
 
-The wrapper mirrors the aten argument checks (2-D, no dense dims, matching
-shape/dtype, floating dtype) and coalesces both operands, so the output
-support set and values match the aten kernel exactly (the low-precision
-accumulate rounding of fp16/bf16 is part of the contract and covered by the
-test tolerances).
+The wrapper checks that both operands are scalar-valued 2-D COO matrices
+on the same device with matching inner dimensions and floating dtype.
+FlagOS merges uncoalesced input coordinates before multiplication without
+depending on the sparse coalesce dispatch key. The grouping scratch scales
+with stored entries, not with the dimensions of the operands.
 """
 
 import logging
@@ -54,6 +54,9 @@ import torch
 import triton
 import triton.language as tl
 
+from flag_gems.ops.argsort import argsort
+from flag_gems.ops.cumsum import cumsum
+from flag_gems.runtime import torch_device_fn
 from flag_gems.utils import libentry
 
 logger = logging.getLogger(__name__)
@@ -69,11 +72,112 @@ _SPARSE_DTYPES = {
 
 @libentry()
 @triton.jit
-def _sspm_hist(idx_ptr, cnt_ptr, nnz, BLOCK: tl.constexpr):
+def _sspm_coo_keys(idx, keys, nnz, cols, row_stride, entry_stride, BLOCK: tl.constexpr):
+    offs = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = offs < nnz
+    addr = offs.to(tl.int64) * entry_stride
+    row = tl.load(idx + addr, mask=mask, other=0)
+    col = tl.load(idx + row_stride + addr, mask=mask, other=0)
+    tl.store(keys + offs, row * cols + col, mask=mask)
+
+
+@libentry()
+@triton.jit
+def _sspm_coo_heads(keys, perm, heads, nnz, BLOCK: tl.constexpr):
+    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = i < nnz
+    cur = tl.load(perm + i, mask=mask, other=0)
+    prev = tl.load(perm + i - 1, mask=mask & (i > 0), other=0)
+    key = tl.load(keys + cur, mask=mask, other=0)
+    prev_key = tl.load(keys + prev, mask=mask & (i > 0), other=0)
+    tl.store(heads + i, (i == 0) | (key != prev_key), mask=mask)
+
+
+@libentry()
+@triton.jit
+def _sspm_coo_merge(
+    indices,
+    values,
+    sums,
+    keys,
+    perm,
+    heads,
+    groups,
+    nnz,
+    cols,
+    count,
+    val_stride,
+    BLOCK: tl.constexpr,
+):
+    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = i < nnz
+    src = tl.load(perm + i, mask=mask, other=0)
+    group = tl.load(groups + i, mask=mask, other=0).to(tl.int64) - 1
+    first = tl.load(heads + i, mask=mask, other=0) != 0
+    key = tl.load(keys + src, mask=first, other=0)
+    tl.store(indices + group, key // cols, mask=first)
+    tl.store(indices + count + group, key % cols, mask=first)
+    v = tl.load(values + src * val_stride, mask=mask, other=0)
+    tl.atomic_add(sums + group, v.to(sums.dtype.element_ty), mask=mask)
+
+
+@libentry()
+@triton.jit
+def _sspm_coo_cast(src, dst, count, BLOCK: tl.constexpr):
+    i = tl.program_id(0) * BLOCK + tl.arange(0, BLOCK)
+    mask = i < count
+    tl.store(dst + i, tl.load(src + i, mask=mask, other=0), mask=mask)
+
+
+def _coo_components(x, acc_dtype):
+    if x.device.type != "flagos":
+        x = x.coalesce()
+    nnz = x._nnz()
+    idx, val = x._indices(), x._values()
+    if x.is_coalesced() or nnz < 2:
+        return idx, val, nnz
+
+    cols = x.shape[1]
+    keys = torch.empty(nnz, dtype=torch.int64, device=x.device)
+    heads = torch.empty(nnz, dtype=torch.int32, device=x.device)
+    grid = (triton.cdiv(nnz, 256),)
+    _sspm_coo_keys[grid](idx, keys, nnz, cols, *idx.stride(), BLOCK=256)
+    perm = argsort(keys)
+    _sspm_coo_heads[grid](keys, perm, heads, nnz, BLOCK=256)
+    groups = cumsum(heads, dim=0, dtype=torch.int32)
+    count = int(groups[-1].item())
+    out_idx = torch.empty((2, count), dtype=torch.int64, device=x.device)
+    sums = torch.zeros(count, dtype=acc_dtype, device=x.device)
+    _sspm_coo_merge[grid](
+        out_idx,
+        val,
+        sums,
+        keys,
+        perm,
+        heads,
+        groups,
+        nnz,
+        cols,
+        count,
+        val.stride(0),
+        BLOCK=256,
+    )
+    # A duplicate group is rounded to the input dtype before multiplication.
+    if val.dtype != acc_dtype:
+        out_val = torch.empty(count, dtype=val.dtype, device=x.device)
+        _sspm_coo_cast[(triton.cdiv(count, 256),)](sums, out_val, count, BLOCK=256)
+    else:
+        out_val = sums
+    return out_idx, out_val, count
+
+
+@libentry()
+@triton.jit
+def _sspm_hist(idx_ptr, cnt_ptr, nnz, entry_stride, BLOCK: tl.constexpr):
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     m = offs < nnz
-    r = tl.load(idx_ptr + offs, mask=m, other=0)
+    r = tl.load(idx_ptr + offs.to(tl.int64) * entry_stride, mask=m, other=0)
     tl.atomic_add(cnt_ptr + r, 1, mask=m)
 
 
@@ -97,14 +201,16 @@ def _sspm_scan(cnt_ptr, out_ptr, n, BLOCK: tl.constexpr):
 @libentry()
 @triton.jit
 def _sspm_scatter(
-    row_ptr,
-    col_ptr,
+    idx_ptr,
     val_ptr,
     cur_ptr,
     bptr,
     ocol_ptr,
     oval_ptr,
     nnz,
+    row_stride,
+    entry_stride,
+    val_stride,
     BLOCK: tl.constexpr,
 ):
     # cur_ptr holds the per-row histogram counts; decrementing it yields
@@ -115,9 +221,10 @@ def _sspm_scatter(
     pid = tl.program_id(0)
     offs = pid * BLOCK + tl.arange(0, BLOCK)
     m = offs < nnz
-    r = tl.load(row_ptr + offs, mask=m, other=0)
-    c = tl.load(col_ptr + offs, mask=m, other=0)
-    v = tl.load(val_ptr + offs, mask=m, other=0)
+    addr = offs.to(tl.int64) * entry_stride
+    r = tl.load(idx_ptr + addr, mask=m, other=0)
+    c = tl.load(idx_ptr + row_stride + addr, mask=m, other=0)
+    v = tl.load(val_ptr + offs.to(tl.int64) * val_stride, mask=m, other=0)
     old = tl.atomic_add(cur_ptr + r, -1, mask=m)
     end = tl.load(bptr + r + 1, mask=m, other=0)
     slot = end - old
@@ -128,14 +235,26 @@ def _sspm_scatter(
 @libentry()
 @triton.jit
 def _sspm_accum(
-    arow_ptr, acol_ptr, aval_ptr, bptr, bcol, bval, cdense, vdense, NN, BB: tl.constexpr
+    a_idx,
+    a_val,
+    bptr,
+    bcol,
+    bval,
+    cdense,
+    vdense,
+    NN,
+    row_stride,
+    entry_stride,
+    val_stride,
+    BB: tl.constexpr,
 ):
     # One program per A-nnz entry (i, j, v); accumulate products into the
     # dense (M x N) count/value buffers for every B entry in row j.
     pid = tl.program_id(0)
-    i = tl.load(arow_ptr + pid)
-    j = tl.load(acol_ptr + pid)
-    v = tl.load(aval_ptr + pid)
+    a_offset = pid.to(tl.int64) * entry_stride
+    i = tl.load(a_idx + a_offset)
+    j = tl.load(a_idx + row_stride + a_offset)
+    v = tl.load(a_val + pid.to(tl.int64) * val_stride)
     start = tl.load(bptr + j)
     end = tl.load(bptr + j + 1)
     acc_t = vdense.dtype.element_ty
@@ -167,7 +286,7 @@ def _sspm_rowcount(cdense, ocnt_ptr, NN, BLOCK: tl.constexpr):
 @libentry()
 @triton.jit
 def _sspm_emit(
-    cdense, vdense, orow_ptr, orow_out, ocol_out, oval_out, NN, BLOCK: tl.constexpr
+    cdense, vdense, orow_ptr, indices, oval_out, NN, nnz, BLOCK: tl.constexpr
 ):
     # One program per output row: emit (row, col, val) in ascending column
     # order by scanning the dense buffers; structural zeros are preserved.
@@ -181,17 +300,15 @@ def _sspm_emit(
         act = m & (c > 0)
         mi = act.to(tl.int32)
         rank = tl.cumsum(mi, axis=0) - mi
-        dst = pos + rank
+        dst = (pos + rank).to(tl.int64)
         v = tl.load(vdense + base + offs, mask=act, other=0)
-        tl.store(orow_out + dst, i.to(tl.int64), mask=act)
-        tl.store(ocol_out + dst, offs.to(tl.int64), mask=act)
+        tl.store(indices + dst, i.to(tl.int64), mask=act)
+        tl.store(indices + nnz + dst, offs.to(tl.int64), mask=act)
         tl.store(oval_out + dst, v.to(oval_out.dtype.element_ty), mask=act)
         pos = pos + tl.sum(mi, axis=0)
 
 
-def _sparse_sparse_matmul(self, other):
-    logger.debug("GEMS _SPARSE_SPARSE_MATMUL")
-
+def _check_inputs(self, other):
     if not self.is_sparse or not other.is_sparse:
         raise RuntimeError(
             "_sparse_sparse_matmul: expected sparse tensors for both operands"
@@ -218,43 +335,49 @@ def _sparse_sparse_matmul(self, other):
         )
     if self.dtype not in _SPARSE_DTYPES:
         raise NotImplementedError(f'"sparse_matmul" not implemented for {self.dtype!s}')
+    if self.device != other.device:
+        raise RuntimeError("mat1 and mat2 must be on the same device")
 
-    a = self.coalesce()
-    b = other.coalesce()
-    M, K = a.shape
+
+def _spgemm(self, other):
+    M, K = self.shape
     N = other.shape[1]
-    dev = a.device
-    dt = a.dtype
-    nnzA = a._nnz()
-    nnzB = b._nnz()
+    dev = self.device
+    dt = self.dtype
+    if not M or not N or not K or not self._nnz() or not other._nnz():
+        indices = torch.empty((2, 0), dtype=torch.int64, device=dev)
+        values = torch.empty(0, dtype=dt, device=dev)
+        # Only wrap the device buffers as COO; this performs no arithmetic.
+        out = torch.sparse_coo_tensor(  # allow-torch-compute
+            indices, values, (M, N), is_coalesced=True
+        )
+        return out
 
-    # ``a`` / ``b`` are coalesced above, so their index and value tensors are
-    # already contiguous — no extra copies on the hot path (review P1-2).
-    a_idx = a._indices()
-    b_idx = b._indices()
-    arow = a_idx[0]
-    acol = a_idx[1]
-    aval = a._values()
-    brow = b_idx[0]
-    bcol = b_idx[1]
-    bval = b._values()
-
-    MN = M * N
     acc_dtype = torch.float64 if dt == torch.float64 else torch.float32
+    a_idx, aval, nnzA = _coo_components(self, acc_dtype)
+    b_idx, bval, nnzB = _coo_components(other, acc_dtype)
 
     # ---- CSR grouping of B (histogram -> scan -> scatter); bcnt doubles as
     # the scatter cursor and self-zeroes, so no separate cursor is needed ----
     bcnt = torch.zeros(K, dtype=torch.int32, device=dev)
-    if nnzB > 0:
-        _sspm_hist[(triton.cdiv(nnzB, 1024),)](brow, bcnt, nnzB, BLOCK=1024)
+    b_grid = (triton.cdiv(nnzB, 1024),)
+    _sspm_hist[b_grid](b_idx, bcnt, nnzB, b_idx.stride(1), BLOCK=1024)
     bptr = torch.empty(K + 1, dtype=torch.int32, device=dev)
     _sspm_scan[(1,)](bcnt, bptr, K, BLOCK=1024)
     bcol_csr = torch.empty(nnzB, dtype=torch.int64, device=dev)
     bval_csr = torch.empty(nnzB, dtype=dt, device=dev)
-    if nnzB > 0:
-        _sspm_scatter[(triton.cdiv(nnzB, 1024),)](
-            brow, bcol, bval, bcnt, bptr, bcol_csr, bval_csr, nnzB, BLOCK=1024
-        )
+    _sspm_scatter[b_grid](
+        b_idx,
+        bval,
+        bcnt,
+        bptr,
+        bcol_csr,
+        bval_csr,
+        nnzB,
+        *b_idx.stride(),
+        bval.stride(0),
+        BLOCK=1024,
+    )
 
     # ---- accumulate products into dense (M x N) count/value buffers ----
     # NOTE (documented per the review): the scratch is dense over M*N — two
@@ -262,52 +385,64 @@ def _sparse_sparse_matmul(self, other):
     # far larger than the output nnz can exceed memory. ATen's SpGEMM uses an
     # O(nnz) hash-based scheme; this kernel trades memory for a simpler
     # exact-count pipeline. Keep (M, N) within available device memory.
-    cdense = torch.zeros(MN, dtype=torch.int32, device=dev)
-    vdense = torch.zeros(MN, dtype=acc_dtype, device=dev)
-    if nnzA > 0 and nnzB > 0:
-        _sspm_accum[(nnzA,)](
-            arow, acol, aval, bptr, bcol_csr, bval_csr, cdense, vdense, N, BB=256
-        )
+    cdense = torch.zeros(M * N, dtype=torch.int32, device=dev)
+    vdense = torch.zeros(M * N, dtype=acc_dtype, device=dev)
+    _sspm_accum[(nnzA,)](
+        a_idx,
+        aval,
+        bptr,
+        bcol_csr,
+        bval_csr,
+        cdense,
+        vdense,
+        N,
+        *a_idx.stride(),
+        aval.stride(0),
+        BB=256,
+    )
 
     # ---- exact per-row counts, then the row-major output offsets ----
     ocnt = torch.empty(M, dtype=torch.int32, device=dev)
     orow_ptr = torch.empty(M + 1, dtype=torch.int32, device=dev)
-    if M > 0:
-        _sspm_rowcount[(M,)](cdense, ocnt, N, BLOCK=1024)
-        _sspm_scan[(1,)](ocnt, orow_ptr, M, BLOCK=1024)
+    _sspm_rowcount[(M,)](cdense, ocnt, N, BLOCK=1024)
+    _sspm_scan[(1,)](ocnt, orow_ptr, M, BLOCK=1024)
 
-    nnz = int(orow_ptr[M].item()) if M > 0 else 0
-    orows = torch.empty(nnz, dtype=torch.int64, device=dev)
-    ocols = torch.empty(nnz, dtype=torch.int64, device=dev)
+    nnz = int(orow_ptr[M].item())
+    indices = torch.empty((2, nnz), dtype=torch.int64, device=dev)
     ovals = torch.empty(nnz, dtype=dt, device=dev)
     if nnz > 0:
-        _sspm_emit[(M,)](cdense, vdense, orow_ptr, orows, ocols, ovals, N, BLOCK=1024)
-
-    indices = torch.empty((2, nnz), dtype=torch.int64, device=dev)
-    indices[0] = orows
-    indices[1] = ocols
-    out = torch.sparse_coo_tensor(indices, ovals, (M, N), device=dev)
-    # The emit kernel writes each (row, col) pair once in ascending row-major
-    # order, so the returned COO is genuinely coalesced -- mark it so
-    # ``is_coalesced()`` matches ATen without a later sort.
-    out._coalesced_(True)
+        _sspm_emit[(M,)](cdense, vdense, orow_ptr, indices, ovals, N, nnz, BLOCK=1024)
+    # Wrap the sorted indices and values already emitted on the device.
+    out = torch.sparse_coo_tensor(  # allow-torch-compute
+        indices, ovals, (M, N), is_coalesced=True
+    )
     return out
+
+
+def _sparse_sparse_matmul(self, other):
+    logger.debug("GEMS _SPARSE_SPARSE_MATMUL")
+    _check_inputs(self, other)
+    with torch_device_fn.device(self.device):
+        return _spgemm(self, other)
 
 
 def _sparse_sparse_matmul_out(self, other, *, out):
     logger.debug("GEMS _SPARSE_SPARSE_MATMUL.OUT")
-    result = _sparse_sparse_matmul(self, other)
+    _check_inputs(self, other)
     if out.layout != torch.sparse_coo:
         raise RuntimeError(
-            f"Expected out tensor to have sparse COO layout, but got " f"{out.layout}"
+            f"Expected out tensor to have sparse COO layout, but got {out.layout}"
         )
-    if out.dtype != result.dtype:
+    if out.dtype != self.dtype:
         raise RuntimeError(
-            f"Expected out tensor to have dtype {result.dtype}, but got " f"{out.dtype}"
+            f"Expected out tensor to have dtype {self.dtype}, but got {out.dtype}"
         )
-    if out.shape != result.shape:
+    if out.device != self.device:
+        raise RuntimeError("out must be on the same device as mat1 and mat2")
+    shape = (self.shape[0], other.shape[1])
+    if out.shape != shape:
         raise RuntimeError(
-            f"Expected out tensor to have shape {tuple(result.shape)}, but "
-            f"got {tuple(out.shape)}"
+            f"Expected out tensor to have shape {shape}, but got {tuple(out.shape)}"
         )
-    return out.copy_(result)
+    with torch_device_fn.device(self.device):
+        return out.copy_(_spgemm(self, other))

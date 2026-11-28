@@ -76,6 +76,15 @@ SPARSE_CSR_DISPATCH_KEY = "SparseCsr" + backend_info.dispatch_key
 SPARSE_CUDA_DISPATCH_KEY = torch._C.DispatchKey.SparseCUDA.name
 SPARSE_DISPATCH_KEY = "Sparse" + backend_info.dispatch_key
 QUANTIZED_DISPATCH_KEY = "Quantized" + backend_info.dispatch_key
+_SPGEMM_DISPATCH_KEYS = (SPARSE_DISPATCH_KEY,)
+# Torch-FL uses a renamed PrivateUse1 backend even when its CUDA alias is
+# already available and the Hygon device probe reports "cuda".
+if (
+    vendor_name == "hygon"
+    and torch._C._get_privateuse1_backend_name() == "flagos"
+    and SPARSE_DISPATCH_KEY != "SparsePrivateUse1"
+):
+    _SPGEMM_DISPATCH_KEYS += ("SparsePrivateUse1",)
 
 
 def torch_ge(v):
@@ -866,13 +875,13 @@ _FULL_CONFIG = (
         "_sparse_sparse_matmul",
         _sparse_sparse_matmul,
         None,
-        (SPARSE_DISPATCH_KEY,),
+        _SPGEMM_DISPATCH_KEYS,
     ),
     (
         "_sparse_sparse_matmul.out",
         _sparse_sparse_matmul_out,
         None,
-        (SPARSE_DISPATCH_KEY,),
+        _SPGEMM_DISPATCH_KEYS,
     ),
     (
         "_sparse_sum",
